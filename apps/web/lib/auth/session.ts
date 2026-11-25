@@ -40,10 +40,11 @@ export async function sessionUser() {
 
 /**
  * Development sign in with seeded example accounts. On only when DEV_SIGN_IN=1,
- * or outside production builds unless DEV_SIGN_IN=0. Never on Vercel production.
+ * or outside production builds unless DEV_SIGN_IN=0. Never on any Vercel deployment,
+ * previews and staging included (Rex, 2026-11-25): reachable URLs sign in with GitHub.
  */
 export function devSignInEnabled(): boolean {
-  if (process.env.VERCEL_ENV === 'production') return false;
+  if (process.env.VERCEL || process.env.VERCEL_ENV) return false;
   if (process.env.DEV_SIGN_IN === '1') return true;
   if (process.env.DEV_SIGN_IN === '0') return false;
   return process.env.NODE_ENV !== 'production';

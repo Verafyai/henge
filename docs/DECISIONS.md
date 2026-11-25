@@ -417,3 +417,15 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - **E2E prerequisite (unchanged):** the client suite needs a fresh local database each run:
   `pnpm db:reset && pnpm --filter @swarm-explorer/client release:test`, then `pnpm e2e`. A later test publishes
   a permission-changing release, so a second run against the same database fails.
+
+## Staging sign in (2026-11-25)
+
+- Rex: no example-account sign in on any reachable URL. `devSignInEnabled()` now returns false on every Vercel
+  deployment (`VERCEL` or `VERCEL_ENV` set), even with `DEV_SIGN_IN=1`. Example accounts remain for local runs and e2e.
+- Staging signs in with one real provider: a GitHub OAuth app (`/v1/auth/github`, `/v1/auth/github/callback`). It is
+  off unless `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET` are set. Only two GitHub accounts get in,
+  pinned by numeric id: rexsaurus (77756242) and Verafyai (197112695). Anyone else gets 403 and no account is created.
+- The GitHub access token is used once to read the user and never stored. State is a random value in an httpOnly,
+  SameSite=Lax cookie scoped to `/v1/auth/github`, compared in constant time. `allow_signup=false`, scope `read:user`.
+- The Vercel protection-bypass secret for test nodes (approved) lives only in the test node's environment, never in
+  git.
