@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "@swarm-explorer/config/verafy.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@source "../../../../packages/ui/src";
+
+:root {
+  --font-inter: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-jetbrains: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+html {
+  background: var(--color-page);
+  color: var(--color-ink);
+}
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Verafy hero rule: the backdrop fades into the page with no seam. */
+.hero-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
+}
+/* macOS title strip is a window drag handle; controls inside it stay clickable. */
+.app-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.app-drag button,
+.app-drag a {
+  -webkit-app-region: no-drag;
+}

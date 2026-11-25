@@ -1,0 +1,181 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Home | SwarmStarter by Verafy</title>
+<link rel="stylesheet" href="assets/tailwind.css">
+<style>
+@font-face{font-family:Inter;src:url(assets/Inter.ttf) format('truetype');font-weight:100 900}
+@font-face{font-family:'JetBrains Mono';src:url(assets/JetBrainsMono.ttf) format('truetype');font-weight:100 900}
+body{font-family:Inter,system-ui,sans-serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+/* Verafy hero rule: SVG backdrop fades into page bg with no seam */
+.hero-bg{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.hero-bg img{position:absolute;left:50%;top:0;width:1600px;max-width:none;height:100%;transform:translateX(-50%);object-fit:cover;
+ -webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 45%,transparent 100%);mask-image:linear-gradient(to bottom,#000 0%,#000 45%,transparent 100%)}
+.hero-bg::after{content:"";position:absolute;inset:0;background:radial-gradient(60% 55% at 50% 45%,rgba(255,255,255,.85) 0,rgba(255,255,255,.35) 50%,rgba(255,255,255,0) 75%)}
+.cover{background-size:cover;background-position:center}
+.bar{height:6px;border-radius:999px;background:#e4e4e7;overflow:hidden}.bar>i{display:block;height:100%;background:#0f766e;border-radius:999px}
+</style></head><body class="bg-white text-zinc-950 antialiased"><header class="sticky top-0 z-30 border-b border-teal-400/40 bg-white/90 backdrop-blur">
+<div class="mx-auto max-w-[1280px] px-8 h-16 flex items-center gap-6">
+<a href="home.html" class="flex items-center gap-3 shrink-0 whitespace-nowrap"><img src="assets/verafy-logo.svg" class="h-[18px]" alt="Verafy"><span class="h-5 w-px bg-zinc-300"></span><span class="font-bold tracking-tight text-[17px]">Swarm<span class="text-teal-700">Starter</span></span></a>
+<nav class="flex items-center gap-5 whitespace-nowrap"><a href="home.html" class="text-sm font-semibold text-teal-700 hover:text-teal-700">Explore</a><a href="dashboard.html" class="text-sm text-zinc-700 hover:text-teal-700">Swarms</a><a href="governor-log.html" class="text-sm text-zinc-700 hover:text-teal-700">Governance</a><a href="#" class="text-sm text-zinc-700 hover:text-teal-700">How it works</a></nav>
+<div class="flex-1"></div>
+<div class="relative w-[230px] shrink-0"><input class="w-full rounded-lg border border-zinc-300 bg-zinc-50 pl-9 pr-3 py-2 text-sm" placeholder="Search projects"><svg class="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+<div class="flex shrink-0 whitespace-nowrap items-center rounded-full border border-zinc-300 bg-white/80 text-xs overflow-hidden"><span class="px-3 py-1.5 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span><b>2,450</b><span class="text-zinc-500">credits</span></span><a href="dashboard.html" class="bg-[#3f8f80] text-zinc-950 font-semibold px-3 py-1.5">Add</a></div><a href="wizard-1-community.html" class="shrink-0 whitespace-nowrap rounded-lg bg-teal-700 text-white text-sm font-semibold px-4 py-2 hover:bg-teal-800">Propose new project</a><div class="shrink-0 h-9 w-9 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 text-white grid place-items-center text-sm font-bold">RS</div>
+</div></header><div class="border-b border-zinc-200 bg-white"><div class="mx-auto max-w-[1280px] px-8 h-11 flex items-center gap-6 text-sm text-zinc-600"><span class="text-teal-700 font-semibold border-b-2 border-teal-700 h-11 flex items-center">All</span><span class="">Games and mods</span><span class="">Open problems</span><span class="">Developer tools</span><span class="">Science</span><span class="">Crypto and DeFi</span><span class="">Creative AI</span><span class="">Hardware</span><span class="">Education</span><span class="">Public goods</span></div></div><section class="relative overflow-hidden">
+<div class="hero-bg"><img src="assets/waves.svg" alt=""></div>
+<div class="relative mx-auto max-w-[1280px] px-8 pt-16 pb-12 text-center">
+<div class="inline-flex items-center gap-2 rounded-full border border-teal-700/30 bg-white/70 px-3 py-1 text-xs font-semibold text-teal-800 mb-6"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>Swarms as a Service by Verafy</div>
+<h1 class="text-[64px] leading-[1.05] font-bold tracking-tight">Fund a swarm.<br>Govern what it builds.</h1>
+<p class="mt-5 text-lg text-zinc-700 max-w-2xl mx-auto">Back community projects with credits or compute. A neutral AI governor enforces each project's constitution, and every ruling is sealed on the Verafy chain.</p>
+<div class="mt-8 flex justify-center gap-3"><a href="wizard-1-community.html" class="rounded-lg bg-teal-700 text-white font-semibold px-6 py-3 shadow-sm">Propose new project</a><a href="#grid" class="rounded-lg border border-zinc-300 bg-white/80 font-semibold px-6 py-3">Explore projects</a></div>
+</div></section><section class="mx-auto max-w-[1280px] px-8 mt-4 grid grid-cols-12 gap-8">
+<div class="col-span-8">
+<div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Featured project</div>
+<a href="project.html" class="block group">
+<div class="relative cover aspect-[16/8] rounded-2xl overflow-hidden border border-zinc-200" style="background-image:url(assets/cover-2.svg)">
+<div class="absolute inset-0 grid place-items-center"><div class="h-16 w-16 rounded-full bg-white/90 grid place-items-center shadow-lg"><svg class="h-7 w-7 text-teal-700 ml-1" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg></div></div>
+<div class="absolute left-4 top-4 flex gap-2"><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-teal-50 text-teal-800 border-teal-200">Stage 2 of 3</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Constitution v1.3</span></div>
+</div>
+<div class="mt-4 flex items-start gap-6">
+<div class="flex-1"><h2 class="text-2xl font-bold group-hover:text-teal-700">Open World Remake: from heist sandbox to fantasy RPG</h2><p class="mt-1 text-zinc-600">A fan-mod style remake that turns an open world sandbox into a quest driven RPG, built by a governed swarm.</p><div class="mt-2 text-sm text-zinc-500">by <span class="text-zinc-900 font-medium">Ashgrove Collective</span> · Governor active · 5 Verafy judges on call</div></div>
+<div class="w-[280px] shrink-0"><div class="flex items-baseline justify-between"><span class="text-2xl font-bold text-teal-700">$71,020</span><span class="text-sm text-zinc-500">142% of Stage 2</span></div><div class="mt-2"><div class="bar"><i style="width:100%"></i></div></div><div class="mt-2 grid grid-cols-3 text-xs text-zinc-600"><div><b class="block text-base text-zinc-950">1,284</b>backers</div><div><b class="block text-base text-zinc-950">214</b>swarm nodes</div><div><b class="block text-base text-zinc-950">18</b>days left</div></div></div>
+</div></a></div>
+<aside class="col-span-4"><div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Recommended for you</div><div class="space-y-4"><a href="project.html" class="flex gap-4 group"><div class="cover h-[84px] w-[150px] shrink-0 rounded-xl border border-zinc-200" style="background-image:url(assets/cover-1.svg)"></div><div><div class="text-sm font-semibold leading-snug group-hover:text-teal-700">Riemann Swarm: formal search for counterexamples</div><div class="text-xs text-zinc-500 mt-1">64% funded · 26 days left</div><div class="text-xs text-teal-700 font-medium mt-1">Open problems</div></div></a><a href="project.html" class="flex gap-4 group"><div class="cover h-[84px] w-[150px] shrink-0 rounded-xl border border-zinc-200" style="background-image:url(assets/cover-5.svg)"></div><div><div class="text-sm font-semibold leading-snug group-hover:text-teal-700">Ledgerline: local-first accounting for freelancers</div><div class="text-xs text-zinc-500 mt-1">91% funded · 9 days left</div><div class="text-xs text-teal-700 font-medium mt-1">Developer tools</div></div></a><a href="project.html" class="flex gap-4 group"><div class="cover h-[84px] w-[150px] shrink-0 rounded-xl border border-zinc-200" style="background-image:url(assets/cover-3.svg)"></div><div><div class="text-sm font-semibold leading-snug group-hover:text-teal-700">Loomwright: a story engine for tabletop groups</div><div class="text-xs text-zinc-500 mt-1">37% funded · 33 days left</div><div class="text-xs text-teal-700 font-medium mt-1">Creative AI</div></div></a><a href="project.html" class="flex gap-4 group"><div class="cover h-[84px] w-[150px] shrink-0 rounded-xl border border-zinc-200" style="background-image:url(assets/cover-7.svg)"></div><div><div class="text-sm font-semibold leading-snug group-hover:text-teal-700">Escrowkit: audited Solana escrow primitives</div><div class="text-xs text-zinc-500 mt-1">118% funded · 4 days left</div><div class="text-xs text-teal-700 font-medium mt-1">Crypto and DeFi</div></div></a>
+<div class="rounded-2xl border-2 border-teal-700 bg-zinc-100 p-4"><div class="font-semibold">Have an idea a swarm could build?</div><p class="text-sm text-zinc-600 mt-1">Draft a spec, set a constitution, and let the community fund it in stages.</p><a href="wizard-1-community.html" class="mt-3 inline-block rounded-lg bg-teal-700 text-white text-sm font-semibold px-4 py-2">Propose new project</a></div>
+</div></aside></section><section class="mx-auto max-w-[1280px] px-8 mt-16">
+<div class="flex items-end justify-between mb-4"><div><h3 class="text-xl font-bold">Trending swarms</h3><p class="text-sm text-zinc-500">Most new backers and swarm nodes in the last 7 days</p></div>
+<div class="flex items-center gap-2"><button class="h-9 w-9 rounded-full border border-zinc-300 grid place-items-center">&#8249;</button><button class="h-9 w-9 rounded-full border border-teal-700 text-teal-700 grid place-items-center">&#8250;</button></div></div>
+<div class="relative overflow-hidden"><div class="flex gap-6"><div class="w-[296px] shrink-0"><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-1.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Open problems</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">Riemann Swarm: formal search for counterexamples</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Prime Lattice Lab</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Lean 4 formalization plus a verifier swarm that checks every claimed lemma before it is merged.</p>
+<div class="mt-3"><div class="bar"><i style="width:64%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$32,400</b> raised</span><span><b class="text-zinc-950">64%</b></span><span><b class="text-zinc-950">26</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>88 swarm nodes active</div>
+</div></a></div><div class="w-[296px] shrink-0"><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-5.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Developer tools</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">Ledgerline: local-first accounting for freelancers</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Mara Okafor</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Offline-first desktop app with an open plugin API. Spec v3 ratified by the community.</p>
+<div class="mt-3"><div class="bar"><i style="width:91%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$18,200</b> raised</span><span><b class="text-zinc-950">91%</b></span><span><b class="text-zinc-950">9</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>41 swarm nodes active</div>
+</div></a></div><div class="w-[296px] shrink-0"><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-3.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Creative AI</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">Loomwright: a story engine for tabletop groups</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Tessellate Games</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Campaign generator with rules-as-code, voice NPCs and a moderated shared world.</p>
+<div class="mt-3"><div class="bar"><i style="width:37%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$7,410</b> raised</span><span><b class="text-zinc-950">37%</b></span><span><b class="text-zinc-950">33</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>19 swarm nodes active</div>
+</div></a></div><div class="w-[296px] shrink-0"><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-7.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Crypto and DeFi</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 2</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">Escrowkit: audited Solana escrow primitives</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Northwind Builders</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Reusable escrow and milestone release programs, verified by Verafy judges before deploy.</p>
+<div class="mt-3"><div class="bar"><i style="width:100%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$47,300</b> raised</span><span><b class="text-zinc-950">118%</b></span><span><b class="text-zinc-950">4</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>96 swarm nodes active</div>
+</div></a></div><div class="w-[296px] shrink-0"><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-8.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Education</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">OpenTutor: math tutor that shows its work</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Learnwell Coop</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Step-by-step tutor with a jury of models checking each step for errors.</p>
+<div class="mt-3"><div class="bar"><i style="width:52%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$10,400</b> raised</span><span><b class="text-zinc-950">52%</b></span><span><b class="text-zinc-950">21</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>33 swarm nodes active</div>
+</div></a></div></div>
+<div class="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-white to-transparent"></div></div>
+<div class="mt-4 flex justify-center gap-1.5"><span class="h-1.5 w-6 rounded-full bg-teal-700"></span><span class="h-1.5 w-1.5 rounded-full bg-zinc-300"></span><span class="h-1.5 w-1.5 rounded-full bg-zinc-300"></span></div>
+</section><section id="grid" class="mx-auto max-w-[1280px] px-8 mt-16">
+<div class="flex items-end justify-between mb-4"><div><h3 class="text-xl font-bold">All projects</h3><p class="text-sm text-zinc-500">Showing 8 of 132 example projects</p></div>
+<div class="flex items-center gap-2 text-sm">
+<span class="text-zinc-500">Sort</span><select class="rounded-lg border border-zinc-300 px-3 py-1.5"><option>Trending</option></select>
+<span class="ml-3 text-zinc-500">Stage</span><select class="rounded-lg border border-zinc-300 px-3 py-1.5"><option>Any stage</option></select>
+<span class="ml-3 text-zinc-500">Contribute by</span><select class="rounded-lg border border-zinc-300 px-3 py-1.5"><option>Credits or compute</option></select>
+</div></div>
+<div class="grid grid-cols-4 gap-6"><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-8.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Education</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">OpenTutor: math tutor that shows its work</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Learnwell Coop</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Step-by-step tutor with a jury of models checking each step for errors.</p>
+<div class="mt-3"><div class="bar"><i style="width:52%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$10,400</b> raised</span><span><b class="text-zinc-950">52%</b></span><span><b class="text-zinc-950">21</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>33 swarm nodes active</div>
+</div></a><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-0.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Public goods</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">CivicDocs: plain language city records</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Open Bay Civic</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Turns public meeting PDFs into searchable, cited summaries. Constitution bans ads.</p>
+<div class="mt-3"><div class="bar"><i style="width:76%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$15,200</b> raised</span><span><b class="text-zinc-950">76%</b></span><span><b class="text-zinc-950">14</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>27 swarm nodes active</div>
+</div></a><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-9.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Hardware</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Proposed</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">Tinkerbench: firmware for open lab instruments</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Fermata Labs</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Shared firmware for low cost oscilloscopes and loggers, tested in hardware-in-the-loop CI.</p>
+<div class="mt-3"><div class="bar"><i style="width:23%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$4,600</b> raised</span><span><b class="text-zinc-950">23%</b></span><span><b class="text-zinc-950">40</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>6 swarm nodes active</div>
+</div></a><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-4.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Science</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">FoldScout: protein folding explorer for students</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Helix Commons</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Browser app that visualizes fold predictions with sourced explanations.</p>
+<div class="mt-3"><div class="bar"><i style="width:88%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$26,400</b> raised</span><span><b class="text-zinc-950">88%</b></span><span><b class="text-zinc-950">11</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>57 swarm nodes active</div>
+</div></a><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-1.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Games and mods</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">Retro Port Swarm: classic shooter to modern engines</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Bitforge Guild</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Clean-room engine port with community art packs. Code of conduct requires original assets only.</p>
+<div class="mt-3"><div class="bar"><i style="width:61%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$12,200</b> raised</span><span><b class="text-zinc-950">61%</b></span><span><b class="text-zinc-950">17</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>48 swarm nodes active</div>
+</div></a><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-3.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Open problems</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">Collatz Atlas: verified bounds explorer</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Odd Steps Society</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Distributed search with every bound checked by an independent verifier model.</p>
+<div class="mt-3"><div class="bar"><i style="width:29%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$5,800</b> raised</span><span><b class="text-zinc-950">29%</b></span><span><b class="text-zinc-950">35</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>71 swarm nodes active</div>
+</div></a><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-5.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Science</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 2</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">ClimaGrid: open weather downscaling models</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Stratus Commons</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Reproducible downscaling pipelines with public datasets and audited benchmarks.</p>
+<div class="mt-3"><div class="bar"><i style="width:100%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$31,200</b> raised</span><span><b class="text-zinc-950">104%</b></span><span><b class="text-zinc-950">7</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>64 swarm nodes active</div>
+</div></a><a href="project.html" class="group block rounded-2xl border border-zinc-200 bg-white overflow-hidden hover:border-teal-700 hover:shadow-lg transition">
+<div class="cover aspect-[16/9]" style="background-image:url(assets/cover-6.svg)"></div>
+<div class="p-4"><div class="flex items-center justify-between mb-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Developer tools</span><span class="inline-flex whitespace-nowrap items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-700 border-zinc-200">Stage 1</span></div>
+<div class="font-semibold leading-snug group-hover:text-teal-700">Patchwise: AI code review rules marketplace</div>
+<div class="text-xs text-zinc-500 mt-0.5">by Quillon</div>
+<p class="text-sm text-zinc-600 mt-2 line-clamp-2">Shareable coding-rule packs that swarms and humans can enforce in CI.</p>
+<div class="mt-3"><div class="bar"><i style="width:45%"></i></div></div>
+<div class="mt-2 flex justify-between text-xs text-zinc-600"><span><b class="text-zinc-950">$9,000</b> raised</span><span><b class="text-zinc-950">45%</b></span><span><b class="text-zinc-950">29</b> days left</span></div>
+<div class="mt-2 text-xs text-zinc-500 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-teal-400"></span>22 swarm nodes active</div>
+</div></a></div>
+<div class="mt-8 text-center"><button class="rounded-lg border border-zinc-300 px-6 py-2.5 text-sm font-semibold">Load more projects</button></div>
+</section><section class="mx-auto max-w-[1280px] px-8 mt-20"><h3 class="text-xl font-bold mb-6 text-center">How SwarmStarter works</h3><div class="grid grid-cols-4 gap-6"><div class="rounded-2xl border-2 border-teal-700 bg-zinc-100 p-5"><div class="h-8 w-8 rounded-full bg-teal-700 text-white grid place-items-center font-bold text-sm">1</div><div class="mt-3 font-semibold">Propose</div><p class="mt-1 text-sm text-zinc-600">Name it, link your Discord, Telegram or Signal, upload a spec and a GitHub repo.</p></div><div class="rounded-2xl border-2 border-teal-700 bg-zinc-100 p-5"><div class="h-8 w-8 rounded-full bg-teal-700 text-white grid place-items-center font-bold text-sm">2</div><div class="mt-3 font-semibold">Constitute</div><p class="mt-1 text-sm text-zinc-600">Adopt a code of conduct and a constitution that governs the treasury.</p></div><div class="rounded-2xl border-2 border-teal-700 bg-zinc-100 p-5"><div class="h-8 w-8 rounded-full bg-teal-700 text-white grid place-items-center font-bold text-sm">3</div><div class="mt-3 font-semibold">Fund in stages</div><p class="mt-1 text-sm text-zinc-600">Backers fund Stage 1, 2, 3. Money is released only when a stage is accepted.</p></div><div class="rounded-2xl border-2 border-teal-700 bg-zinc-100 p-5"><div class="h-8 w-8 rounded-full bg-teal-700 text-white grid place-items-center font-bold text-sm">4</div><div class="mt-3 font-semibold">Swarm builds</div><p class="mt-1 text-sm text-zinc-600">Contributors run the swarm client. The governor enforces rules; judges hear appeals.</p></div></div></section><footer class="mt-20 border-t border-zinc-200 bg-zinc-50"><div class="mx-auto max-w-[1280px] px-8 py-10 grid grid-cols-5 gap-8 text-sm">
+<div class="col-span-2"><img src="assets/verafy-logo.svg" class="h-4 mb-3"><p class="text-zinc-600 max-w-sm">SwarmStarter is Swarms as a Service by Verafy. Communities fund, govern and steer AI build swarms. Rulings are sealed on the Verafy chain.</p></div>
+<div><div class="font-semibold mb-2">Explore</div><div class="space-y-1 text-zinc-600"><div>Featured</div><div>Ending soon</div><div>Open problems</div></div></div>
+<div><div class="font-semibold mb-2">Build</div><div class="space-y-1 text-zinc-600"><div>Propose a project</div><div>Swarm client</div><div>Constitution templates</div></div></div>
+<div><div class="font-semibold mb-2">Trust</div><div class="space-y-1 text-zinc-600"><div>Governor log</div><div>Verafy judges</div><div>Terms and risks</div></div></div>
+</div><div class="mx-auto max-w-[1280px] px-8 pb-8 text-xs text-zinc-400">Mockup. All projects, people, numbers and amounts shown are example data.</div></footer></body></html>

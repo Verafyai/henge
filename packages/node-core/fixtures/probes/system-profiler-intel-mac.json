@@ -1,0 +1,15 @@
+{
+  "SPDisplaysDataType": [
+    {
+      "_name": "Intel UHD Graphics 630",
+      "sppci_model": "Intel UHD Graphics 630",
+      "spdisplays_vram_shared": "1536 MB"
+    },
+    {
+      "_name": "AMD Radeon Pro 5500M",
+      "sppci_model": "AMD Radeon Pro 5500M",
+      "spdisplays_vram": "8 GB",
+      "spdisplays_vendor": "sppci_vendor_amd"
+    }
+  ]
+}

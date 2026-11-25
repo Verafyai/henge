@@ -1,0 +1,24 @@
+{
+  "name": "@swarm-explorer/node-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Node supervisor logic shared by the desktop client and the future headless node: hardware and runtime detection, mode recommendation, run rules, capability reports",
+  "exports": {
+    ".": "./src/index.ts",
+    "./probe": "./src/probe.ts",
+    "./sources": "./src/sources.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@swarm-explorer/config": "workspace:*",
+    "@types/node": "26.6.7"
+  }
+}

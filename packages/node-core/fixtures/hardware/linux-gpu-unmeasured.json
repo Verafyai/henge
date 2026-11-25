@@ -1,0 +1,24 @@
+{
+  "x-example": "Fixture hardware profile for tests and the first-run fixture hook. Not a real machine.",
+  "os": {
+    "platform": "linux",
+    "release": "6.8.0"
+  },
+  "cpu": {
+    "arch": "x64",
+    "model": "AMD Ryzen 7 5800X",
+    "cores": 16,
+    "appleSilicon": false
+  },
+  "ramBytes": 34359738368,
+  "gpus": [],
+  "freeDiskBytes": 268435456000,
+  "confidence": {
+    "ram": "measured",
+    "gpu": "unknown",
+    "disk": "measured"
+  },
+  "notes": [
+    "No NVIDIA tools found; other GPUs on Linux are not measured yet."
+  ]
+}

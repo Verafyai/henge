@@ -1,0 +1,6 @@
+{
+  "name": "@swarm-explorer/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Placeholder for the optional mobile companion (SPEC 4.1: status, Pause, notifications). Not scheduled."
+}

@@ -1,0 +1,30 @@
+{
+  "x-example": "Fixture hardware profile for tests and the first-run fixture hook. Not a real machine.",
+  "os": {
+    "platform": "darwin",
+    "release": "24.6.0"
+  },
+  "cpu": {
+    "arch": "arm64",
+    "model": "Apple M3 Pro",
+    "cores": 12,
+    "appleSilicon": true
+  },
+  "ramBytes": 34359738368,
+  "gpus": [
+    {
+      "vendor": "apple",
+      "name": "Apple M3 Pro",
+      "vramBytes": null,
+      "memory": "unified",
+      "vramConfidence": "unknown"
+    }
+  ],
+  "freeDiskBytes": 442381631488,
+  "confidence": {
+    "ram": "measured",
+    "gpu": "measured",
+    "disk": "measured"
+  },
+  "notes": []
+}

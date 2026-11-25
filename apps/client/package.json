@@ -1,0 +1,53 @@
+{
+  "name": "@swarm-explorer/client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Swarm Explorer desktop client",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "release:test": "tsx scripts/test-release.mts",
+    "package:dev": "electron-vite build && electron-builder --dir --config electron-builder.yml",
+    "package:internal": "tsx scripts/package-internal.mts"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "2.1.2",
+    "ajv": "8.20.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@playwright/test": "1.65.1",
+    "@swarm-explorer/api-client": "workspace:*",
+    "@swarm-explorer/config": "workspace:*",
+    "@swarm-explorer/core": "workspace:*",
+    "@swarm-explorer/db": "workspace:*",
+    "@swarm-explorer/node-core": "workspace:*",
+    "@swarm-explorer/sandbox": "workspace:*",
+    "@swarm-explorer/schema": "workspace:*",
+    "@swarm-explorer/ui": "workspace:*",
+    "@tailwindcss/vite": "4.3.5",
+    "@tanstack/react-query": "5.108.4",
+    "@types/node": "26.6.7",
+    "@types/react": "19.3.1",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "electron": "45.5.0",
+    "electron-builder": "26.18.1",
+    "electron-vite": "6.0.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwindcss": "4.3.5",
+    "tsx": "4.23.15",
+    "vite": "8.3.8"
+  },
+  "author": "Verafy"
+}

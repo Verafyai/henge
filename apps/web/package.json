@@ -1,0 +1,38 @@
+{
+  "name": "@swarm-explorer/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@swarm-explorer/api-client": "workspace:*",
+    "@swarm-explorer/config": "workspace:*",
+    "@swarm-explorer/core": "workspace:*",
+    "@swarm-explorer/db": "workspace:*",
+    "@swarm-explorer/node-core": "workspace:*",
+    "@swarm-explorer/ui": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "26.6.7",
+    "@types/pngjs": "6.0.5",
+    "@types/react": "19.3.1",
+    "@types/react-dom": "19.3.0",
+    "pngjs": "7.0.0",
+    "tailwindcss": "4.3.5"
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "lemma": "theorem fixture_add_zero (n : Nat) : n + 0 = n",
+  "hints": []
+}

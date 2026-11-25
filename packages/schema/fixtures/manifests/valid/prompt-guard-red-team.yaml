@@ -1,0 +1,30 @@
+# Launch configuration (SPEC 16.1): volunteer, machine check by reproduced attack.
+manifest_version: 1
+id: prompt-guard-red-team
+name: Prompt Guard red team
+publisher: verafy.ai
+category: security
+summary: Find reproducible bypasses of Prompt Guard so the store can harden against them
+harness: { name: prompt-guard-red-team, version: 0.1.0, hash: sha256-b136f2d02a73f57cb8a2fdfadb068883cff9b919a26840c05334583e0312f25b, runtime: wasm }
+models: { policy: any, api_allowed: false }
+verification: [machine-check]
+verification_config: { pending_window_s: 604800 }
+permissions:
+  network: []
+  scratch_disk_gb: 0.5
+  gpu_compute: false
+  api_spend_daily_usd: null
+credits: { funded: false, per_accepted_task: null, pool_id: null }
+impact: { category_weight: 1 }
+task:
+  timeout_s: 600
+  max_parallel_per_node: 1
+  urgent_allowed: false
+  input_schema: https://promptguard.verafy.ai/schemas/target-task.json
+  output_schema: https://promptguard.verafy.ai/schemas/attack-result.json
+qualification: { tasks: 3, pass: 2 }
+results_url: https://promptguard.verafy.ai/results
+coordinator: { mode: hosted, url: null, public_key: null }
+data_policy: { public_inputs: true, retention_days: 365, sensitive_data_prohibited: true }
+min_client_version: 0.1.0
+x-example: Fixture manifest. Limits, retention and URLs are illustrations, not deployment values.

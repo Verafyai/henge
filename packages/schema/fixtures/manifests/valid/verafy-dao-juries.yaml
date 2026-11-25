@@ -1,0 +1,35 @@
+# Launch configuration (SPEC 16.1): the one funded launch swarm. The reward is the source
+# illustration of 12 credits per accepted jury vote (SPEC 2.1); panel sizes are fixtures.
+manifest_version: 1
+id: verafy-dao-juries
+name: Verafy DAO juries
+publisher: verafy.ai
+category: governance
+summary: Independent model panels rule on DAO disputes under each DAO's own rules
+harness: { name: verafy-juror, version: 0.1.0, hash: sha256-adfba3526f427c5abb7bec0707b1ab7949a8afc468ecd3195d06c211249a335c, runtime: wasm }
+models:
+  policy: diverse
+  allowed_classes: [jury-panel-member]
+  api_allowed: true
+  diversity: { min_families: 3, min_accounts: 3 }
+verification: [jury]
+verification_config: { jury_panel_size: 3, pending_window_s: 604800 }
+permissions:
+  network: []
+  scratch_disk_gb: 0.5
+  gpu_compute: false
+  api_spend_daily_usd: null
+credits: { funded: true, per_accepted_task: 12, pool_id: pool-verafy-dao-juries }
+impact: { category_weight: 1 }
+task:
+  timeout_s: 600
+  max_parallel_per_node: 1
+  urgent_allowed: true
+  input_schema: https://juries.verafy.ai/schemas/dispute-task.json
+  output_schema: https://juries.verafy.ai/schemas/juror-verdict.json
+qualification: { tasks: 3, pass: 2 }
+results_url: https://juries.verafy.ai/results
+coordinator: { mode: hosted, url: null, public_key: null }
+data_policy: { public_inputs: false, retention_days: 90, sensitive_data_prohibited: true }
+min_client_version: 0.1.0
+x-example: Fixture manifest. Panel rules, timeouts, retention and URLs are illustrations, not deployment values.

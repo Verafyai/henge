@@ -1,0 +1,27 @@
+{
+  "name": "@swarm-explorer/sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Harness sandbox broker (SPEC 11.3): bundle verification, WebAssembly host with limits, egress policy, scratch disk, capability tokens and the local model proxy",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "build:checks": "tsx scripts/build-checks.mts"
+  },
+  "dependencies": {
+    "@swarm-explorer/schema": "workspace:*",
+    "ajv": "8.20.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@swarm-explorer/config": "workspace:*",
+    "@types/node": "26.6.7",
+    "wabt": "1.0.39",
+    "tsx": "4.23.15"
+  }
+}

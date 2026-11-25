@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "verdict",
+    "rationale_code",
+    "rationale"
+  ],
+  "properties": {
+    "verdict": {
+      "enum": [
+        "accept",
+        "reject"
+      ]
+    },
+    "rationale_code": {
+      "type": "string",
+      "pattern": "^[a-z_]+$"
+    },
+    "rationale": {
+      "type": "string",
+      "maxLength": 2000
+    }
+  },
+  "additionalProperties": false
+}

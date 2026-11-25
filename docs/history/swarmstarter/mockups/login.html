@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in | SwarmStarter by Verafy</title>
+<link rel="stylesheet" href="assets/tailwind.css">
+<style>
+@font-face{font-family:Inter;src:url(assets/Inter.ttf) format('truetype');font-weight:100 900}
+@font-face{font-family:'JetBrains Mono';src:url(assets/JetBrainsMono.ttf) format('truetype');font-weight:100 900}
+body{font-family:Inter,system-ui,sans-serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+/* Verafy hero rule: SVG backdrop fades into page bg with no seam */
+.hero-bg{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.hero-bg img{position:absolute;left:50%;top:0;width:1600px;max-width:none;height:100%;transform:translateX(-50%);object-fit:cover;
+ -webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 45%,transparent 100%);mask-image:linear-gradient(to bottom,#000 0%,#000 45%,transparent 100%)}
+.hero-bg::after{content:"";position:absolute;inset:0;background:radial-gradient(60% 55% at 50% 45%,rgba(255,255,255,.85) 0,rgba(255,255,255,.35) 50%,rgba(255,255,255,0) 75%)}
+.cover{background-size:cover;background-position:center}
+.bar{height:6px;border-radius:999px;background:#e4e4e7;overflow:hidden}.bar>i{display:block;height:100%;background:#0f766e;border-radius:999px}
+</style></head><body class="bg-white text-zinc-950 antialiased"><header class="sticky top-0 z-30 border-b border-teal-400/40 bg-white/90 backdrop-blur">
+<div class="mx-auto max-w-[1280px] px-8 h-16 flex items-center gap-6">
+<a href="home.html" class="flex items-center gap-3 shrink-0 whitespace-nowrap"><img src="assets/verafy-logo.svg" class="h-[18px]" alt="Verafy"><span class="h-5 w-px bg-zinc-300"></span><span class="font-bold tracking-tight text-[17px]">Swarm<span class="text-teal-700">Starter</span></span></a>
+<nav class="flex items-center gap-5 whitespace-nowrap"><a href="home.html" class="text-sm text-zinc-700 hover:text-teal-700">Explore</a><a href="dashboard.html" class="text-sm text-zinc-700 hover:text-teal-700">Swarms</a><a href="governor-log.html" class="text-sm text-zinc-700 hover:text-teal-700">Governance</a><a href="#" class="text-sm text-zinc-700 hover:text-teal-700">How it works</a></nav>
+<div class="flex-1"></div>
+<div class="relative w-[230px] shrink-0"><input class="w-full rounded-lg border border-zinc-300 bg-zinc-50 pl-9 pr-3 py-2 text-sm" placeholder="Search projects"><svg class="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+<a href="login.html" class="text-sm text-zinc-700">Log in</a><a href="wizard-1-community.html" class="rounded-lg bg-teal-700 text-white text-sm font-semibold px-4 py-2">Propose new project</a>
+</div></header><section class="relative overflow-hidden min-h-[760px]"><div class="hero-bg"><img src="assets/waves.svg" alt=""></div>
+<div class="relative mx-auto max-w-[1280px] px-8 py-14 grid grid-cols-2 gap-16 items-center">
+<div><h1 class="text-5xl font-bold tracking-tight leading-tight">Sign in to SwarmStarter</h1><p class="mt-4 text-lg text-zinc-700 max-w-md">One Verafy account for backing, building and governing. You can do all three; pick where to start.</p>
+<div class="mt-8 space-y-3 max-w-md"><label class="flex gap-3 rounded-2xl border border-zinc-200 bg-white/80 p-4"><input type="radio"  class="accent-teal-700 mt-1"><div><b>Propose and lead a project</b><div class="text-sm text-zinc-600">Creator. Draft a spec, set the constitution and treasury, moderate the community.</div></div></label><label class="flex gap-3 rounded-2xl border border-2 border-teal-700 bg-zinc-100 p-4"><input type="radio" checked class="accent-teal-700 mt-1"><div><b>Back projects</b><div class="text-sm text-zinc-600">Contributor. Fund stages with card, USDC or credits, post suggestions and vote.</div></div></label><label class="flex gap-3 rounded-2xl border border-zinc-200 bg-white/80 p-4"><input type="radio"  class="accent-teal-700 mt-1"><div><b>Join the build swarm</b><div class="text-sm text-zinc-600">Contributor. Run the client on your Mac, PC or phone and earn credit for merged work.</div></div></label></div></div>
+<div class="rounded-3xl border border-zinc-200 bg-white shadow-xl p-8 max-w-md w-full justify-self-end">
+<div class="space-y-3"><button class="w-full rounded-lg border border-zinc-300 py-3 text-sm font-semibold flex items-center justify-center gap-2"><span class="h-5 w-5 rounded bg-zinc-950 text-white text-[10px] grid place-items-center">G</span>Continue with GitHub</button><button class="w-full rounded-lg border border-zinc-300 py-3 text-sm font-semibold flex items-center justify-center gap-2"><span class="h-5 w-5 rounded bg-zinc-950 text-white text-[10px] grid place-items-center">G</span>Continue with Google</button><button class="w-full rounded-lg border border-zinc-300 py-3 text-sm font-semibold flex items-center justify-center gap-2"><span class="h-5 w-5 rounded bg-zinc-950 text-white text-[10px] grid place-items-center">X</span>Continue with X</button>
+<button class="w-full rounded-lg border border-zinc-300 py-3 text-sm font-semibold flex items-center justify-center gap-2"><span class="h-5 w-5 rounded bg-violet-600 text-white text-[10px] grid place-items-center">S</span>Connect Solana wallet</button></div>
+<div class="my-5 flex items-center gap-3 text-xs text-zinc-400"><span class="flex-1 h-px bg-zinc-200"></span>or email<span class="flex-1 h-px bg-zinc-200"></span></div>
+<input class="w-full rounded-lg border border-zinc-300 px-3 py-3 text-sm" placeholder="you@example.com">
+<button class="mt-3 w-full rounded-lg bg-teal-700 text-white font-semibold py-3">Email me a sign-in link</button>
+<p class="mt-4 text-xs text-zinc-500">Voting needs a verified account: a sign-in account older than 90 days plus a passkey. Large treasury votes and payouts also need an identity check. Wallets add a signature but never replace verification.</p>
+<p class="mt-3 text-xs text-zinc-500">By continuing you agree to the Terms and the Risk notice.</p></div>
+</div></section></body></html>

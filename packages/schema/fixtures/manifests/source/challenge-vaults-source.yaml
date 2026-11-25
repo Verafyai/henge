@@ -1,0 +1,18 @@
+# Rex's source example, verbatim from SPEC 6.3. A format illustration only: the
+# abbreviated hash fails production validation, and its reward and limits are not
+# deployment values.
+id: challenge-vaults
+name: Challenge Vaults
+publisher: verafy.ai
+category: mathematics
+summary: Search for Lean proofs of open Erdos problems
+harness: { name: lean-prover, version: 1.4.0, hash: sha256-... }
+models: { policy: class, class: code-7b-plus, api_allowed: true }
+verification: [machine-check]
+permissions:
+  network: [lean-lang.org, github.com]
+  scratch_disk_gb: 2
+credits: { funded: true, per_accepted_task: 40, pool_id: pool_123 }
+task: { timeout_s: 900, max_parallel_per_node: 1 }
+qualification: { tasks: 3, pass: 2 }
+results_url: https://vaults.verafy.ai/results

@@ -1,0 +1,15 @@
+{
+  "models": [
+    {
+      "name": "qwen2.5-coder:7b",
+      "model": "qwen2.5-coder:7b",
+      "digest": "2b0496514337a3d5901f1d253d01726c890b721e891335a56d6e08cedf3e2cb0",
+      "size": 4683087332
+    },
+    {
+      "name": "llama3.1:8b",
+      "digest": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+      "size": 4920753328
+    }
+  ]
+}

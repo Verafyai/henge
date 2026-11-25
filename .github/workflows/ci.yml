@@ -1,0 +1,42 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+# The alpha is Mac only (decision 2026-11-25). Windows and Linux jobs return when those builds exist.
+jobs:
+  check:
+    name: Lint, typecheck, unit tests (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  e2e:
+    name: Website and desktop e2e (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:reset
+      # Test-key signed internal-channel manifest for the update check tests. Never a production key.
+      - run: pnpm --filter @swarm-explorer/client release:test
+      - run: pnpm --filter @swarm-explorer/web build
+      - run: pnpm --filter @swarm-explorer/client build
+      - run: pnpm --filter @swarm-explorer/web exec playwright install chromium
+      - run: pnpm --filter @swarm-explorer/web e2e
+        env: { CI: 'true' }
+      - run: pnpm --filter @swarm-explorer/client e2e
+        env: { CI: 'true' }
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: 'apps/*/playwright-report' }

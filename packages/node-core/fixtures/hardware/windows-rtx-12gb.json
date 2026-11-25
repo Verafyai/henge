@@ -1,0 +1,37 @@
+{
+  "x-example": "Fixture hardware profile for tests and the first-run fixture hook. Not a real machine.",
+  "os": {
+    "platform": "win32",
+    "release": "10.0.22631"
+  },
+  "cpu": {
+    "arch": "x64",
+    "model": "13th Gen Intel(R) Core(TM) i7-13700K",
+    "cores": 24,
+    "appleSilicon": false
+  },
+  "ramBytes": 68719476736,
+  "gpus": [
+    {
+      "vendor": "intel",
+      "name": "Intel(R) UHD Graphics 770",
+      "vramBytes": 1073741824,
+      "memory": "shared",
+      "vramConfidence": "measured"
+    },
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce RTX 4070",
+      "vramBytes": 12884901888,
+      "memory": "dedicated",
+      "vramConfidence": "measured"
+    }
+  ],
+  "freeDiskBytes": 944892805120,
+  "confidence": {
+    "ram": "measured",
+    "gpu": "measured",
+    "disk": "measured"
+  },
+  "notes": []
+}

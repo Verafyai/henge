@@ -1,0 +1,29 @@
+{
+  "name": "swarm-explorer",
+  "private": true,
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@swarm-explorer/web --filter=@swarm-explorer/client",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "e2e": "pnpm --filter @swarm-explorer/web e2e && pnpm --filter @swarm-explorer/client release:test && pnpm --filter @swarm-explorer/client build && pnpm --filter @swarm-explorer/client e2e",
+    "db:generate": "pnpm --filter @swarm-explorer/db generate",
+    "db:migrate": "pnpm --filter @swarm-explorer/db migrate",
+    "db:seed": "pnpm --filter @swarm-explorer/db seed",
+    "db:reset": "pnpm --filter @swarm-explorer/db reset",
+    "cli": "pnpm --filter @swarm-explorer/cli start"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "turbo": "2.11.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.74.0",
+    "vitest": "5.1.1"
+  }
+}

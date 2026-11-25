@@ -1,0 +1,30 @@
+{
+  "x-example": "Fixture hardware profile for tests and the first-run fixture hook. Not a real machine.",
+  "os": {
+    "platform": "linux",
+    "release": "6.8.0"
+  },
+  "cpu": {
+    "arch": "x64",
+    "model": "Intel(R) Core(TM) i5-8400",
+    "cores": 6,
+    "appleSilicon": false
+  },
+  "ramBytes": 17179869184,
+  "gpus": [
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce GTX 1050",
+      "vramBytes": 2147483648,
+      "memory": "dedicated",
+      "vramConfidence": "measured"
+    }
+  ],
+  "freeDiskBytes": 96636764160,
+  "confidence": {
+    "ram": "measured",
+    "gpu": "measured",
+    "disk": "measured"
+  },
+  "notes": []
+}

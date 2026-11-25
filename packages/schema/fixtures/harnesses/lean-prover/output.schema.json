@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "status",
+    "proof"
+  ],
+  "properties": {
+    "status": {
+      "enum": [
+        "proved",
+        "not_found"
+      ]
+    },
+    "proof": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200000
+    },
+    "checker_version": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,10 @@
+{
+  "SPDisplaysDataType": [
+    {
+      "_name": "kHW_AppleM3ProItem",
+      "sppci_model": "Apple M3 Pro",
+      "spdisplays_vendor": "sppci_vendor_Apple",
+      "sppci_cores": "18"
+    }
+  ]
+}

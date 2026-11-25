@@ -1,0 +1,30 @@
+{
+  "x-example": "Fixture hardware profile for tests and the first-run fixture hook. Not a real machine.",
+  "os": {
+    "platform": "win32",
+    "release": "10.0.22631"
+  },
+  "cpu": {
+    "arch": "x64",
+    "model": "Intel(R) Core(TM) i5-1135G7",
+    "cores": 8,
+    "appleSilicon": false
+  },
+  "ramBytes": 17179869184,
+  "gpus": [
+    {
+      "vendor": "intel",
+      "name": "Intel(R) Iris(R) Xe Graphics",
+      "vramBytes": 1073741824,
+      "memory": "shared",
+      "vramConfidence": "measured"
+    }
+  ],
+  "freeDiskBytes": 128849018880,
+  "confidence": {
+    "ram": "measured",
+    "gpu": "measured",
+    "disk": "measured"
+  },
+  "notes": []
+}

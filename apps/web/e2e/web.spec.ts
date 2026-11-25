@@ -1,0 +1,53 @@
+import { expect, test } from '@playwright/test';
+
+const FORBIDDEN = /crowdfund|constitution|treasury|USDC|cash out your|withdraw|back this|stage \d/i;
+
+test('home lists the launch swarms as example data, browse-only', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('An app store for swarms.');
+  await expect(page.getByText('Example data').first()).toBeVisible();
+  for (const name of ['Challenge Vaults', 'Verafy DAO juries', 'Prompt Guard red team']) {
+    await expect(page.getByRole('heading', { name, level: 3 })).toBeVisible();
+  }
+  const text = await page.locator('body').innerText();
+  expect(text).not.toMatch(/[–—]/);
+  expect(text).not.toMatch(FORBIDDEN);
+});
+
+test('search narrows the list', async ({ page }) => {
+  await page.goto('/?q=lean');
+  await expect(page.locator('#swarms').getByRole('heading', { level: 3 })).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'Challenge Vaults' })).toBeVisible();
+});
+
+test('swarm page opens the app through a navigate-only deep link', async ({ page }) => {
+  await page.goto('/swarms/verafy-dao-juries');
+  await expect(page.getByRole('link', { name: 'Open in Swarm Explorer' })).toHaveAttribute('href', 'swarmexplorer://swarm/verafy-dao-juries');
+  await expect(page.getByText('12 credits per accepted task')).toBeVisible();
+  await expect(page.getByText('Pool empty: no paid tasks until the publisher funds it.')).toBeVisible();
+  await expect(page.getByText('Not enough history yet')).toBeVisible();
+  expect(await page.locator('body').innerText()).not.toMatch(/[–—]/);
+});
+
+test('unknown swarm is a 404 page', async ({ page }) => {
+  const res = await page.goto('/swarms/does-not-exist');
+  expect(res?.status()).toBe(404);
+});
+
+test('models and download pages render without a fake download', async ({ page }) => {
+  await page.goto('/models');
+  await expect(page.getByRole('heading', { name: 'Qwen 2.5 Coder 7B' })).toBeVisible();
+  await page.goto('/download');
+  await expect(page.getByText('Public builds are not available yet.')).toBeVisible();
+});
+
+test('the /v1 API answers with contracts and the error envelope', async ({ request }) => {
+  expect(await (await request.get('/v1/health')).json()).toEqual({ ok: true, version: 'v1' });
+  const list = await request.get('/v1/swarms');
+  expect(list.headers()['access-control-allow-origin']).toBe('*');
+  expect((await list.json()).items).toHaveLength(3);
+  const planned = await request.post('/v1/leases/x/abandon');
+  expect(planned.status()).toBe(501);
+  expect((await planned.json()).error.code).toBe('not_implemented');
+  expect((await request.get('/api/v1/health')).status()).toBe(404);
+});

@@ -1,0 +1,3 @@
+/** Tray mark: a ring with a center dot, black on transparent, used as a macOS template image. */
+export const TRAY_ICON_1X = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAQklEQVR42mNgoCH4j4bJ1kiSQYQU4ZUn1qk41f0nQfF/YhTi8zuGGLoAoQCkvQEke4HiQKRKNFKckKiSlKmSmUgCAIXVU62BvEtKAAAAAElFTkSuQmCC';
+export const TRAY_ICON_2X = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAc0lEQVR42u1XQQ4AIAjy/5+2J6SiAzfZuhmySiWzwzJ4cNESjwiJJBgRgZC1CEEJoP1dx1ji6X5Iab5osBdj4cBq6YVE/IKQ+t8vAO2CKQE2IMBWCaBfwVUBrRHRW7HEMKKPYwlDImHJ6KZUxpZLfEwOY3jQHkLMkd/I7wAAAABJRU5ErkJggg==';

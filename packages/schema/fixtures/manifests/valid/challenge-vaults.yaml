@@ -1,0 +1,31 @@
+# Launch configuration (SPEC 16.1, 18.3): volunteer, impact only, until a funded pool is approved.
+# Source values from SPEC 6.3 where given; everything else is a fixture illustration.
+manifest_version: 1
+id: challenge-vaults
+name: Challenge Vaults
+publisher: verafy.ai
+category: mathematics
+summary: Search for Lean proofs of open Erdos problems
+harness: { name: lean-prover, version: 1.4.0, hash: sha256-aea9b5fd73ebb71f3df4ef098e1952ef07cbd31714d0b041739065b063e5c996, runtime: container }
+models: { policy: class, class: code-7b-plus, api_allowed: true }
+verification: [machine-check]
+verification_config: { pending_window_s: 604800 }
+permissions:
+  network: [lean-lang.org, github.com]
+  scratch_disk_gb: 2
+  gpu_compute: false
+  api_spend_daily_usd: null
+credits: { funded: false, per_accepted_task: null, pool_id: null }
+impact: { category_weight: 1 }
+task:
+  timeout_s: 900
+  max_parallel_per_node: 1
+  urgent_allowed: false
+  input_schema: https://vaults.verafy.ai/schemas/lemma-task.json
+  output_schema: https://vaults.verafy.ai/schemas/proof-result.json
+qualification: { tasks: 3, pass: 2 }
+results_url: https://vaults.verafy.ai/results
+coordinator: { mode: hosted, url: null, public_key: null }
+data_policy: { public_inputs: true, retention_days: 365, sensitive_data_prohibited: true }
+min_client_version: 0.1.0
+x-example: Fixture manifest. Impact weight, retention and schema URLs are illustrations, not deployment values.
