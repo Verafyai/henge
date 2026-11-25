@@ -16,7 +16,7 @@ const nav = [
 
 export function Header({ active = 'store', signedIn = false, searchAction = '/' }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-30 border-b border-accent/40 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-accent/40 bg-surface/90 backdrop-blur">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:rounded-btn focus:bg-brand focus:px-3 focus:py-2 focus:text-white">
         Skip to content
       </a>

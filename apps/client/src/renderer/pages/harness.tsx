@@ -33,7 +33,7 @@ export function HarnessPage({ name }: { name: string }) {
         {h.revoked && <Chip tone="rejected">Revoked</Chip>}
       </div>
       <h1 className="mt-3 text-3xl font-bold">{h.name}</h1>
-      <dl className="mt-4 space-y-2 rounded-xl border border-zinc-200 bg-white p-4 text-sm">
+      <dl className="mt-4 space-y-2 rounded-xl border border-zinc-200 bg-surface p-4 text-sm">
         {facts.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-4">
             <dt className="text-zinc-500">{k}</dt>

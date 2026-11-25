@@ -12,7 +12,7 @@ export function SwarmQuestions({ s }: { s: SwarmDetail }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {swarmQuestions(s).map((q) => (
-        <section key={q.id} aria-labelledby={`q-${q.id}`} data-question={q.id} className="rounded-xl border border-zinc-200 bg-white p-4">
+        <section key={q.id} aria-labelledby={`q-${q.id}`} data-question={q.id} className="rounded-xl border border-zinc-200 bg-surface p-4">
           <h2 id={`q-${q.id}`} className="text-sm font-bold text-ink">
             {q.question}
           </h2>
@@ -109,7 +109,7 @@ export function SwarmPage({ slug }: { slug: string }) {
 function PermissionReview({ join, swarm }: { join: JoinStarted; swarm: SwarmDetail }) {
   const p = join.permissions;
   return (
-    <section aria-label="Join permissions" className="mt-4 rounded-xl border border-zinc-200 bg-white p-4">
+    <section aria-label="Join permissions" className="mt-4 rounded-xl border border-zinc-200 bg-surface p-4">
       <Eyebrow>What you are approving</Eyebrow>
       <dl className="space-y-2 text-sm">
         <div>
@@ -192,7 +192,7 @@ export function JoinReview({ slug }: { slug: string }) {
       ) : !node.data?.registration ? (
         <Empty className="mt-3" title="Your node is not registered yet.">Finish setup in Pick a cause, then try again.</Empty>
       ) : m && m.status !== 'joining' ? (
-        <section aria-label="Qualification" className="mt-3 rounded-xl border border-zinc-200 bg-white p-4">
+        <section aria-label="Qualification" className="mt-3 rounded-xl border border-zinc-200 bg-surface p-4">
           <p className="text-sm font-semibold text-ink" data-testid="join-status">
             {membershipLabel[m.status].text}
           </p>
@@ -278,11 +278,11 @@ export function ReconsentPage({ membershipId }: { membershipId: string }) {
       <h1 className="text-2xl font-bold">{state.swarm.name} changed its permissions</h1>
       <p className="mt-2 text-zinc-600">Work for this swarm is stopped until you approve the new set. You can also leave it.</p>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <section aria-label="Approved before" className="rounded-xl border border-zinc-200 bg-white p-4">
+        <section aria-label="Approved before" className="rounded-xl border border-zinc-200 bg-surface p-4">
           <Eyebrow>Approved before</Eyebrow>
           <ul className="list-disc pl-5 text-sm">{before.length ? before.map((l) => <li key={l}>{l}</li>) : <li>Not recorded on this computer</li>}</ul>
         </section>
-        <section aria-label="New permissions" className="rounded-xl border border-teal-300 bg-white p-4">
+        <section aria-label="New permissions" className="rounded-xl border border-teal-300 bg-surface p-4">
           <Eyebrow>New permissions</Eyebrow>
           <ul className="list-disc pl-5 text-sm">
             {after.map((l) => (

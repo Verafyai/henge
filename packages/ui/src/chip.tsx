@@ -26,7 +26,7 @@ export function Chip({ tone = 'neutral', children, className }: { tone?: Tone; c
 /** Small pill with a live dot, used for the hero eyebrow. */
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-2 rounded-full border border-brand/30 bg-white/70 px-3 py-1 text-xs font-semibold text-teal-800', className)}>
+    <span className={cn('inline-flex items-center gap-2 rounded-full border border-brand/30 bg-surface/70 px-3 py-1 text-xs font-semibold text-teal-800', className)}>
       <span aria-hidden="true" className="size-1.5 rounded-full bg-accent" />
       {children}
     </span>

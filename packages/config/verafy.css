@@ -12,6 +12,21 @@
   --color-ink-muted: #71717a;
   --color-line: #e4e4e7;
   --color-fill: #f4f4f5;
+  /* Card and panel surface. White here; the desktop client overrides it (dark only). */
+  --color-surface: #ffffff;
+  /* Surfaces that are dark in every theme: status bar and toasts (zinc-950/900 values). */
+  --color-bar: #09090b;
+  --color-bar-ink: #e4e4e7;
+  --color-bar-muted: #d4d4d8;
+  --color-bar-note: #a1a1aa;
+  --color-bar-line: #71717a;
+  --color-bar-track: #3f3f46;
+  --color-toast: #18181b;
+  /* Healthy or running indicator dots (the accent teal here). */
+  --color-live: #2dd4bf;
+  /* Destructive button fill (red-700/800 values). */
+  --color-danger: #b91c1c;
+  --color-danger-hover: #991b1b;
 
   --color-brand: #0f766e;
   --color-brand-hover: #115e59;

@@ -28,7 +28,7 @@ function Row({ m, name, job }: { m: MembershipView; name: string; job: Membershi
   };
 
   return (
-    <li aria-label={name} className="rounded-xl border border-zinc-200 bg-white p-4">
+    <li aria-label={name} className="rounded-xl border border-zinc-200 bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button type="button" className="text-lg font-bold text-ink hover:text-brand" onClick={() => go({ name: 'swarm', slug: m.swarm })}>
@@ -72,7 +72,7 @@ function Row({ m, name, job }: { m: MembershipView; name: string; job: Membershi
         )}
         {confirm ? (
           <>
-            <Btn className="bg-red-700 px-3 py-1.5 text-sm hover:bg-red-800" disabled={busy} onClick={() => void leave()}>
+            <Btn className="bg-danger px-3 py-1.5 text-sm hover:bg-danger-hover" disabled={busy} onClick={() => void leave()}>
               Leave now
             </Btn>
             <Btn variant="quiet" className="px-3 py-1.5 text-sm" onClick={() => setConfirm(false)}>

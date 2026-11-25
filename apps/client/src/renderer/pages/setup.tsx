@@ -78,7 +78,7 @@ export function RunRulesSummary({ o }: { o: NodeOverview }) {
 
 function SwarmChoice({ s, onChoose }: { s: SwarmSummary; onChoose: () => void }) {
   return (
-    <section aria-label="Featured cause" className="rounded-xl border border-zinc-200 bg-white p-5">
+    <section aria-label="Featured cause" className="rounded-xl border border-zinc-200 bg-surface p-5">
       <span className="flex gap-1.5">
         <Chip tone="info">{categoryLabel(s.category)}</Chip>
         <Chip tone={s.funding.mode === 'funded' ? 'approved' : 'neutral'}>{s.funding.mode === 'funded' ? 'Funded' : 'Volunteer'}</Chip>
@@ -150,7 +150,7 @@ export function SetupPage() {
                   disabled={!has}
                   aria-pressed={category === c.key}
                   onClick={() => (setCategory(c.key), setSwarm(null))}
-                  className={`w-full rounded-lg border px-3 py-3 text-left text-sm disabled:opacity-50 ${category === c.key ? 'border-brand bg-teal-50' : 'border-zinc-200 bg-white hover:border-brand'}`}
+                  className={`w-full rounded-lg border px-3 py-3 text-left text-sm disabled:opacity-50 ${category === c.key ? 'border-brand bg-teal-50' : 'border-zinc-200 bg-surface hover:border-brand'}`}
                 >
                   <span className="block font-semibold">{c.label}</span>
                   <span className="text-xs text-zinc-500">{has ? 'Available' : 'Coming soon'}</span>
@@ -170,7 +170,7 @@ export function SetupPage() {
 
       {chosen && o && (
         <>
-          <section aria-label="Your computer" className="mt-6 rounded-xl border border-zinc-200 bg-white p-5">
+          <section aria-label="Your computer" className="mt-6 rounded-xl border border-zinc-200 bg-surface p-5">
             <div className="flex items-center justify-between">
               <Eyebrow>3. Your computer</Eyebrow>
               <Btn variant="quiet" className="px-2 py-1 text-xs" onClick={() => void actions.detect()}>
@@ -191,7 +191,7 @@ export function SetupPage() {
             )}
           </section>
 
-          <fieldset className="mt-6 rounded-xl border border-zinc-200 bg-white p-5" aria-label="Compute mode">
+          <fieldset className="mt-6 rounded-xl border border-zinc-200 bg-surface p-5" aria-label="Compute mode">
             <legend className="px-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">4. How your node runs models</legend>
             <div className="grid gap-2 md:grid-cols-3">
               {(rec?.options ?? []).map((m) => (
@@ -208,7 +208,7 @@ export function SetupPage() {
             </div>
           </fieldset>
 
-          <section aria-label="Before work begins" className="mt-6 rounded-xl border border-zinc-200 bg-white p-5">
+          <section aria-label="Before work begins" className="mt-6 rounded-xl border border-zinc-200 bg-surface p-5">
             <Eyebrow>5. Before any work begins</Eyebrow>
             <RunRulesSummary o={o} />
             <p className="mt-3 text-sm">

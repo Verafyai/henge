@@ -1,4 +1,5 @@
-import { cn, StatusBar, VerafyMark } from '@swarm-explorer/ui';
+import { cn, StatusBar } from '@swarm-explorer/ui';
+import hengeMark from '../assets/henge-mark.svg';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAppInfo, useAuth, useHealth, useMe, useNode, useNodeActions, useSwarms } from '../api';
@@ -23,7 +24,7 @@ function TitleStrip({ online }: { online: boolean }) {
         Henge v{info.data.version} ({info.data.channel})
       </span>
       <span className="flex items-center gap-1.5" data-testid="api-status">
-        <span aria-hidden="true" className={online ? 'size-2 rounded-full bg-accent' : 'size-2 rounded-full border border-zinc-400'} />
+        <span aria-hidden="true" className={online ? 'size-2 rounded-full bg-live' : 'size-2 rounded-full border border-zinc-400'} />
         {online ? 'Online' : 'Offline'}
       </span>
     </div>
@@ -64,7 +65,7 @@ function Search() {
         className="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-sm outline-none focus:border-brand"
       />
       {open && q.trim() && (
-        <ul role="listbox" aria-label="Search results" className="absolute right-0 top-10 z-40 w-[320px] overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
+        <ul role="listbox" aria-label="Search results" className="absolute right-0 top-10 z-40 w-[320px] overflow-hidden rounded-xl border border-zinc-200 bg-surface py-1 shadow-lg">
           {results.length === 0 && <li className="px-3 py-2 text-sm text-zinc-500">No swarms match.</li>}
           {results.map((p) => (
             <li key={p.slug} role="option" aria-selected="false">
@@ -108,7 +109,7 @@ function Popover({ open, onClose, children, className }: { open: boolean; onClos
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div ref={ref} className={cn('absolute right-0 top-11 z-40 rounded-xl border border-zinc-200 bg-white shadow-lg', className)}>
+    <div ref={ref} className={cn('absolute right-0 top-11 z-40 rounded-xl border border-zinc-200 bg-surface shadow-lg', className)}>
       {children}
     </div>
   );
@@ -149,7 +150,7 @@ function Account() {
       {auth.status === 'signed_in' && me.data ? (
         <>
           <button type="button" aria-label="Account menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)} className="flex items-center gap-2 text-sm font-semibold">
-            <span aria-hidden="true" className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-teal-400 to-blue-500 text-xs text-white">
+            <span aria-hidden="true" className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-brand to-accent text-xs text-white">
               {initials(me.data.displayName)}
             </span>
             {me.data.handle}
@@ -191,10 +192,15 @@ function TopBar() {
   const { route, go, back, forward, canBack, canForward } = useNav();
   const active = tabOf(route);
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-teal-400/40 bg-white px-4">
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-teal-400/40 bg-surface px-4">
       <button type="button" onClick={() => go({ name: 'store' })} className="mr-4 flex items-center gap-2 whitespace-nowrap" aria-label="Henge by Verafy, Store">
-        <VerafyMark className="mr-2 h-[15px] w-auto text-ink" />
-        <span className="text-[15px] font-bold">Henge</span>
+        <img src={hengeMark} alt="" className="h-7 w-auto" />
+        <span className="flex flex-col leading-none">
+          <span className="text-[15px] font-bold tracking-[0.18em]">HENGE</span>
+          <span className="mt-0.5 font-mono text-[10px] text-ink-muted">
+            <span className="text-accent">//</span> by Verafy
+          </span>
+        </span>
       </button>
       <button type="button" aria-label="Back" disabled={!canBack} onClick={back} className="px-1 text-lg text-zinc-500 disabled:text-zinc-300">
         &#8249;
@@ -239,7 +245,7 @@ function Notices() {
   return (
     <div className="pointer-events-none fixed bottom-14 right-4 z-50 space-y-2" aria-live="polite">
       {msgs.map((m) => (
-        <p key={m.id} role="status" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+        <p key={m.id} role="status" className="rounded-lg bg-toast px-4 py-2 text-sm text-white shadow-lg">
           {m.text}
         </p>
       ))}
@@ -275,7 +281,7 @@ function NodeStatus({ online }: { online: boolean }) {
       ]}
       note="Example data"
       action={
-        <button type="button" onClick={() => void actions.setPaused(!paused)} className="rounded border border-zinc-500 px-2 py-0.5 text-zinc-200 hover:border-white hover:text-white">
+        <button type="button" onClick={() => void actions.setPaused(!paused)} className="rounded border border-bar-line px-2 py-0.5 text-bar-ink hover:border-white hover:text-white">
           {paused ? 'Resume' : 'Pause'}
         </button>
       }

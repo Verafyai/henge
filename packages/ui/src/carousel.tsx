@@ -50,7 +50,7 @@ export function Carousel({ children, label, subtitle, className }: { children: R
       aria-label={dir === 'prev' ? 'Previous' : 'Next'}
       onClick={() => go(dir === 'prev' ? page - 1 : page + 1)}
       disabled={dir === 'prev' ? page === 0 : page >= pages - 1}
-      className="grid size-10 place-items-center rounded-full border border-zinc-300 bg-white text-ink enabled:hover:border-brand enabled:hover:text-brand disabled:opacity-40"
+      className="grid size-10 place-items-center rounded-full border border-zinc-300 bg-surface text-ink enabled:hover:border-brand enabled:hover:text-brand disabled:opacity-40"
     >
       <svg aria-hidden="true" viewBox="0 0 20 20" className="size-4">
         <path fill="currentColor" d={dir === 'prev' ? 'M12.7 4.3 7 10l5.7 5.7-1.4 1.4L4.2 10l7.1-7.1z' : 'M7.3 4.3 13 10l-5.7 5.7 1.4 1.4 7.1-7.1-7.1-7.1z'} />

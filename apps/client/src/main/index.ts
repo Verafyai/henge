@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { BrowserWindow, Menu, Tray, app, crashReporter, nativeImage, protocol, session, shell } from 'electron';
+import { BrowserWindow, Menu, Tray, app, crashReporter, nativeImage, nativeTheme, protocol, session, shell } from 'electron';
 import { IPC } from '../shared/bridge';
 import type { Route } from '../shared/routes';
 import { AuthManager } from './auth';
@@ -139,7 +139,7 @@ function createMainWindow(): BrowserWindow {
     minHeight: 700,
     show: false,
     title: 'Henge',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#050506',
     ...(mac ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 11 } } : {}),
     webPreferences: { ...SECURE_WEB_PREFERENCES, preload: path.join(__dirname, '../preload/index.cjs') },
   });
@@ -199,6 +199,8 @@ function createTray() {
 }
 
 void app.whenReady().then(async () => {
+  // Henge is dark only (Henge SPEC 9.1): native menus, scrollbars and dialogs follow.
+  nativeTheme.themeSource = 'dark';
   serveApp();
   lockDownSession();
   cache = await EncryptedCache.open(path.join(app.getPath('userData'), 'cache.db'), secrets);
