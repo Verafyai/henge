@@ -16,7 +16,7 @@ export function toQualification(q: QualificationProgress): MembershipView['quali
   return { id: q.id, tasks: q.tasks, pass: q.pass, attempts: q.attempts, passed: q.passed, outcome: q.outcome, retry_reason: q.retryReason };
 }
 
-export function toMembershipView(r: Row): MembershipView {
+export function toMembershipView(r: Row, queue?: Map<string, { queued: number; urgent: number }>): MembershipView {
   return {
     id: r.membership.id,
     swarm: r.swarm.slug,
@@ -29,6 +29,7 @@ export function toMembershipView(r: Row): MembershipView {
     harness: { name: r.manifest.harness.name, version: r.manifest.harness.version, hash: r.manifest.harness.hash },
     joined_at: r.membership.joinedAt.toISOString(),
     qualification: r.qualification ? toQualification(r.qualification) : null,
+    queue: queue ? (queue.get(r.swarm.id) ?? { queued: 0, urgent: 0 }) : null,
   };
 }
 

@@ -7,7 +7,8 @@ import type { Route } from '../shared/routes';
 import { AuthError, type AuthManager } from './auth';
 import type { EncryptedCache } from './cache';
 import type { NodeController } from './node';
-import { modelInstallInputSchema, nodeSetupInputSchema, type ModelActionResult } from '../shared/node';
+import { runRulesSchema } from '@swarm-explorer/node-core';
+import { modelInstallInputSchema, nodeSetupInputSchema, type MembershipResult, type ModelActionResult } from '../shared/node';
 import { API_BASE_URL, CHANNEL, DEV_SERVER, releasePublicKey } from './config';
 import { isAllowedExternal, isAppUrl } from './security';
 import { checkForUpdates } from './updates';
@@ -47,6 +48,8 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
     return auth.getState();
   }, null);
   handle(IPC.authSignOut, none, async () => {
+    // Return a running task to the queue while the session can still sign the abandon.
+    await deps.node().tasks.drain('signed_out');
     await auth.signOut();
     return auth.getState();
   }, null);
@@ -125,6 +128,10 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
     deps.node().setPaused(p);
     return deps.node().overview();
   }, null);
+  handle(IPC.nodeSetRunRules, runRulesSchema, (r) => {
+    deps.node().setRunRules(r);
+    return deps.node().overview();
+  }, null);
 
   const refusedModel: ModelActionResult = { ok: false, code: 'refused', message: 'That request was refused.' };
   const hash = z.string().regex(/^sha256-[a-f0-9]{64}$/);
@@ -145,6 +152,13 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
   handle(IPC.swarmsApprove, z.object({ membershipId: z.uuid(), permissionsHash: digest }).strict(), (a) => deps.node().memberships.approve(a.membershipId, a.permissionsHash), refusedJoin);
   handle(IPC.swarmsRetry, z.uuid(), (id) => deps.node().memberships.retry(id), refusedJoin);
   handle(IPC.swarmsLeave, z.uuid(), (id) => deps.node().memberships.leave(id), refusedJoin);
+  // Shares are whole basis points; the server checks they name every qualified swarm and sum to 10,000.
+  handle(IPC.swarmsSetShares, z.array(z.object({ membershipId: z.uuid(), shareBp: z.number().int().min(0).max(10_000) }).strict()).min(1).max(64), (s) => deps.node().memberships.setShares(s), refusedJoin);
+  handle(IPC.swarmsEqualize, none, () => deps.node().memberships.equalize(), refusedJoin);
+  handle(IPC.swarmsKeepShares, none, (): MembershipResult => {
+    deps.node().memberships.keepShares();
+    return { ok: true };
+  }, refusedJoin);
 
   handle(IPC.launchRoute, none, () => deps.takeLaunchRoute(), null);
 }

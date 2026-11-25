@@ -59,8 +59,10 @@ test('the /v1 API answers with contracts and the error envelope', async ({ reque
   const list = await request.get('/v1/swarms');
   expect(list.headers()['access-control-allow-origin']).toBe('*');
   expect((await list.json()).items).toHaveLength(3);
-  const planned = await request.post('/v1/leases/x/abandon');
+  const planned = await request.post('/v1/verifications');
   expect(planned.status()).toBe(501);
   expect((await planned.json()).error.code).toBe('not_implemented');
   expect((await request.get('/api/v1/health')).status()).toBe(404);
+  // The lease endpoints are live (M5) and refuse unsigned callers.
+  expect((await request.post('/v1/coordinators/challenge-vaults/leases', { data: {} })).status()).toBe(401);
 });

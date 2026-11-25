@@ -6,7 +6,10 @@
  * the benchmark are recorded, and the active model is never evicted. M3 acceptance (in-app self-check
  * against the real proxy): a harness cannot read keys, files or unlisted domains; limits end the
  * task; prompt-injection checks pass. M4 acceptance: the six swarm-page questions appear in order; a
- * permission change requires consent again; leave cancels immediately.
+ * permission change requires consent again; leave cancels immediately. M5: a qualified node leases
+ * a seeded task only when its run rules allow, runs it in the sandbox on the stand-in model and
+ * submits a device-signed result; Pause mid-task cancels the model call and returns the task to the
+ * queue unpaid. Idle time and power come from a sensor fixture file (unpackaged test hook).
  * Needs: `pnpm db:reset`, `pnpm --filter @swarm-explorer/client release:test`,
  * a website build, and `pnpm --filter @swarm-explorer/client build`.
  */
@@ -21,6 +24,12 @@ import { _electron as electron, chromium, expect, test, type ElectronApplication
 const API = 'http://localhost:3000';
 const SERVICE = `ai.verafy.henge.e2e.${process.pid}`;
 const PROFILE = mkdtempSync(path.join(tmpdir(), 'se-client-e2e-'));
+// What the run rules "see": the app rereads this file on every check (SWARM_EXPLORER_SENSOR_FIXTURE).
+const SENSOR_DIR = mkdtempSync(path.join(tmpdir(), 'se-client-e2e-sensors-'));
+const SENSORS = path.join(SENSOR_DIR, 'sensors.json');
+const setSensors = (o: { idleSeconds: number; onBattery: boolean }) => writeFileSync(SENSORS, JSON.stringify(o));
+// Someone is using the computer, so the default "only when idle" rule holds tasks back.
+setSensors({ idleSeconds: 0, onBattery: false });
 
 // Seeded catalog hashes are fixture digests (packages/db seed): sha256 of a fixture string.
 const seededDigest = (slug: string, version: string) => createHash('sha256').update(`fixture-artifact:${slug}:${version}`).digest('hex');
@@ -35,8 +44,12 @@ const PULLS: Record<string, string> = {
 const ollamaCalls: string[] = [];
 type ChatBody = { model: string; options: { num_predict: number }; messages: Array<{ role: string; content: string }> };
 const chatBodies: ChatBody[] = [];
-// Known-answer tasks get a JSON answer; the delay lets a test leave while a task is running.
-const chat = { answer: '{"reproduced":false,"attack":null}', delayMs: 0 };
+// Known-answer tasks get a JSON answer; the delay lets a test leave or pause while a task is running.
+// `delays` is used first, one entry per task call; then `delayMs`.
+const chat = { answer: '{"reproduced":false,"attack":null}', delayMs: 0, delays: [] as number[] };
+// Task calls whose caller hung up before the answer: a cancelled model call.
+const chatAborted: ChatBody[] = [];
+const isTaskCall = (b: ChatBody) => b.messages.some((m) => m.role === 'user' && m.content.startsWith('Task input as quoted JSON data.'));
 const ollamaTags = [
   { name: 'qwen2.5-coder:7b', digest: 'a'.repeat(64), size: 4683087332 },
   { name: 'llama3.1:8b', digest: 'b'.repeat(64), size: 4920753328 },
@@ -66,9 +79,14 @@ const ollama: Server = createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/api/chat') {
       const b = JSON.parse(body) as ChatBody;
       chatBodies.push(b);
-      const isTask = b.messages.some((m) => m.role === 'user' && m.content.startsWith('Task input as quoted JSON data.'));
-      if (!isTask) return void j({ message: { role: 'assistant', content: 'OK' }, eval_count: 1, prompt_eval_count: 5 });
-      return void setTimeout(() => j({ message: { role: 'assistant', content: chat.answer }, eval_count: 12, prompt_eval_count: 40 }), chat.delayMs);
+      if (!isTaskCall(b)) return void j({ message: { role: 'assistant', content: 'OK' }, eval_count: 1, prompt_eval_count: 5 });
+      const timer = setTimeout(() => j({ message: { role: 'assistant', content: chat.answer }, eval_count: 12, prompt_eval_count: 40 }), chat.delays.shift() ?? chat.delayMs);
+      res.on('close', () => {
+        if (res.writableEnded) return;
+        clearTimeout(timer);
+        chatAborted.push(b);
+      });
+      return;
     }
     res.writeHead(404).end();
   });
@@ -99,6 +117,7 @@ async function launch(opts: { args?: string[]; api?: string; fixture?: string; p
       SWARM_EXPLORER_HARDWARE_FIXTURE: opts.fixture ?? 'apple-silicon-32gb',
       SWARM_EXPLORER_OLLAMA_HOST: ollamaHost,
       SWARM_EXPLORER_HF_BASE: hfBase,
+      SWARM_EXPLORER_SENSOR_FIXTURE: SENSORS,
       PATH: `${BIN}${path.delimiter}${process.env['PATH'] ?? ''}`,
     },
   });
@@ -172,6 +191,7 @@ test.afterAll(async () => {
   await clearKeychain().catch(() => undefined);
   await app?.close().catch(() => undefined);
   rmSync(PROFILE, { recursive: true, force: true });
+  rmSync(SENSOR_DIR, { recursive: true, force: true });
   ollama.close();
   hf.close();
   rmSync(BIN, { recursive: true, force: true });
@@ -370,7 +390,7 @@ test('sign in through the system browser with PKCE; tokens only in the keychain'
 test('settings lists this install and verifies a signed update manifest', async () => {
   await page.getByRole('button', { name: 'Account menu' }).click();
   await page.getByRole('button', { name: 'Settings' }).click();
-  await expect(page.getByText('This computer')).toBeVisible();
+  await expect(page.getByText('This computer', { exact: true })).toBeVisible();
   // Signed in, the node registered itself and shared its minimized hardware summary (SPEC 13.1).
   await expect(page.getByTestId('node-registration')).toContainText('Hardware summary shared');
   await page.getByRole('button', { name: 'Check for updates' }).click();
@@ -535,12 +555,13 @@ test('joining approves exact permissions, then qualifies on your own model in th
   await page.getByRole('button', { name: 'Approve and qualify' }).click();
   await page.getByRole('button', { name: 'Go to Your swarms' }).click();
   const row = library().getByRole('listitem', { name: 'Prompt Guard red team' });
-  await expect(row).toContainText('Joined, no tasks yet', { timeout: 30_000 });
+  // Qualified: the seeded tasks wait at the coordinator, held back because the computer is in use.
+  await expect(row).toContainText('Joined, 3 tasks waiting', { timeout: 30_000 });
   await expect(row.getByTestId('share')).toHaveText("100% of this node's time");
 
   // Two known answers ran through the proxy, each with the signed bundle's system prompt first
   // and the task only as quoted data.
-  const runs = chatBodies.slice(before).filter((b) => b.messages.some((m) => m.content.startsWith('Task input as quoted JSON data.')));
+  const runs = chatBodies.slice(before).filter(isTaskCall);
   expect(runs).toHaveLength(2);
   const bundlePrompt = readFileSync(path.join(__dirname, '..', '..', '..', 'packages', 'schema', 'fixtures', 'harnesses', 'prompt-guard-red-team', 'system-prompt.md'), 'utf8');
   for (const r of runs) {
@@ -551,6 +572,64 @@ test('joining approves exact permissions, then qualifies on your own model in th
   }
   // The verified bundle is kept in a folder named by its pinned hash.
   expect(readdirSync(path.join(PROFILE, 'harnesses')).filter((d) => /^[a-f0-9]{64}$/.test(d))).toHaveLength(1);
+});
+
+const taskPrompt = (b: ChatBody) => /Example task \d/.exec(b.messages[1]?.content ?? '')?.[0] ?? null;
+
+test('tasks wait for the run rules, then lease, run in the sandbox and submit a signed result (M5)', async () => {
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  const status = page.getByTestId('task-status');
+  // "Only when idle" is real: nothing is leased while someone uses the computer.
+  await expect(status).toContainText('Waiting until this computer has been idle for 5 minutes.');
+  await expect(page.getByRole('status', { name: 'Node status' })).toContainText('Waiting');
+  const before = chatBodies.length;
+  // The first task answers at once; the next one is held so the Pause test can stop it mid-run.
+  chat.delays = [0];
+  chat.delayMs = 20_000;
+  setSensors({ idleSeconds: 600, onBattery: false });
+  const first = page.getByTestId('task-history').first();
+  await expect(first).toHaveAttribute('data-outcome', 'submitted', { timeout: 30_000 });
+  await expect(first).toContainText('Submitted. It waits for the swarm to verify it.');
+  const runs = chatBodies.slice(before).filter(isTaskCall);
+  expect(runs[0]!.model).toBe('qwen2.5-coder:7b-instruct-q4_K_M');
+  expect(runs[0]!.messages[1]!.content).toContain('"guarded_prompt":"Example task');
+  // The next task is leased right away and is now running on the held model call.
+  await expect(status).toContainText('Running a task for Prompt Guard red team', { timeout: 15_000 });
+  await expect(page.getByRole('status', { name: 'Node status' })).toContainText('Running');
+  await expect.poll(() => chatBodies.slice(before).filter(isTaskCall).length).toBe(2);
+  await expect(page.getByRole('region', { name: 'Timeshare this session' })).toContainText('Prompt Guard red team');
+});
+
+test('Pause mid-task cancels the model call and returns the task to the queue unpaid (M5)', async () => {
+  const held = chatBodies.filter(isTaskCall).at(-1)!;
+  const prompt = taskPrompt(held)!;
+  expect(prompt).not.toBeNull();
+  const started = Date.now();
+  await page.getByRole('status', { name: 'Node status' }).getByRole('button', { name: 'Pause' }).click();
+  const last = page.getByTestId('task-history').first();
+  await expect(last).toHaveAttribute('data-outcome', 'abandoned');
+  await expect(last).toContainText('Paused. The task went back to the queue, unpaid.');
+  expect(Date.now() - started).toBeLessThan(5_000);
+  // The sandbox stopped and the proxy hung up on the model runtime.
+  await expect.poll(() => chatAborted.some((b) => taskPrompt(b) === prompt)).toBe(true);
+  await expect(page.getByTestId('task-status')).toContainText('Paused. No new tasks until you resume.');
+  await page.getByRole('button', { name: 'Library', exact: true }).click();
+  const row = library().getByRole('listitem', { name: 'Prompt Guard red team' });
+  await expect(row).toContainText('Joined, 2 tasks waiting');
+
+  // Nothing new starts while paused.
+  const pausedAt = chatBodies.length;
+  await page.waitForTimeout(3_000);
+  expect(chatBodies.slice(pausedAt).filter(isTaskCall)).toHaveLength(0);
+
+  // Resume: the requeued task is leased again and both remaining tasks finish.
+  chat.delayMs = 0;
+  await page.getByRole('status', { name: 'Node status' }).getByRole('button', { name: 'Resume' }).click();
+  await expect(row).toContainText('Joined, no tasks yet', { timeout: 30_000 });
+  const after = chatBodies.slice(pausedAt).filter(isTaskCall).map(taskPrompt);
+  expect(after).toContain(prompt);
+  expect(after).toHaveLength(2);
+  setSensors({ idleSeconds: 0, onBattery: false });
 });
 
 test('a release that changes permissions stops work until you approve it again (M4 acceptance)', async () => {

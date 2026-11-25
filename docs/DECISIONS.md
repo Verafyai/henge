@@ -398,6 +398,97 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - No real tasks yet: the coordinator and task leasing are M5.
 - Per-swarm pause, pins and priority are shown as status only; editing them arrives with the scheduler (M5).
 
+## M5 Task protocol and scheduler (2026-11-25)
+
+### Coordinator (SPEC 7.3, 13.3)
+- **Pull only:** nodes ask for work with device-signed requests (same `withNodeAuth` as the other node routes).
+  The coordinator never connects to a node.
+- **Tables:** migration 0005 adds `lease_rules`, `deadline_misses`, lease timestamps and renewal count,
+  `tasks.input_json`, `results.output_json` and `results.disposition`, and one run record per lease. Inputs and
+  outputs live in Postgres until object storage arrives with hosting.
+- **Eligibility:** a lease needs an active, qualified membership on this node, a current permission grant, no kill
+  switch or revocation, a wasm release, an installed model the swarm accepts and no other open local lease (local
+  concurrency is 1). Tasks lease only to a membership whose release has the same harness and permissions hash.
+- **Funding stub:** volunteer swarms lease with `reward.funded: false`. A funded swarm answers `pool_empty` or
+  `paid_leasing_unavailable` until pool reservations land (TODO M9).
+- **New endpoints:** `POST /v1/leases/{id}/start` (pins checked, Leased to Running, returns the input) and
+  `GET /v1/leases/{id}/input` (running leases only). Both are added to the SPEC 13.3 table. The input URI in a lease
+  is this lease-scoped, device-signed route.
+- **Deadlines:** set by the server from the release's `task.timeout_s`. Expired leases requeue on the next
+  coordinator call (`sweepExpiredLeases`). There is no background job yet.
+- **Renewal:** allowed only when the swarm's `lease_rules.max_renewals` says so. It is null (no approved value),
+  so every renewal is refused with `renewal_refused`. The node tries once when a fifth of the lease is left.
+- **Missed deadlines:** counted per node, swarm and lease rule version in `deadline_misses`. The repeated-miss
+  threshold is `lease_rules.repeated_miss_threshold`, null with no default (SPEC 7.3), so misses lower nothing yet.
+- **Submit:** idempotent by lease id and output hash. The same hash returns the first result (`duplicate: true`).
+  A different hash is `already_submitted`. A result after expiry or abandon is stored with disposition `late` or
+  `after_abandon` and is never paid. The run record must be signed by the device key of the install holding the
+  lease, over `swarm-explorer-run-record-v1\n` plus the canonical record.
+- **Schema check:** the output is checked against the release's output schema when the server holds that bundle,
+  and `schema_valid` is stored. Rejection for an invalid schema is part of verification (M6).
+- **Abandon:** immediate, unpaid, requeued, idempotent. Abandoning a lease that never started is recorded as
+  Running then Abandoned, since SPEC 7.3 has no Leased to Abandoned edge.
+- **States:** M5 moves leases up to Submitted. Verifying, Pending, Settled, Rejected and Clawed back are M6.
+- **Task upload:** `POST /v1/swarms/{slug}/tasks:batch` (bearer, the publisher's owner only, Idempotency-Key),
+  idempotent by `coordinator_task_id`. Urgent tasks are refused unless the swarm allows them.
+- **Seed:** 3 queued volunteer tasks for Prompt Guard red team and a v1 lease rule per swarm with null values.
+
+### Timeshare (SPEC 7.1)
+- **Shares:** basis points summing to 10,000 across qualified swarms. `normalizeShares` uses largest remainder.
+  Joining gives equal shares unless the user customized them, in which case the new swarm starts at 0 and the
+  Library asks "Share equally" or "Keep my shares". Leaving spreads the freed share in proportion.
+  `PATCH /v1/nodes/{id}/shares` must name every qualified swarm.
+- **Scheduler:** `FairShareScheduler` in node-core is start-time fair queueing. Each swarm's virtual time advances
+  by time used divided by its share, and the eligible swarm furthest below its share goes next.
+- **Lending:** a swarm with no tasks is skipped and keeps its share. When it has work again it re-enters at the
+  current virtual time, so it does not burst to "repay" lent time. A 0 share swarm only borrows lent time.
+- **Urgent:** urgent work goes first but is charged to its swarm. The time it ran ahead of its share shows as a
+  deficit in Activity until the other swarms win it back.
+- Scheduler state is per session and in memory.
+
+### Run rules (SPEC 7.2)
+- **Gate:** `evaluateRunRules` decides whether a lease may start and whether running work must stop. A stop
+  abandons the task like Pause. CPU load only holds back new tasks, because the task adds load itself.
+- **Idle:** `powerMonitor.getSystemIdleTime`, default 5 minutes. If idle time cannot be read, nothing runs.
+- **Power:** `isOnBatteryPower` on macOS and Windows, enforced.
+- **Temperature:** best effort on macOS only. It uses `getCurrentThermalState` and stops on serious or critical.
+  It never claims degrees.
+- **Load:** CPU load average, best effort, not available on Windows. GPU load cannot be read.
+- **Not available:** metered networks and heavy app detection are not available on any platform. The rule shows
+  as "Not available on this computer" and is never applied silently.
+- **Notes:** every rule line carries a plain note saying what it really does on this computer.
+- **Editing:** rules are edited in Settings and kept in the encrypted cache.
+- **Test hook:** unpackaged runs may set `SWARM_EXPLORER_SENSOR_FIXTURE` to a JSON file read on every check.
+  Packaged builds ignore it.
+
+### Pause and the runner
+- **Pause** (tray, app menu, status bar, Settings, Activity) stops the sandbox through the supervisor. The proxy
+  sees the broker hang up and aborts the runtime call. Henge then sends a best-effort abandon and starts no new
+  lease until Resume.
+- **Other stops:** leave, sign out and run rule stops do the same. Sign out waits for the abandon before tokens
+  are cleared.
+- **Recovery:** leases left open by a previous session are abandoned on the next sign in.
+- **Pin checks:** before running, the node checks the lease's swarm, harness and permissions hash, then the input
+  hash after start.
+- **Protected model:** the model of a running lease cannot be removed.
+- **Intervals:** the runner checks rules every 2 seconds, skips a swarm with nothing to lease for 30 seconds and
+  refreshes queue counts every 30 seconds. These are engineering intervals, not business values.
+
+### Models
+- **Ollama:** a task runs end to end through the proxy.
+- **llama.cpp:** `llama-server` is the second source behind the same `CompletionSource` interface.
+  - The proxy starts it for one GGUF file at a time, on 127.0.0.1 and a free port.
+  - Its random API key goes in its environment, not on the command line.
+  - Main resolves its absolute path from PATH, because the proxy runs with an empty PATH.
+- Tests use fakes and download nothing.
+
+### Stubbed in M5
+- **Verification and rewards (M6):** results wait for verification. There is no reputation and no pending or
+  settled credit, and volunteer work earns impact only.
+- **Funded leasing (M9):** this waits for pool reservations.
+- **Renewal and miss threshold:** these wait for Rex's values.
+- **Expiry:** expired leases are swept when the coordinator is called, with no timer yet.
+
 ## Desktop app is dark only (Rex, 2026-11-25)
 - Henge SPEC 9.1: the app is dark only and matches the Henge pages on www.verafy.ai. There is no light mode.
 - **How:** `apps/client/src/renderer/styles.css` overrides the shared Verafy preset for the desktop app alone.

@@ -1,6 +1,7 @@
 import { storeHomeSchema } from '@swarm-explorer/api-client';
 import { categories } from '@swarm-explorer/core';
-import { listSwarms, nodeMemberships } from '@swarm-explorer/db';
+import { getDb, listSwarms, nodeMemberships, nodes, openLeases, queueCounts } from '@swarm-explorer/db';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { apiError, json, toSwarmSummary } from '@/lib/api';
 import { toMembershipView } from '@/lib/membership-api';
@@ -15,13 +16,21 @@ export const GET = withNodeAuth(
     if (!nodeId.success) return apiError(400, 'invalid_node', 'Pass node_id.');
     if (!(await ownedNode(user, install.id, nodeId.data))) return apiError(404, 'not_found', 'No such node.');
     const [joined, listed] = await Promise.all([nodeMemberships(user.id, nodeId.data), listSwarms()]);
-    const views = joined.map(toMembershipView);
+    const [queue, open, db] = await Promise.all([queueCounts(joined.map((j) => ({ swarmId: j.swarm.id, harnessReleaseId: j.release.harnessReleaseId, permissionsHash: j.release.permissionsHash }))), openLeases(nodeId.data), getDb()]);
+    const [node] = await db.select({ customized: nodes.sharesCustomized }).from(nodes).where(eq(nodes.id, nodeId.data));
+    const views = joined.map((j) => toMembershipView(j, queue));
     const qualified = views.filter((v) => v.status === 'active' || v.status === 'paused' || v.status === 'reconsent_required');
     return json(storeHomeSchema, {
       joined: views,
       featured: listed.filter((r) => r.swarm.featuredStatus === 'featured').slice(0, 3).map(toSwarmSummary),
       categories: categories.map((c) => ({ key: c.key, label: c.label, listed: listed.filter((r) => r.swarm.category === c.key).length })),
-      node: { id: nodeId.data, qualified_swarms: qualified.length, share_total_bp: qualified.reduce((a, v) => a + v.share_bp, 0) },
+      node: {
+        id: nodeId.data,
+        qualified_swarms: qualified.length,
+        share_total_bp: qualified.reduce((a, v) => a + v.share_bp, 0),
+        shares_customized: node?.customized ?? false,
+        open_leases: open.map((l) => ({ id: l.id, swarm: l.swarm, status: l.status, deadline_at: l.deadlineAt.toISOString() })),
+      },
     });
   },
   { write: false },

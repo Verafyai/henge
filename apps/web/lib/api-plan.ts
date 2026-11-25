@@ -13,14 +13,7 @@ const r = (method: string, path: string, milestone: string): PlannedRoute => ({
 });
 
 export const PLANNED_ROUTES: PlannedRoute[] = [
-  // 13.2 Join and qualification
-  r('PATCH', '/nodes/{node_id}/shares', 'M5'),
-  // 13.3 Task protocol
-  r('POST', '/coordinators/{swarm}/leases', 'M5'),
-  r('POST', '/leases/{lease_id}/renew', 'M5'),
-  r('POST', '/leases/{lease_id}/abandon', 'M5'),
-  r('POST', '/leases/{lease_id}/results', 'M5'),
-  r('GET', '/leases/{lease_id}', 'M5'),
+  // 13.3 Task protocol (the lease endpoints are built in M5)
   r('POST', '/verifications', 'M6'),
   r('GET', '/results/{id}', 'M7'),
   // 13.4 Ledger, publisher and admin
@@ -33,7 +26,6 @@ export const PLANNED_ROUTES: PlannedRoute[] = [
   r('POST', '/publisher-keys', 'M11'),
   r('POST', '/swarm-releases', 'M11'),
   r('POST', '/publishers/{id}/credit-purchases', 'M9'),
-  r('POST', '/swarms/{id}/tasks:batch', 'M5'),
   r('GET', '/publishers/{id}/dashboard', 'M9'),
   r('POST', '/admin/revocations', 'M7'),
 ];

@@ -4,6 +4,7 @@
  * Tokens never cross this bridge; the main process makes authenticated calls.
  */
 import type { JoinStarted, SwarmDetail } from '@swarm-explorer/api-client';
+import type { RunRules } from '@swarm-explorer/node-core';
 import type { MembershipResult, MembershipsOverview, ModelActionResult, ModelInstallInput, NodeOverview, NodeSetup, Permissions, SandboxCheck } from './node';
 import type { Route } from './routes';
 
@@ -67,6 +68,8 @@ export interface SwarmBridge {
     saveSetup(s: Omit<NodeSetup, 'completedAt'>): Promise<NodeOverview | null>;
     resetSetup(): Promise<NodeOverview>;
     setPaused(paused: boolean): Promise<NodeOverview>;
+    /** Run rules (SPEC 7.2). Main validates them; the overview says which this computer enforces. */
+    setRunRules(rules: RunRules): Promise<NodeOverview | null>;
     onChanged(cb: (o: NodeOverview) => void): () => void;
     /** Runs the sandbox self-checks (SPEC 16.4 M3) on this computer. */
     sandboxCheck(): Promise<SandboxCheck[]>;
@@ -90,6 +93,11 @@ export interface SwarmBridge {
     approve(membershipId: string, permissionsHash: string): Promise<MembershipResult>;
     retry(membershipId: string): Promise<MembershipResult>;
     leave(membershipId: string): Promise<MembershipResult<{ abandonedLeases: number }>>;
+    /** Timeshare (SPEC 7.1): basis points per qualified swarm, summing to 10,000. */
+    setShares(shares: Array<{ membershipId: string; shareBp: number }>): Promise<MembershipResult>;
+    equalize(): Promise<MembershipResult>;
+    /** Keeps customized shares after a join; the new swarm only borrows lent time. */
+    keepShares(): Promise<MembershipResult>;
   };
   /** Deep links and menu commands. Navigation only, never a write. */
   onNavigate(cb: (route: Route) => void): () => void;
@@ -118,6 +126,7 @@ export const IPC = {
   nodeSaveSetup: 'node:save-setup',
   nodeResetSetup: 'node:reset-setup',
   nodeSetPaused: 'node:set-paused',
+  nodeSetRunRules: 'node:set-run-rules',
   nodeChanged: 'node:changed',
   nodeSandboxCheck: 'node:sandbox-check',
   modelsInstall: 'models:install',
@@ -131,6 +140,9 @@ export const IPC = {
   swarmsApprove: 'swarms:approve',
   swarmsRetry: 'swarms:retry',
   swarmsLeave: 'swarms:leave',
+  swarmsSetShares: 'swarms:set-shares',
+  swarmsEqualize: 'swarms:equalize',
+  swarmsKeepShares: 'swarms:keep-shares',
   navigate: 'nav:navigate',
   launchRoute: 'nav:launch-route',
   notice: 'nav:notice',

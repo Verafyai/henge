@@ -876,6 +876,8 @@ All APIs are versioned under `/v1`, use JSON, require `Idempotency-Key` for writ
 | Method | Path | Contract |
 |---|---|---|
 | POST | `/v1/coordinators/{swarm}/leases` | Node sends capabilities, mode, eligible model class, reputation token and spend reservation proof. Returns zero or one lease. Paid lease reserves pool credits. |
+| POST | `/v1/leases/{lease_id}/start` | Leased to Running once the node verified harness, permissions and model pins; returns the input (added M5, 2026-11-25). |
+| GET | `/v1/leases/{lease_id}/input` | The task input again, only while the lease is running; device-signed, so the input URI is lease scoped (added M5, 2026-11-25). |
 | POST | `/v1/leases/{lease_id}/renew` | Optional before deadline; coordinator can refuse. |
 | POST | `/v1/leases/{lease_id}/abandon` | Immediate unpaid return from Pause, leave or rule stop. |
 | POST | `/v1/leases/{lease_id}/results` | Output reference/hash and signed run record. Idempotent by lease/result hash. |
