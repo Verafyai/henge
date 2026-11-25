@@ -124,6 +124,19 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - The binary is `swarm`. M0 has `swarms`, `show` and `validate <manifest.yaml>`. `init`, `dev`, `verify`,
   `package` and `publish` exit 3 naming M11; `login` names M1 and `node` names M5.
 
+## M7 Prompt Guard (2026-11-25)
+
+- Prompt Guard from `Verafyai/prompt-guard` is vendored in `packages/prompt-guard` at commit `caae11c` (upstream
+  0.1.0, MIT, no release tags, so the pin is the commit). Files are byte-identical to upstream; `vendor/PIN.json`
+  holds their SHA-256 and the package test fails on any change. Updating is a documented copy and re-pin (VENDOR.md).
+- `promptGuardScreener` (`packages/sandbox/src/prompt-guard.ts`) replaces `heuristic-v1` in the node supervisor and
+  the sandbox self-checks. It scans every string in the task input and records each flagged rule with its JSON path.
+  The screener name in every run record is `prompt-guard/1@caae11c`, so a verdict always says which guard made it.
+- Flagged input still runs, as before: the sandbox's structural protections do not depend on the screen, and the
+  verdict travels to verifiers and juries. Juries will use the guard's `compile` and `renderGuarded` on evidence
+  (communities spec 5.7); that lands with the jury work, not here.
+- `heuristic-v1` stays in `broker.ts` only for its existing unit tests.
+
 ## M1 Node shell and first run (2026-11-24)
 
 ### Process layout (SPEC 11.1, 11.2)
@@ -397,19 +410,6 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 ### Stubbed in M4
 - No real tasks yet: the coordinator and task leasing are M5.
 - Per-swarm pause, pins and priority are shown as status only; editing them arrives with the scheduler (M5).
-
-## M7 Prompt Guard (2026-11-25)
-
-- Prompt Guard from `Verafyai/prompt-guard` is vendored in `packages/prompt-guard` at commit `caae11c` (upstream
-  0.1.0, MIT, no release tags, so the pin is the commit). Files are byte-identical to upstream; `vendor/PIN.json`
-  holds their SHA-256 and the package test fails on any change. Updating is a documented copy and re-pin (VENDOR.md).
-- `promptGuardScreener` (`packages/sandbox/src/prompt-guard.ts`) replaces `heuristic-v1` in the node supervisor and
-  the sandbox self-checks. It scans every string in the task input and records each flagged rule with its JSON path.
-  The screener name in every run record is `prompt-guard/1@caae11c`, so a verdict always says which guard made it.
-- Flagged input still runs, as before: the sandbox's structural protections do not depend on the screen, and the
-  verdict travels to verifiers and juries. Juries will use the guard's `compile` and `renderGuarded` on evidence
-  (communities spec 5.7); that lands with the jury work, not here.
-- `heuristic-v1` stays in `broker.ts` only for its existing unit tests.
 
 ## Desktop app is dark only (Rex, 2026-11-25)
 - Henge SPEC 9.1: the app is dark only and matches the Henge pages on www.verafy.ai. There is no light mode.
