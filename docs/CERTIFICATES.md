@@ -6,16 +6,40 @@ separate approval.** All builds so far use test signing only.
 
 Owner for every row: Rex (legal entity and accounts). Status: not started unless noted.
 
-## 1. Apple (macOS)
-- [ ] Confirm the legal entity name that will appear as the developer (must match D-U-N-S record).
-- [ ] D-U-N-S number for the entity (free from Dun & Bradstreet; can take 1 to 2 weeks).
-- [ ] Apple Developer Program, **Organization** enrollment ($99 per year; review can take days to weeks).
-- [ ] Create a **Developer ID Application** certificate (signs the app and DMG).
-- [ ] Create a **Developer ID Installer** certificate only if we ship a .pkg (not planned).
-- [ ] App Store Connect API key (issuer id, key id, .p8) for `notarytool` notarization in CI.
-- [ ] Decide entitlements, kept minimal: hardened runtime, `com.apple.security.virtualization` for the
-      VM-grade isolation (SPEC 11.2). No JIT or unsigned memory entitlements unless Electron requires them; record why.
-- [ ] Store the certificate .p12 and API key in the protected release environment, never on developer laptops.
+## 1. Apple (macOS): Rex's checklist for the Mac alpha
+
+Apple Developer ID signing and notarization are approved (DECISIONS 2026-11-25). The alpha is Mac only, so this is
+the only certificate work that blocks M7. Steps 1 to 6 need Rex, as the person who can bind the company; the rest
+are done together once the account exists.
+
+1. [ ] **Pick the legal entity** that appears as the developer on every Henge download (for example "Verafy, Inc.":
+       use the exact registered name). It must match the D-U-N-S record exactly.
+2. [ ] **Get or look up the D-U-N-S number** for that entity at Apple's D-U-N-S lookup on developer.apple.com. Free;
+       a new number can take 1 to 2 weeks.
+3. [ ] **Use a company Apple Account** (not a personal one) with two-factor authentication on. Whoever enrolls
+       becomes the Account Holder, the only role that can create Developer ID certificates.
+4. [ ] **Enroll in the Apple Developer Program as an Organization** at developer.apple.com/programs/enroll
+       ($99 per year). Have ready: the D-U-N-S number, the legal entity name, a public company website on the entity's
+       domain (verafy.ai), and a work email on that domain. Apple may phone to confirm you can bind the company.
+       Review takes days to weeks.
+5. [ ] **Create the Developer ID Application certificate.** In Keychain Access on the Mac that will hold it:
+       Certificate Assistant, then Request a Certificate From a Certificate Authority, saved to disk. Then in
+       Certificates, Identifiers & Profiles, add a certificate, choose **Developer ID Application**, upload the request,
+       download the certificate and double-click it. Export it with its private key as a password-protected `.p12`.
+6. [ ] **Create the notarization API key.** In App Store Connect, Users and Access, Integrations, Team Keys: create a key
+       with the **Developer** role. Note the **Issuer ID** and **Key ID** and download the `.p8` (it downloads once).
+7. [ ] **Store the secrets** (`.p12`, its password, the `.p8`, Issuer ID, Key ID, Team ID) in the GitHub `release`
+       environment with required reviewers (section 5). Delete the local copies. Never on developer laptops, never
+       in the repo, never in chat.
+8. [ ] **First signed build together:** `electron-builder` signs with hardened runtime and notarizes with
+       `notarytool`; we check it with `spctl --assess --type execute` and `stapler validate` before anything is
+       published. Publishing the first build still needs Rex's yes.
+
+Not needed for the alpha: a **Developer ID Installer** certificate (only for a .pkg; we ship a DMG and a zip).
+
+Entitlements stay minimal: hardened runtime only. The old `com.apple.security.virtualization` line is gone, because
+nodes run no VMs or containers (DECISIONS 2026-11-25). Any JIT or unsigned-memory entitlement Electron needs gets
+recorded here with the reason.
 
 ## 2. Windows
 - [ ] Choose OV or EV Authenticode. Since June 2023 private keys must live on a hardware module, so pick a
@@ -39,8 +63,8 @@ Owner for every row: Rex (legal entity and accounts). Status: not started unless
 
 ## 5. Release infrastructure
 - [ ] GitHub environment `release` with required reviewers; signing jobs run only there.
-- [ ] Release CDN bucket with immutable versioned paths, HTTPS only, host pinned in the client. No release host is
-      approved yet; the client pins only the reserved `releases.swarm-explorer.test` name used by test releases.
+- [ ] Releases on GitHub Releases under Verafyai (DECISIONS 2026-11-25), immutable versioned assets, HTTPS only, host
+      pinned in the client. Until the first signed build, the client pins only the reserved test release name.
 - [ ] SBOM (CycloneDX) and reproducibility notes generated per release.
 
 ## 6. Deep link and protocol registration
