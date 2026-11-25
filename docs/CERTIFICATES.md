@@ -6,40 +6,47 @@ separate approval.** All builds so far use test signing only.
 
 Owner for every row: Rex (legal entity and accounts). Status: not started unless noted.
 
-## 1. Apple (macOS): Rex's checklist for the Mac alpha
+## 1. Apple (macOS): Rex's checklist for the Mac alpha (individual enrollment)
 
-Apple Developer ID signing and notarization are approved (DECISIONS 2026-11-25). The alpha is Mac only, so this is
-the only certificate work that blocks M7. Steps 1 to 6 need Rex, as the person who can bind the company; the rest
-are done together once the account exists.
+Apple Developer ID signing and notarization are approved (DECISIONS 2026-11-25). Rex enrolls **as an individual**
+now: no D-U-N-S number, so it skips the longest wait. We move to an organization account later (end of this section).
+Steps 1 to 5 need Rex; the rest we do together.
 
-1. [ ] **Pick the legal entity** that appears as the developer on every Henge download (for example "Verafy, Inc.":
-       use the exact registered name). It must match the D-U-N-S record exactly.
-2. [ ] **Get or look up the D-U-N-S number** for that entity at Apple's D-U-N-S lookup on developer.apple.com. Free;
-       a new number can take 1 to 2 weeks.
-3. [ ] **Use a company Apple Account** (not a personal one) with two-factor authentication on. Whoever enrolls
-       becomes the Account Holder, the only role that can create Developer ID certificates.
-4. [ ] **Enroll in the Apple Developer Program as an Organization** at developer.apple.com/programs/enroll
-       ($99 per year). Have ready: the D-U-N-S number, the legal entity name, a public company website on the entity's
-       domain (verafy.ai), and a work email on that domain. Apple may phone to confirm you can bind the company.
-       Review takes days to weeks.
-5. [ ] **Create the Developer ID Application certificate.** In Keychain Access on the Mac that will hold it:
+1. [ ] **Use your own Apple Account** with two-factor authentication on, in your legal name. As an individual you are
+       the Account Holder, the only role that can create Developer ID certificates.
+2. [ ] **Enroll in the Apple Developer Program as an Individual** at developer.apple.com/programs/enroll ($99 per year).
+       Apple verifies your identity (often through the Apple Developer app with a government ID). Approval is usually
+       quick, but Apple sets the pace.
+3. [ ] **Know what users will see:** downloads show your legal name as the developer, not "Verafy", until we move to an
+       organization account.
+4. [ ] **Create the Developer ID Application certificate.** In Keychain Access on the Mac that will hold it:
        Certificate Assistant, then Request a Certificate From a Certificate Authority, saved to disk. Then in
        Certificates, Identifiers & Profiles, add a certificate, choose **Developer ID Application**, upload the request,
        download the certificate and double-click it. Export it with its private key as a password-protected `.p12`.
-6. [ ] **Create the notarization API key.** In App Store Connect, Users and Access, Integrations, Team Keys: create a key
-       with the **Developer** role. Note the **Issuer ID** and **Key ID** and download the `.p8` (it downloads once).
-7. [ ] **Store the secrets** (`.p12`, its password, the `.p8`, Issuer ID, Key ID, Team ID) in the GitHub `release`
-       environment with required reviewers (section 5). Delete the local copies. Never on developer laptops, never
-       in the repo, never in chat.
-8. [ ] **First signed build together:** `electron-builder` signs with hardened runtime and notarizes with
-       `notarytool`; we check it with `spctl --assess --type execute` and `stapler validate` before anything is
-       published. Publishing the first build still needs Rex's yes.
+5. [ ] **Set up notarization.** Preferred: in App Store Connect, Users and Access, Integrations, create an API key and
+       note the **Issuer ID** and **Key ID**, and download the `.p8` (it downloads once). If your account does not offer
+       API keys, create an **app-specific password** at account.apple.com for `notarytool` instead, and note your
+       **Team ID** (Membership details on developer.apple.com).
+6. [ ] **Store the secrets** (`.p12` and its password, the `.p8` or app-specific password, Issuer ID, Key ID, Team ID)
+       in the GitHub `release` environment with required reviewers (section 5). Delete local copies. Never on developer
+       laptops, never in the repo, never in chat.
+7. [ ] **First signed build together:** `electron-builder` signs with hardened runtime and notarizes with `notarytool`;
+       we check it with `spctl --assess --type execute` and `stapler validate` before anything is published. Publishing
+       the first build still needs Rex's yes.
 
 Not needed for the alpha: a **Developer ID Installer** certificate (only for a .pkg; we ship a DMG and a zip).
 
 Entitlements stay minimal: hardened runtime only. The old `com.apple.security.virtualization` line is gone, because
 nodes run no VMs or containers (DECISIONS 2026-11-25). Any JIT or unsigned-memory entitlement Electron needs gets
 recorded here with the reason.
+
+**Moving to an organization later** (needs the company's D-U-N-S number and an Organization enrollment). The developer
+name and **Team ID** change, which changes the app's signing identity:
+- The appId `ai.verafy.henge` and the `henge://` scheme stay the same.
+- Updates keep working, because the client trusts our ed25519 update-manifest key (section 4), not the Team ID. Ship
+  one update signed by the new identity.
+- macOS may ask each user once to let the re-signed app read its existing keychain items.
+- Re-run the e2e keychain tests on the newly signed build before publishing it.
 
 ## 2. Windows
 - [ ] Choose OV or EV Authenticode. Since June 2023 private keys must live on a hardware module, so pick a

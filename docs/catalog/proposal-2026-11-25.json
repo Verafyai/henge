@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-11-25",
   "generatedBy": "packages/node-core/scripts/registry-digests.mjs",
-  "status": "proposed: needs Rex approval before it replaces the fixture catalog",
+  "status": "approved by Rex 2026-11-25 (five models, no moving tags); replaces the fixture catalog in the seed",
   "models": [
     {
       "sourceRef": "phi4-mini:3.8b-q4_K_M",
@@ -23,18 +23,6 @@
       "license": "Apache-2.0",
       "tier": "8 GB",
       "pinnedTag": true,
-      "licenseFirstLine": "Apache License"
-    },
-    {
-      "sourceRef": "granite3.3:8b",
-      "contentHash": "sha256-fd429f23b90980ed1bef53b990894e7b0199331f6ae90c5650240a7d5b70f1f7",
-      "sizeBytes": 4942891653,
-      "maker": "IBM",
-      "family": "granite",
-      "license": "Apache-2.0",
-      "tier": "8 GB",
-      "pinnedTag": false,
-      "note": "Only a moving tag exists; the digest pin blocks it after any upstream update until it is re-pinned. Optional sixth.",
       "licenseFirstLine": "Apache License"
     },
     {
