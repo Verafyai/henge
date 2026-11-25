@@ -417,3 +417,16 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - **E2E prerequisite (unchanged):** the client suite needs a fresh local database each run:
   `pnpm db:reset && pnpm --filter @swarm-explorer/client release:test`, then `pnpm e2e`. A later test publishes
   a permission-changing release, so a second run against the same database fails.
+
+## M7 Prompt Guard (2026-11-25)
+
+- Prompt Guard from `Verafyai/prompt-guard` is vendored in `packages/prompt-guard` at commit `caae11c` (upstream
+  0.1.0, MIT, no release tags, so the pin is the commit). Files are byte-identical to upstream; `vendor/PIN.json`
+  holds their SHA-256 and the package test fails on any change. Updating is a documented copy and re-pin (VENDOR.md).
+- `promptGuardScreener` (`packages/sandbox/src/prompt-guard.ts`) replaces `heuristic-v1` in the node supervisor and
+  the sandbox self-checks. It scans every string in the task input and records each flagged rule with its JSON path.
+  The screener name in every run record is `prompt-guard/1@caae11c`, so a verdict always says which guard made it.
+- Flagged input still runs, as before: the sandbox's structural protections do not depend on the screen, and the
+  verdict travels to verifiers and juries. Juries will use the guard's `compile` and `renderGuarded` on evidence
+  (communities spec 5.7); that lands with the jury work, not here.
+- `heuristic-v1` stays in `broker.ts` only for its existing unit tests.

@@ -15,7 +15,7 @@ import {
   completeResponseSchema,
   egressFetch,
   grantedCapabilities,
-  heuristicScreener,
+  promptGuardScreener,
   mintCapability,
   proxyComplete,
   runHarness,
@@ -104,7 +104,7 @@ async function harnessRun(id: number, spec: HarnessRunSpec): Promise<HarnessRunR
         },
         fetch: spec.permissions.network.length ? (req) => egressFetch(req, { allowed: spec.permissions.network, lookup }) : null,
         scratch,
-        screen: heuristicScreener,
+        screen: promptGuardScreener,
       },
       signal: ctl.signal,
     });

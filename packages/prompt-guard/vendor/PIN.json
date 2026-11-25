@@ -1,0 +1,15 @@
+{
+  "repo": "https://github.com/Verafyai/prompt-guard",
+  "commit": "caae11c94d842ea6e269315ff786afd668131349",
+  "commitDate": "2026-11-10",
+  "upstreamVersion": "0.1.0",
+  "files": {
+    "vendor/src/guard.js": "6619b1453614a4d425d714edc58dfcacf990d15c7e20a882153b00080fbb60a4",
+    "vendor/src/hash.js": "40e52e42718204ca9376fdc7fa5f7bfb821fae564e5edc22ccf73fa1d3ce9f64",
+    "vendor/src/index.js": "9a96372279958de4f82811619da571dac8df66355dddd72e411069323e99d74c",
+    "vendor/test/guard.test.js": "b9f605979f5ac32d2b29b297d7a6b381ceeaa5104c394e0bd6e5868e5e7e5e62",
+    "vendor/LICENSE": "39a6d52ff8983c55d472981a4bd4e1b2b91654e7a675bd2cfcf88ac1c1b487d6",
+    "vendor/SPEC.md": "797f4fcec3e61bf6c0fe2ed5221e864754e34c93369ad97c61dc135a3b942d05",
+    "vendor/package.json": "dc47a6807a3694bff75b7dbd3f3b11d4bdb91e58e84c9160e3fd833f222c9e28"
+  }
+}
