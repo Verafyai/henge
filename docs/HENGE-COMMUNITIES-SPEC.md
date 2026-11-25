@@ -1,7 +1,7 @@
 # Henge communities: specification
 
-**Status:** draft for Rex's review (finish-up brief, Part C, 2026-11-25). No code is written against this spec until
-Rex approves it. Milestones C1 to C3 start after M7; C4 waits for G2 and legal sign-off.
+**Status:** approved by Rex on 2026-11-25, with his answers to the open questions folded in (section 11). Milestones C1
+to C3 start after M7; C4 waits for G2 and legal sign-off.
 
 **Scope:** the community layer the verafy.ai home page sells: founding a Henge, the Constitution, the Conclave, the
 Judiciary, credits inside a Henge, the Treasury and paid app access, and teams, profiles and badges. It sits on top of
@@ -15,7 +15,7 @@ and treasury state machines), brought under Henge's rules.
   and are labeled **Hash-chain record**, never "on chain" (history SPEC 19A.4).
 - Credits are earned, never bought. No transfers between members, no cash-out of earned credits.
 - The 20% platform fee (DECISIONS, pricing v1) applies to Swarm App revenue before any split.
-- All numbers below marked **(proposed)** are defaults for Rex to approve or change. Nothing here is a measured result.
+- All numbers below are Rex's approved defaults (2026-11-25). Nothing here is a measured result.
 
 ---
 
@@ -31,7 +31,7 @@ and treasury state machines), brought under Henge's rules.
 8. Teams, profiles and badges
 9. APIs
 10. Site copy this spec changes
-11. Open questions for Rex
+11. Rex's answers
 12. Milestones C1 to C4
 
 ---
@@ -75,7 +75,7 @@ A Henge is a new top-level object. It reuses the existing tables rather than rep
 
 | Table | Purpose | Key columns |
 |---|---|---|
-| `henges` | The community | `id`, `slug`, `name`, `purpose`, `category`, `publisher_id`, `status` (`draft`, `ratifying`, `in_review`, `listed`, `paused`, `closed`), `current_version_id`, `created_at` |
+| `henges` | The community | `id`, `slug`, `name`, `purpose`, `category`, `publisher_id`, `status` (`draft`, `ratifying`, `in_review`, `listed`, `paused`, `closed`), `current_version_id`, `community_url` (optional external link, 8), `created_at` |
 | `henge_members` | The Conclave | `henge_id`, `account_id`, `status` (`active`, `left`, `removed`), `entry_basis` (`founder`, `qualification`, `contribution`), `entry_ref`, `joined_at`, `left_at`, `accepted_version_id` |
 | `henge_roles` | Roles a Constitution defines | `henge_id`, `key`, `display_name`, `permissions` (from the fixed permission list in 2.3) |
 | `henge_role_grants` | Who holds a role | `henge_id`, `account_id`, `role_key`, `granted_by_ref` (a decision or the founding), `granted_at`, `revoked_at` |
@@ -129,12 +129,12 @@ The site's `/found` page is a placeholder today. The real flow lives in Henge we
    Locked platform clauses are shown but not editable (4.2).
 4. **Pre-signing check.** A jury reviews the draft for gaps and contradictions (4.6). The founder must acknowledge every
    finding, by fixing it or by writing why it stays, before anyone can sign.
-5. **Founding signers.** The founder invites co-founders (proposed: 0 to 9 others). Each signs the exact version hash
+5. **Founding signers.** The founder invites co-founders (0 to 9 others). Each signs the exact version hash
    from their own device. Signing requires a verified Verafy account.
 6. **Ratification.** Version 1 is ratified when every founding signer has signed within the ratification window
-   (proposed: 7 days). If the window passes, the draft returns to editing and nothing is published.
-7. **Review and listing.** Until open publishing (M12), Verafy reviews the Henge before it lists (the same curated rule as
-   swarms). A listed Henge shows its Constitution, Conclave and Treasury pages. Its first swarm is a separate release
+   (7 days). If the window passes, the draft returns to editing and nothing is published.
+7. **Review and listing.** Until open publishing (M12), Rex reviews every Henge before it lists (the same curated rule
+   as swarms). A listed Henge shows its Constitution, Conclave and Treasury pages. Its first swarm is a separate release
    through the normal swarm review.
 8. **First members.** Founding signers are the first Conclave. Others join by passing a qualification on one of the
    Henge's swarms, or by an accepted contribution, as the Constitution says.
@@ -187,8 +187,7 @@ than ordinary ones; every role referenced exists; locked clauses are byte-identi
 
 ### 4.3 Starter templates
 
-Each template is a full, valid set of clauses with plain text. The numbers are template defaults the founder can change
-**(proposed)**.
+Each template is a full, valid set of clauses with plain text. The numbers are template defaults the founder can change.
 
 | Template | Entry | Voting | Example split after the fee | Notes |
 |---|---|---|---|---|
@@ -269,21 +268,21 @@ stateDiagram-v2
   Final --> [*]
 ```
 
-1. **Filing.** Any Conclave member, or a former member within 30 days of leaving **(proposed)** for disputes about
+1. **Filing.** Any Conclave member, or a former member within 30 days of leaving for disputes about
    their own contributions, files a case: which clause, what happened, what outcome is sought (a typed remedy, 5.6),
-   and evidence (text and files). One open case per filer per Henge at a time **(proposed)**. No deposit, because
+   and evidence (text and files). One open case per filer per Henge at a time. No deposit, because
    credits cannot be bought and a deposit would price out new members.
 2. **Response.** The other side (a member, a role holder, or the Henge itself, answered by whoever holds the relevant
-   role) has a deadline to respond with its own evidence: 72 hours **(proposed)**, which a Constitution can set between
+   role) has a deadline to respond with its own evidence: 72 hours, which a Constitution can set between
    24 hours and 7 days.
 3. **Jury draw.** Section 5.4.
 4. **Rulings.** Each juror rules on its own, against the version in force when the disputed event happened, and gives
    reasons that cite clauses.
 5. **Majority outcome.** Section 5.5.
-6. **One appeal.** Either side can appeal once within 72 hours **(proposed)** of the ruling. The appeal jury is larger and
+6. **One appeal.** Either side can appeal once within 72 hours of the ruling. The appeal jury is larger and
    drawn fresh, with no juror from the first jury. Its ruling is final.
 
-### 5.3 Jury sizes **(proposed)**
+### 5.3 Jury sizes
 
 | Jury | Jurors | Majority | Why |
 |---|---|---|---|
@@ -301,8 +300,8 @@ party, and has no open case of its own in that Henge. ("Rigs with no ties to eit
 
 **Panel rules (spread across makers and operators):**
 - Every juror is owned by a different account (operator).
-- No more than 2 jurors share a model family on a first jury, and no more than 3 on an appeal jury **(proposed)**.
-- At least 3 different model makers sit on every jury **(proposed)**.
+- No more than 2 jurors share a model family on a first jury, and no more than 3 on an appeal jury.
+- At least 3 different model makers sit on every jury.
 - If those rules cannot be met, the case pauses as **Paused: no independent jury** and says so. The draw never quietly
   weakens the rules (history 19A.3).
 
@@ -310,11 +309,10 @@ party, and has no open case of its own in that Henge. ("Rigs with no ties to eit
 1. When the response deadline passes, Henge web freezes and publishes the **eligible pool snapshot**: every eligible
    node's public id, model family and maker, and operator hash, sorted, with its hash.
 2. The draw seed is `SHA-256(case_id || pool_snapshot_hash || beacon_value)`, where `beacon_value` is the first value a
-   public randomness beacon publishes after the snapshot is frozen **(proposed: drand's mainnet beacon; see open
-   question 11.4)**. Nobody, including Verafy, knows the beacon value when the pool is frozen.
+   drand mainnet beacon publishes after the snapshot is frozen. Nobody, including Verafy, knows the beacon value when the pool is frozen.
 3. The seed drives a published, deterministic algorithm: rank every eligible node by `SHA-256(seed || node_id)`, then
    walk the ranking and seat each node that keeps the panel rules satisfied, until the jury is full.
-4. The ranking continues past the last seat. If a juror times out (proposed: 30 minutes per ruling), the next valid node
+4. The ranking continues past the last seat. If a juror times out (30 minutes per ruling), the next valid node
    in the ranking takes the seat, so replacements are also checkable.
 5. The draw record (snapshot, beacon round and value, seed, ranking, seated jurors, replacements) is published with the
    case. A small open-source script in the repo recomputes it.
@@ -358,10 +356,8 @@ reputation, as in SPEC 8. Jury pay is in 6.3.
 ### 5.9 Integration with judiciary.verafy.ai
 
 Verafy Judiciary at judiciary.verafy.ai is the same AI-jury idea, already live as a separate product. Henge reuses its
-juror prompts and output format where they fit, and links Henge rulings that a Constitution makes public to a public
-ruling page. The exact integration (shared code, a shared API, or links only) needs a look at the Judiciary product's
-interfaces and is open question 11.5. Until then Henge runs its own jury engine on the swarm and only links to
-judiciary.verafy.ai.
+juror prompts and output format where they fit. In C3 the integration is **links only**: Henge runs its own jury on the
+`verafy-dao-juries` swarm and links to judiciary.verafy.ai. A shared API is revisited after C3.
 
 ---
 
@@ -392,7 +388,7 @@ or cancellation releases them (`bounty_release`). Disputes go to the Judiciary.
 
 The Constitution's `jury_pay.credits_per_ruling` is paid from the Henge's Treasury to each juror account whose ruling
 was accepted (`jury_pay`). If a Henge's Treasury cannot cover a case's jury pay, the case still runs, and jurors earn
-impact only for that case (open question 11.3).
+impact only for that case.
 
 ### 6.4 Where a Henge's credits come from
 
@@ -403,8 +399,8 @@ can print spendable credits. This spec keeps that rule. A Henge's Treasury recei
    credits go to the members who did the work, as today. A Constitution can route a share to the Treasury instead.
 2. **Paid app access (C4).** Revenue from the Henge's Swarm App, after the platform fee, in dollars, after G2 and legal.
 
-Until M9, a Henge's Treasury is empty and its members earn impact, not credits, unless they work on a funded swarm. The
-site's "Earn credits for rig time and work by hand" is therefore ahead of the app until M9 (open question 11.1).
+Until M9, a Henge's Treasury is empty and its members earn impact and contribution records, not credits, unless they
+work on a funded swarm. The site says so (section 10).
 
 New ledger movement types: `henge_inflow`, `bounty_reserve`, `bounty_release`, `bounty_pay`, `jury_pay`,
 `split_pay`, `treasury_spend`. All are double-entry, idempotent and checked by the existing reconciliation.
@@ -421,7 +417,7 @@ For each split period (default: calendar month) and each Swarm App:
 5. The **contributors** line is divided among members in proportion to the credits each earned in that Henge in the
    period (`contributor_basis`), again rounding down.
 6. Rounding leftovers go to the Treasury, so every unit is accounted for and the computation is deterministic.
-7. The split is published to the Conclave with every input before it pays, and pays after a 72-hour **(proposed)**
+7. The split is published to the Conclave with every input before it pays, and pays after a 72-hour
    window in which any member can file a case. A case freezes the split for that period only.
 
 Worked example (example numbers only): gross 10,000 credits; fee 2,000; remaining 8,000; with the 60/25/15 example
@@ -455,8 +451,7 @@ a community, and paying people, which needs legal sign-off. Two options for Rex 
 | Lead time | A host agreement per Henge or umbrella | Stripe review of the platform model (history SPEC 19A.6) |
 | Risk | Less control over payout timing | Verafy carries more compliance work |
 
-Recommendation for discussion: Stripe Connect for app revenue, because Verafy already uses Stripe, with a fiscal host as
-an option for grant-fund Henges. Either way: earned credits are never cashed out. Dollars paid to members come only
+Rex leans toward Stripe Connect, because Verafy already uses Stripe. The decision is made at C4, with legal. Either way: earned credits are never cashed out. Dollars paid to members come only
 from the dollar revenue split, not from converting credits.
 
 ### 7.3 Never
@@ -472,6 +467,9 @@ Reused from M10 where they overlap:
 
 - **Profiles** (M10) gain a Henges section: Conclave memberships, roles, accepted contributions, and juries served on
   (case ids only, not how the juror ruled, unless the case is public). Private by default, as M10 requires.
+- **Community link.** A Henge's profile can show one optional external community link (Discord or similar),
+  `henges.community_url`, validated as https and screened by Prompt Guard. Henge has no chat of its own, and chat is
+  not a milestone.
 - **Teams** (M10 `teams`) stay separate from Henges. A team can join a Henge's swarms together; Conclave membership is
   still per account.
 - **Badges** (M10 `badges`) add a nullable `henge_id` for Henge-specific badges (for example "First ten
@@ -504,33 +502,31 @@ Added to SPEC 13 under `/v1`, with the same auth, idempotency and error rules.
 
 ## 10. Site copy this spec changes
 
-Once Rex approves this spec, verafy.ai changes as follows, with tests in `henge.test.ts`:
+Approved by Rex (2026-11-25), shipped in one verafy-website PR after #83, with tests in `henge.test.ts`:
 
-1. The Judiciary section states the jury sizes (5, appeal 9) and the panel rules (5.3, 5.4).
-2. "Nobody edits them after you join" (the Constitution card) overclaims, because amendments exist. Proposed:
-   "Nobody can change them without the vote the Constitution itself requires, and you can always leave with what you
-   earned."
-3. "Run the Henge chat and set roles": no chat is specified anywhere. Proposed: drop "chat" ("Set roles and run the
-   Conclave") or mark it later (open question 11.2).
-4. "Earn credits for rig time and work by hand": accurate only from M9 (6.4). Proposed until then: "Earn credit for rig
-   time and work by hand", meaning contribution records, or a "later" note (open question 11.1).
+1. The Judiciary section states the jury sizes and panel rules: 5 jurors with a majority of 3; one appeal to 9 jurors
+   with a majority of 5; jurors from at least 3 makers, no more than 2 sharing a model family (3 on appeal).
+2. The Constitution card: "Nobody changes them without the vote your Constitution requires, and you always leave with
+   what you earned."
+3. "Run the Henge chat and set roles" drops chat. A Henge can link to its own community instead.
+4. "Earn credits for rig time and work by hand" becomes "Earn impact and a record of every contribution. Credits arrive
+   with funded swarms."
 
 ---
 
-## 11. Open questions for Rex
+## 11. Rex's answers (2026-11-25)
 
-1. **Credits before M9.** Accept that Henge members earn impact and contribution records, not credits, until funded
-   pools exist (6.4), and change the site line? Or fund early Henge work some other way (which would break SPEC 9.1)?
-2. **Henge chat.** Drop it from the site, or specify it as a later milestone?
-3. **Jury pay when a Treasury is empty.** Impact only (proposed), or a Verafy-funded jury pool?
-4. **Randomness beacon.** Use drand's public beacon (proposed), or a Verafy commit-reveal (weaker: Verafy could
-   withhold a reveal)?
-5. **judiciary.verafy.ai.** Shared engine, shared API, or links only (5.9)?
-6. **Treasury dollars (C4).** Stripe Connect, a fiscal host, or both (7.2)?
-7. **The proposed numbers:** jury 5 / appeal 9; majority 3 / 5; family caps 2 / 3; at least 3 makers; response 72 hours;
-   appeal window 72 hours; split window 72 hours; up to 9 co-founders; ratification window 7 days; former members may
-   file for 30 days; one open case per filer.
-8. **Who reviews Henges before listing** until M12: Rex alone, as for swarms?
+1. **Credits before M9:** accepted. Members earn impact and contribution records until funded pools exist (6.4).
+2. **Chat:** dropped from the site. A Henge's profile gets an optional external community link (8). Not a milestone.
+3. **Jury pay with an empty Treasury:** impact only (6.3).
+4. **Randomness:** drand (5.4).
+5. **judiciary.verafy.ai:** links only in C3, with the jury on the `verafy-dao-juries` swarm. Revisit a shared API after
+   C3 (5.9).
+6. **Treasury dollars:** lean toward Stripe Connect; decide at C4 with legal (7.2).
+7. **Numbers:** all approved: jury 5 and appeal jury 9, majorities 3 and 5; family caps 2 and 3, at least 3 makers;
+   72-hour response, appeal and split windows; up to 9 co-founders; 7-day ratification window; former members may file
+   for 30 days; one open case per filer.
+8. **Listing review:** Rex reviews every Henge before it lists, until M12.
 
 ---
 
@@ -541,11 +537,11 @@ outside contact without Rex's separate approval.
 
 | ID | Name | Scope | Acceptance criteria |
 |---|---|---|---|
-| C1 | Henges and Conclaves, no money | `henges`, `henge_members`, roles and permissions, `publishers.kind = 'henge'`, `swarms.henge_id`, Henge pages in Henge web and the app, join and leave, contribution records from accepted swarm tasks and hand contributions, the hash-chained `henge_events` log, Treasury account at zero, Henge sections on profiles | A member enters the Conclave only by a passed qualification, an accepted contribution or an `admit` by a role holder; leaving keeps every record; a hand contribution needs two acceptors who are not the contributor; `henge_events` cannot fork under concurrent writes (test); no endpoint can create or move credits; the UI labels the log "Hash-chain record" and makes no on-chain claim |
+| C1 | Henges and Conclaves, no money | `henges`, `henge_members`, roles and permissions, `publishers.kind = 'henge'`, `swarms.henge_id`, Henge pages in Henge web and the app with the optional community link, join and leave, contribution records from accepted swarm tasks and hand contributions, the hash-chained `henge_events` log, Treasury account at zero, Henge sections on profiles | A member enters the Conclave only by a passed qualification, an accepted contribution or an `admit` by a role holder; leaving keeps every record; a hand contribution needs two acceptors who are not the contributor; `henge_events` cannot fork under concurrent writes (test); no endpoint can create or move credits; the UI labels the log "Hash-chain record" and makes no on-chain claim |
 | C2 | Constitutions | `henge-constitution-v1` schema, the four templates, the `/found` flow (name to listing), the pre-signing jury check, device signatures, ratification, typed proposals and voting, amendment by the old version's clause, version history and diffs | Invalid drafts cannot be signed (splits not summing to 10,000, amendment thresholds not stricter, edited locked clauses: each a test); every finding must be acknowledged before signing; version 1 ratifies only with every founding signature in the window; an amendment that passes under version n's rules but would fail under version n + 1's is still ratified (and the reverse fails); no amendment can reduce earned credits or accepted records (test); every version stays readable |
 | C3 | Judiciary | Cases, responses, Prompt Guard screening of every filing, eligible pool snapshots, the beacon-seeded draw with panel rules, juror tasks on the `verafy-dao-juries` swarm, typed remedies and the executor, majority by remedy hash, one appeal to a larger fresh jury, pausing when no independent jury exists, published draw records and the recompute script, Conclave-visible rulings with reasons, jury pay from the Treasury when funded | The recompute script reproduces every test draw exactly; no seated juror belongs to the Henge, a party or a shared operator; family and maker rules hold or the case pauses with that reason; flagged filing text never reaches a juror (red-team fixtures); a ruling citing a non-existent clause is rejected; two jurors with different remedies do not form a majority; an appeal jury never reuses a first-jury node; the executor refuses any remedy outside 5.6; the site's jury numbers match the approved spec (site test) |
 | C4 | Treasury and paid app access (after G2 and legal) | Dollar revenue for Swarm App access through the option Rex chooses (7.2), the 20% platform fee, monthly revenue splits with the review window, payouts to members' verified payout accounts, Treasury dollar ledger visible to members | Requires G2 evidence and written legal sign-off before any real money; test mode until then. Split computation matches 6.5 exactly, including rounding, in property tests; a filed case freezes only that period's split; no path converts earned credits to dollars; reconciliation balances to the cent against the processor; kill switch stops payouts |
 
 ---
 
-*All numbers marked proposed are defaults for Rex to approve. Example amounts are examples, not results.*
+*All numbers are Rex's approved defaults (2026-11-25). Example amounts are examples, not results.*
