@@ -2,7 +2,7 @@
   "name": "@swarm-explorer/client",
   "version": "0.1.0",
   "private": true,
-  "description": "Swarm Explorer desktop client",
+  "description": "Henge desktop client",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

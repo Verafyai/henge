@@ -5,7 +5,7 @@ name: Prompt Guard red team
 publisher: verafy.ai
 category: security
 summary: Find reproducible bypasses of Prompt Guard so the store can harden against them
-harness: { name: prompt-guard-red-team, version: 0.1.0, hash: sha256-fd131e1167ed70b22bb0312d668b9ea471dddec55ea7ee670025638473530bcf, runtime: wasm }
+harness: { name: prompt-guard-red-team, version: 0.1.0, hash: sha256-17705755e8cf91b5a0871032c403f5f1cae3115618ce105e383cbebad8a79f20, runtime: wasm }
 models: { policy: any, api_allowed: false }
 verification: [machine-check]
 verification_config: { pending_window_s: 604800 }

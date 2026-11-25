@@ -1,6 +1,6 @@
 # Code signing and release key procurement checklist
 
-Carried forward from SwarmStarter (SPEC 18.1) and kept current for Swarm Explorer, because lead times are long.
+Carried forward from SwarmStarter (SPEC 18.1) and kept current for Henge, because lead times are long.
 Requirements come from SPEC 11 and 15. **Nothing here is signed with production certificates without Rex's
 separate approval.** All builds so far use test signing only.
 
@@ -44,7 +44,7 @@ Owner for every row: Rex (legal entity and accounts). Status: not started unless
 - [ ] SBOM (CycloneDX) and reproducibility notes generated per release.
 
 ## 6. Deep link and protocol registration
-- [x] Register the `swarmexplorer://` scheme via electron-builder (`protocols` in electron-builder.yml; local builds only).
+- [x] Register the `henge://` scheme via electron-builder (`protocols` in electron-builder.yml; local builds only).
 - [ ] HTTPS `/open/...` fallback on the website (SPEC 4.4). Not built yet.
 - [ ] Legacy `swarmstarter://`: not registered. SPEC 4.4 allows it only as a redirect after an approved migration mapping.
 
