@@ -33,7 +33,7 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <a href="/download" className="inline-flex min-h-12 items-center rounded-lg bg-brand px-6 font-semibold text-white shadow-sm hover:bg-brand-hover">
-              Get Swarm Explorer
+              Get Henge
             </a>
             <a href="#swarms" className="inline-flex min-h-12 items-center rounded-lg border border-zinc-300 bg-white/80 px-6 font-semibold text-ink hover:border-brand">
               Browse swarms

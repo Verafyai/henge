@@ -16,7 +16,7 @@ describe('external links', () => {
 
 describe('in-app navigation', () => {
   it('stays on the app origin or the dev server', () => {
-    expect(isAppUrl('app://swarm-explorer/index.html')).toBe(true);
+    expect(isAppUrl('app://henge/index.html')).toBe(true);
     expect(isAppUrl('app://other/index.html')).toBe(false);
     expect(isAppUrl('http://localhost:5173/x', 'http://localhost:5173/')).toBe(true);
     expect(isAppUrl('http://localhost:5174/x', 'http://localhost:5173/')).toBe(false);
@@ -38,14 +38,14 @@ describe('content security policy', () => {
 describe('app protocol file resolution', () => {
   const root = path.resolve('/srv/renderer');
   it('maps paths inside the root', () => {
-    expect(resolveAppFile(root, 'app://swarm-explorer/')).toBe(path.join(root, 'index.html'));
-    expect(resolveAppFile(root, 'app://swarm-explorer/assets/a.js')).toBe(path.join(root, 'assets/a.js'));
+    expect(resolveAppFile(root, 'app://henge/')).toBe(path.join(root, 'index.html'));
+    expect(resolveAppFile(root, 'app://henge/assets/a.js')).toBe(path.join(root, 'assets/a.js'));
   });
   it('refuses traversal and foreign hosts', () => {
     // The URL parser collapses dot segments, so this one is clamped inside the root.
-    expect(resolveAppFile(root, 'app://swarm-explorer/%2e%2e/%2e%2e/etc/passwd')).toBe(path.join(root, 'etc/passwd'));
+    expect(resolveAppFile(root, 'app://henge/%2e%2e/%2e%2e/etc/passwd')).toBe(path.join(root, 'etc/passwd'));
     // Encoded slashes survive parsing and would escape after decoding, so they are refused.
-    expect(resolveAppFile(root, 'app://swarm-explorer/..%2f..%2fetc/passwd')).toBeNull();
+    expect(resolveAppFile(root, 'app://henge/..%2f..%2fetc/passwd')).toBeNull();
     expect(resolveAppFile(root, 'app://evil/index.html')).toBeNull();
   });
 });

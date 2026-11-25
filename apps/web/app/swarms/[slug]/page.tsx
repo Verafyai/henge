@@ -30,7 +30,7 @@ export default async function SwarmPage({ params }: { params: Params }) {
   if (!row) notFound();
   const s = toSwarmDetail(row);
   const reward = rewardLine(s);
-  const deepLink = `swarmexplorer://swarm/${s.slug}`;
+  const deepLink = `henge://swarm/${s.slug}`;
 
   return (
     <article className="mx-auto max-w-[1080px] px-4 py-12 sm:px-8">
@@ -47,7 +47,7 @@ export default async function SwarmPage({ params }: { params: Params }) {
       <p className="mt-4 max-w-3xl text-lg text-zinc-700">{s.summary}</p>
       <div className="mt-6 flex flex-wrap gap-3">
         <a href={deepLink} className="inline-flex min-h-12 items-center rounded-lg bg-brand px-6 font-semibold text-white hover:bg-brand-hover">
-          Open in Swarm Explorer
+          Open in Henge
         </a>
         <a href="/download" className="inline-flex min-h-12 items-center rounded-lg border border-zinc-300 bg-white px-6 font-semibold text-ink hover:border-brand">
           Get the app

@@ -11,7 +11,7 @@
  * in Ollama are never removed by us.
  */
 import { benchmarkAcceptedSchema, createApiClient, licenseAcceptedSchema, type CatalogModel } from '@swarm-explorer/api-client';
-import { canRemove, estimateFit, fitFromBenchmark, memoryFacts, planDownload, usedBytes } from '@swarm-explorer/node-core';
+import { canRemove, estimateFit, memoryFacts, planDownload, usedBytes } from '@swarm-explorer/node-core';
 import { z } from 'zod';
 import {
   blockedModelSchema,
@@ -139,7 +139,7 @@ export class ModelManager {
     if (!found) return fail('not_in_catalog', 'That model version is not in the catalog.');
     const { model, artifact } = found;
     const runtime = artifact.runtimeFormats.includes('ollama') ? 'ollama' : artifact.runtimeFormats.includes('gguf') ? 'llama_cpp' : null;
-    if (!runtime) return fail('runtime_unsupported', 'This model needs a runtime Swarm Explorer does not support.');
+    if (!runtime) return fail('runtime_unsupported', 'This model needs a runtime Henge does not support.');
     const rt = det.runtimes.find((r) => r.kind === runtime);
     if (rt?.status !== 'found') return fail('runtime_missing', runtime === 'ollama' ? 'Install and start Ollama first, then check hardware again.' : 'Install llama.cpp first, then check hardware again.');
     if (this.installed().some((m) => m.contentHash === artifact.contentHash)) return fail('already_installed', 'This model is already installed.');
@@ -224,9 +224,8 @@ export class ModelManager {
     this.d.changed();
     const r = await this.d.rpc.benchmark(m.runtime, m.location).catch(() => ({ tps: null, detail: 'The benchmark did not run.' }));
     this.job = null;
-    const estimate = estimateFit(m.sizeBytes, memoryFacts(this.d.detection()!.hardware));
-    // The client has no calibration of its own; the server answer (when signed in) may upgrade it.
-    const fit = r.tps === null ? estimate : fitFromBenchmark(r.tps, estimate, null);
+    // Fit stays the memory fact; the benchmark is recorded as measured tokens per second only.
+    const fit = estimateFit(m.sizeBytes, memoryFacts(this.d.detection()!.hardware));
     this.update(contentHash, { benchmarkTps: r.tps, benchmarkDetail: r.detail, fit: { status: fit.status, basis: fit.basis, reason: fit.reason }, benchmarkSharedAt: null });
     this.d.changed();
     await this.share();
@@ -244,7 +243,7 @@ export class ModelManager {
       return ok.reason === 'protected'
         ? fail('protected', 'This is your active model. Choose another active model first.')
         : ok.reason === 'not_managed'
-          ? fail('not_managed', 'You installed this model in Ollama yourself, so Swarm Explorer leaves it alone.')
+          ? fail('not_managed', 'You installed this model in Ollama yourself, so Henge leaves it alone.')
           : fail('not_installed', 'That model is not installed.');
     }
     const m = list.find((x) => x.contentHash === contentHash)!;
@@ -280,8 +279,7 @@ export class ModelManager {
         });
         const body = benchmarkAcceptedSchema.safeParse(await res.json().catch(() => null));
         if (!res.ok || !body.success) continue;
-        const reason = body.data.basis === 'benchmark' ? 'benchmark' : m.fit.reason;
-        this.update(m.contentHash, { benchmarkSharedAt: Date.now(), fit: { status: body.data.fit_status, basis: body.data.basis, reason } });
+        this.update(m.contentHash, { benchmarkSharedAt: Date.now() });
       }
       this.d.changed();
     } catch {

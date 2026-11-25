@@ -115,7 +115,7 @@ function focusWindow() {
 function openDeepLink(raw: string) {
   const parsed = parseDeepLink(raw);
   if (!parsed) {
-    send(IPC.notice, 'That Swarm Explorer link is not supported, so it was ignored.');
+    send(IPC.notice, 'That link is not supported, so it was ignored.');
     return;
   }
   focusWindow();
@@ -138,7 +138,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 700,
     show: false,
-    title: 'Swarm Explorer',
+    title: 'Henge',
     backgroundColor: '#ffffff',
     ...(mac ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 11 } } : {}),
     webPreferences: { ...SECURE_WEB_PREFERENCES, preload: path.join(__dirname, '../preload/index.cjs') },
@@ -179,12 +179,12 @@ function refreshPauseControls() {
   const paused = node?.isPaused ?? false;
   Menu.setApplicationMenu(buildMenu({ navigate: (r) => send(IPC.navigate, r), isDev, paused, setPaused: (p) => node?.setPaused(p) }));
   if (!tray) return;
-  tray.setToolTip(paused ? 'Swarm Explorer: paused' : 'Swarm Explorer');
+  tray.setToolTip(paused ? 'Henge: paused' : 'Henge');
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: paused ? 'Resume node' : 'Pause node', click: () => node?.setPaused(!paused) },
       { type: 'separator' },
-      { label: 'Open Swarm Explorer', click: () => (mainWindow ? focusWindow() : (mainWindow = createMainWindow())) },
+      { label: 'Open Henge', click: () => (mainWindow ? focusWindow() : (mainWindow = createMainWindow())) },
       { label: 'Quit', role: 'quit' },
     ]),
   );

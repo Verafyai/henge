@@ -71,7 +71,7 @@ export const installedModelSchema = z.object({
   sourceRef: z.string().max(300),
   sizeBytes: z.number().int().positive(),
   location: z.string().max(1024),
-  /** True when Swarm Explorer downloaded it. Models the user already had are never removed by us. */
+  /** True when Henge downloaded it. Models the user already had are never removed by us. */
   managed: z.boolean(),
   installedAt: z.number().int(),
   lastUsedAt: z.number().int().nullable(),

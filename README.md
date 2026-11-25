@@ -1,6 +1,7 @@
-# Swarm Explorer
+# Henge and Swarm Explorer
 
-Verafy's app store for swarms. Install one node, connect a local model, and give its time to the causes you choose.
+Verafy's app store for swarms. **Henge by Verafy** is the desktop app: install one node, connect a local model, and
+give its time to the causes you choose. **Swarm Explorer** is the web view of the swarms.
 Nodes earn credits for verified work in funded swarms; volunteer swarms earn impact only.
 
 Source of truth: `docs/SWARM-EXPLORER-SPEC.md`. Decisions: `docs/DECISIONS.md`. The SwarmStarter documents in
@@ -23,7 +24,7 @@ hardware, set `SWARM_EXPLORER_HARDWARE_FIXTURE=windows-rtx-12gb` (unpackaged run
 `packages/node-core/fixtures/hardware`).
 
 Sign in from the client opens your browser. With no identity providers configured (and `DEV_SIGN_IN=1`), `/login`
-lists the seeded example accounts. Your sign in is kept in the OS keychain (service `ai.verafy.swarmexplorer.dev`
+lists the seeded example accounts. Your sign in is kept in the OS keychain (service `ai.verafy.henge.dev`
 for dev runs).
 
 Updates are checked against a signed manifest. To try it locally, create the TEST key and an internal-channel row
@@ -53,7 +54,7 @@ pnpm e2e                                     # website suite, TEST release, then
 apps/web             Next.js website (browse-only: swarms, swarm pages, models, download, sign in) and the /v1 API
 apps/client          Electron client: Pick a cause first run, Store, swarm pages, Settings > Node; node
                      supervisor utility process; tray and menu Pause; PKCE sign in, keychain, device-signed
-                     node requests, encrypted cache, swarmexplorer:// deep links (navigate only), signed updates
+                     node requests, encrypted cache, henge:// deep links (navigate only), signed updates
 apps/cli             `swarm` CLI: swarms, show, validate; developer commands arrive in M11
 packages/schema      Swarm manifest v1 (JSON Schema + invariants), harness bundle schema, canonical JSON,
                      Ed25519 publisher signatures, bundle digests, fixtures

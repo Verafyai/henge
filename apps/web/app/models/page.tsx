@@ -14,7 +14,7 @@ export default async function Models() {
         <h1 className="text-4xl font-bold tracking-tight text-ink">Models</h1>
         <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">Example data</span>
       </div>
-      <p className="mt-2 max-w-2xl text-zinc-700">Local models reviewed for the catalog. Swarm Explorer checks each download against its published hash before use.</p>
+      <p className="mt-2 max-w-2xl text-zinc-700">Local models reviewed for the catalog. Henge checks each download against its published hash before use.</p>
       <ul className="mt-8 space-y-4">
         {items.map((m) => (
           <li key={m.slug} className="rounded-card border border-zinc-200 bg-white p-5">

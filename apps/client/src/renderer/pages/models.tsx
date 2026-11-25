@@ -1,5 +1,5 @@
 import type { CatalogModel } from '@swarm-explorer/api-client';
-import { estimateFit, fitLabel, fitReasonText, memoryFacts, type FitReason, type FitStatus } from '@swarm-explorer/node-core';
+import { estimateFit, fitReasonText, memoryFacts, memoryFitLabel, type FitReason, type FitStatus } from '@swarm-explorer/node-core';
 import { Chip } from '@swarm-explorer/ui';
 import { useState } from 'react';
 import type { InstalledModel, ModelActionResult, NodeOverview } from '../../shared/node';
@@ -8,16 +8,12 @@ import { Btn, Empty, Eyebrow } from '../ui/bits';
 
 const GB = 1024 ** 3;
 const gb = (n: number) => `${Math.round((n / GB) * 10) / 10} GB`;
-const fitTone: Record<FitStatus, 'approved' | 'pending' | 'rejected' | 'info'> = { runs_well: 'approved', runs_slowly: 'pending', will_not_fit: 'rejected', unknown: 'info' };
+const fitTone: Record<FitStatus, 'approved' | 'neutral' | 'rejected' | 'info'> = { runs_well: 'approved', runs_slowly: 'neutral', will_not_fit: 'rejected', unknown: 'info' };
 const runtimeOf = (a: CatalogModel['artifacts'][number]) => (a.runtimeFormats.includes('ollama') ? 'Ollama' : 'llama.cpp (GGUF)');
 
-function FitChip({ status, basis }: { status: FitStatus; basis: 'estimate' | 'benchmark' }) {
-  return (
-    <Chip tone={fitTone[status]}>
-      {fitLabel[status]}
-      {basis === 'estimate' && status !== 'will_not_fit' ? ' (estimate)' : ''}
-    </Chip>
-  );
+/** Memory fit is a fact about this machine, not a speed claim (decision 2026-11-25). */
+function FitChip({ status, reason }: { status: FitStatus; reason: FitReason }) {
+  return <Chip tone={fitTone[status]}>{memoryFitLabel[reason]}</Chip>;
 }
 
 function Result({ r }: { r: ModelActionResult | null }) {
@@ -50,7 +46,7 @@ function DownloadDialog({ m, a, o, onClose }: { m: CatalogModel; a: CatalogModel
         <dt className="text-zinc-500">Runtime</dt>
         <dd>{runtimeOf(a)}</dd>
         <dt className="text-zinc-500">Fit</dt>
-        <dd>{fit ? `${fitLabel[fit.status]}. ${fitReasonText[fit.reason]}` : 'Unknown'}</dd>
+        <dd>{fit ? `${memoryFitLabel[fit.reason]}. ${fitReasonText[fit.reason]}` : 'Unknown'}</dd>
         <dt className="text-zinc-500">Disk budget</dt>
         <dd>{needsBudget ? 'Not set yet' : `${gb(o.models.usedBytes)} of ${gb(o.models.storage.diskBudgetBytes!)} used`}</dd>
         <dt className="text-zinc-500">Pinned hash</dt>
@@ -125,11 +121,10 @@ function InstalledActions({ i, o }: { i: InstalledModel; o: NodeOverview }) {
   return (
     <div className="mt-3">
       <p className="text-sm" data-testid="benchmark">
-        {i.benchmarkTps !== null ? `Benchmark: ${i.benchmarkTps} tokens per second.` : (i.benchmarkDetail ?? 'Not benchmarked yet.')}{' '}
-        <span className="text-xs text-zinc-500">{fitReasonText[i.fit.reason as FitReason] ?? ''}</span>
+        {i.benchmarkTps !== null ? `Measured on this computer: ${i.benchmarkTps} tokens per second.` : (i.benchmarkDetail ?? 'Not benchmarked yet.')}
         {i.benchmarkSharedAt && <span className="block text-xs text-zinc-500">Benchmark shared with your node record.</span>}
       </p>
-      {!i.managed && <p className="mt-1 text-xs text-zinc-500">Already in your Ollama. Swarm Explorer uses it but never removes it.</p>}
+      {!i.managed && <p className="mt-1 text-xs text-zinc-500">Already in your Ollama. Henge uses it but never removes it.</p>}
       <div className="mt-2 flex flex-wrap gap-2">
         {active ? (
           <Chip tone="approved">Active model</Chip>
@@ -194,7 +189,7 @@ export function ModelsPage({ highlight }: { highlight?: string }) {
             const i = installed.get(a.contentHash);
             const b = blocked.get(a.contentHash);
             const est = facts ? estimateFit(a.sizeBytes, facts) : null;
-            const fit = i ? i.fit : est ? { status: est.status, basis: est.basis } : null;
+            const fit = est ? { status: est.status, reason: est.reason } : null;
             const key = `${m.slug}:${a.contentHash}`;
             return (
               <li
@@ -208,7 +203,7 @@ export function ModelsPage({ highlight }: { highlight?: string }) {
                     <p className="text-xs text-zinc-500">{`${m.source === 'ollama' ? 'Ollama library' : 'Hugging Face GGUF'} · ${a.versionLabel} · ${runtimeOf(a)}`}</p>
                   </div>
                   <span className="flex gap-1.5">
-                    {fit && <FitChip status={fit.status as FitStatus} basis={fit.basis as 'estimate' | 'benchmark'} />}
+                    {fit && <FitChip status={fit.status} reason={fit.reason} />}
                     {i && <Chip tone="approved">Installed</Chip>}
                     {b && <Chip tone="rejected">Blocked</Chip>}
                   </span>
@@ -242,7 +237,7 @@ export function ModelsPage({ highlight }: { highlight?: string }) {
       </ul>
       {o && !o.models.installed.length && !q.isPending && (
         <p className="mt-6 text-xs text-zinc-500">
-          <Eyebrow>Note</Eyebrow>Fit before download is estimated from memory size only. After download, a short benchmark is recorded.
+          <Eyebrow>Note</Eyebrow>Fit compares the download size with this computer's memory. After download, a short benchmark measures tokens per second here.
         </p>
       )}
     </div>

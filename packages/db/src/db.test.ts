@@ -64,11 +64,12 @@ describe('seeded catalog', () => {
     expect(new Set(ms.filter((m) => m.acceptedSwarms.includes('verafy-dao-juries')).map((m) => m.model.family)).size).toBeGreaterThanOrEqual(3);
   });
 
-  it('stores pricing only as an unapproved proposal', async () => {
+  it('stores the approved v1 economic config: 1 credit = $0.01, 20 percent take rate', async () => {
     const db = await getDb();
     const rows = await db.select().from(economicConfigs);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ status: 'proposal', approvedBy: null, effectiveAt: null });
+    expect(rows[0]).toMatchObject({ status: 'approved', creditPriceMinor: 1, currency: 'USD', takeRateBp: 2000, hostedFreeTaskVolume: null, privateSeatPriceMinor: null });
+    expect(rows[0]!.effectiveAt?.toISOString()).toBe('2026-11-25T00:00:00.000Z');
   });
 });
 

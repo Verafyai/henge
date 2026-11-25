@@ -12,9 +12,9 @@ export const seedAccounts = [
 export const seedOauthClients = [
   {
     id: 'swarm-explorer-desktop',
-    name: 'Swarm Explorer desktop',
+    name: 'Henge by Verafy (desktop)',
     kind: 'desktop' as const,
-    redirectUris: ['http://127.0.0.1/callback', 'swarmexplorer://auth/callback'],
+    redirectUris: ['http://127.0.0.1/callback', 'henge://auth/callback'],
   },
 ];
 
@@ -44,14 +44,15 @@ export const seedModels = [
 ] as const;
 
 /**
- * Pricing proposal from the SPEC 9.6 examples (1 credit for $0.01, 20 percent take rate).
- * Stored as a proposal; nothing may use it until Rex approves a config (SPEC 9.6A).
+ * Economic config v1, approved by Rex on 2026-11-25: 1 credit = $0.01, 20 percent take rate.
+ * Revisit at G2 with the first paying publisher. Other values stay unset until decided.
  */
-export const seedEconomicProposal = {
+export const seedEconomicConfigV1 = {
   creditPriceMinor: 1,
   currency: 'USD',
   takeRateBp: 2_000,
   hostedFreeTaskVolume: null,
   privateSeatPriceMinor: null,
-  notes: 'SPEC 9.6 examples. Proposal only, not approved. How the take rate applies is undecided (SPEC 9.6A).',
+  notes: 'v1 approved by Rex 2026-11-25. Revisit at G2. How the take rate applies is settled in M9 (SPEC 9.6A).',
+  effectiveAt: new Date('2026-11-25T00:00:00Z'),
 };

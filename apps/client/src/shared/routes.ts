@@ -5,7 +5,7 @@
 export type Route =
   | { name: 'store'; category?: string }
   | { name: 'swarm'; slug: string }
-  /** Opened from swarmexplorer://join/{swarm}: shows the join review, never joins. */
+  /** Opened from henge://join/{swarm}: shows the join review, never joins. */
   | { name: 'join'; slug: string }
   | { name: 'model'; slug: string }
   /** The model catalog with fit, downloads and storage (SPEC 5.4). */

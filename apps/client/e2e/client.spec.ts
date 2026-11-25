@@ -18,7 +18,7 @@ import { proxySocketDir } from '../src/main/socket-path';
 import { _electron as electron, chromium, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
 const API = 'http://localhost:3000';
-const SERVICE = `ai.verafy.swarmexplorer.e2e.${process.pid}`;
+const SERVICE = `ai.verafy.henge.e2e.${process.pid}`;
 const PROFILE = mkdtempSync(path.join(tmpdir(), 'se-client-e2e-'));
 
 // Seeded catalog hashes are fixture digests (packages/db seed): sha256 of a fixture string.
@@ -205,7 +205,7 @@ test('every window uses the hardened webPreferences (SPEC 11.1)', async () => {
 });
 
 test('the renderer is served from app:// with no Node access and only named bridge methods', async () => {
-  expect(page.url()).toBe('app://swarm-explorer/index.html');
+  expect(page.url()).toBe('app://henge/index.html');
   const probe = await page.evaluate(() => ({
     require: typeof (globalThis as Record<string, unknown>)['require'],
     process: typeof (globalThis as Record<string, unknown>)['process'],
@@ -227,12 +227,12 @@ test('the renderer is served from app:// with no Node access and only named brid
 
 test('the node supervisor runs as its own utility process (SPEC 11.2)', async () => {
   const procs = await app.evaluate(({ app }) => app.getAppMetrics().map((m) => ({ type: m.type, name: m.name ?? m.serviceName ?? '' })));
-  expect(procs).toContainEqual(expect.objectContaining({ type: 'Utility', name: 'Swarm Explorer node supervisor' }));
+  expect(procs).toContainEqual(expect.objectContaining({ type: 'Utility', name: 'Henge node supervisor' }));
 });
 
 test('the model proxy is its own process on a private socket, not a TCP port (SPEC 11.2)', async () => {
   const procs = await app.evaluate(({ app }) => app.getAppMetrics().map((m) => m.name ?? ''));
-  expect(procs).toContain('Swarm Explorer model proxy');
+  expect(procs).toContain('Henge model proxy');
   const run = proxySocketDir(await app.evaluate(({ app }) => app.getPath('userData')));
   await expect.poll(() => (existsSync(run) ? readdirSync(run).filter((f) => f.endsWith('.sock')).length : 0)).toBe(1);
   expect(lstatSync(run).mode & 0o777).toBe(0o700);
@@ -267,7 +267,7 @@ test('first run opens Pick a cause, detects the fixture and preselects Local (M1
   await expect(rules.getByRole('row', { name: /Network/ })).toContainText('Not available on this computer');
   await expect(rules.getByRole('row', { name: /When/ })).toContainText('Only when idle for 5 minutes');
   // SPEC 5.1 step 5: a starter model from the fit list, accepted by this cause. Nothing downloads yet.
-  await expect(page.getByTestId('starter')).toContainText('Recommended starter model: Mistral Small 24B (Runs well, estimate)');
+  await expect(page.getByTestId('starter')).toContainText('Recommended starter model: Mistral Small 24B (fits in memory)');
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
   expect(ollamaCalls.every((c) => c.startsWith('GET '))).toBe(true);
@@ -371,10 +371,10 @@ test('the catalog shows fit for this machine before any download (SPEC 5.4)', as
   await page.getByRole('complementary', { name: 'Your node' }).getByRole('button', { name: 'Models and storage' }).click();
   await expect(page.getByTestId('storage')).toHaveText('Disk budget: set when you download your first model.');
   const big = page.getByRole('listitem', { name: 'Llama 3.3 70B' });
-  await expect(big).toContainText('Will not fit');
+  await expect(big).toContainText('Too large for this computer');
   await expect(big.getByRole('button', { name: 'Will not fit' })).toBeDisabled();
   const coder = page.getByRole('listitem', { name: 'Qwen 2.5 Coder 7B' });
-  await expect(coder).toContainText('Runs well (estimate)');
+  await expect(coder).toContainText('Fits in memory');
   await expect(coder).toContainText('apache-2.0');
   await expect(coder).toContainText('32,768 tokens');
   // The user's own Ollama tag "qwen2.5-coder:7b" is a different tag, so it is not claimed as installed.
@@ -385,7 +385,7 @@ test('one confirmed download: license and budget first, then the pinned hash is 
   const coder = page.getByRole('listitem', { name: 'Qwen 2.5 Coder 7B' });
   await coder.getByRole('button', { name: 'Download' }).click();
   const dialog = page.getByRole('dialog', { name: 'Download Qwen 2.5 Coder 7B' });
-  await expect(dialog).toContainText('Runs well. Estimate: fits in unified memory.');
+  await expect(dialog).toContainText('Fits in memory. The download is smaller than this computer\'s unified memory.');
   const go = dialog.getByRole('button', { name: 'Download and verify' });
   await expect(go).toBeDisabled();
   await dialog.getByRole('spinbutton', { name: /Disk budget/ }).fill('20');
@@ -394,10 +394,10 @@ test('one confirmed download: license and budget first, then the pinned hash is 
   await dialog.getByRole('checkbox', { name: /I accept the apache-2.0 license/ }).check();
   await go.click();
   await expect(coder.getByText('Active model')).toBeVisible();
-  await expect(coder.getByTestId('benchmark')).toContainText('Benchmark: 32 tokens per second.');
+  await expect(coder.getByTestId('benchmark')).toContainText('Measured on this computer: 32 tokens per second.');
+  await expect(coder).not.toContainText(/Runs well|Runs slowly/);
   await expect(coder.getByTestId('benchmark')).toContainText('Benchmark shared with your node record.');
-  await expect(coder.getByTestId('benchmark')).toContainText('Speed thresholds for this runtime are not calibrated yet');
-  await expect(coder).toContainText('Runs well (estimate)');
+  await expect(coder).toContainText('Fits in memory');
   expect(ollamaCalls).toContain('POST /api/pull');
   expect(ollamaCalls).toContain('POST /api/generate');
   await expect(page.getByTestId('storage')).toContainText('of 20 GB used');
@@ -497,21 +497,21 @@ test('recently viewed survives a restart (encrypted local cache)', async () => {
   await expect(page.getByRole('complementary', { name: 'Your node' })).toContainText('challenge-vaults');
 });
 
-test('deep link swarmexplorer://swarm/verafy-dao-juries opens the swarm page', async () => {
+test('deep link henge://swarm/verafy-dao-juries opens the swarm page', async () => {
   await app.close();
-  ({ app, page } = await launch({ args: ['swarmexplorer://swarm/verafy-dao-juries'] }));
+  ({ app, page } = await launch({ args: ['henge://swarm/verafy-dao-juries'] }));
   await expect(page.getByRole('heading', { name: 'Verafy DAO juries', level: 1 })).toBeVisible();
 });
 
 test('a join link only opens a review; nothing is joined', async () => {
   await app.close();
-  ({ app, page } = await launch({ args: ['swarmexplorer://join/challenge-vaults'] }));
+  ({ app, page } = await launch({ args: ['henge://join/challenge-vaults'] }));
   await expect(page.getByRole('heading', { name: 'Review before joining' })).toBeVisible();
   await expect(page.getByText('Nothing has been joined, downloaded or run.', { exact: false })).toBeVisible();
 });
 
 test('deep links outside the allowlist and the legacy scheme are ignored', async () => {
-  for (const link of ['swarmexplorer://join/challenge-vaults?confirm=1', 'swarmstarter://p/owr-remake']) {
+  for (const link of ['henge://join/challenge-vaults?confirm=1', 'swarmstarter://p/owr-remake']) {
     await app.close();
     ({ app, page } = await launch({ args: [link] }));
     await expect(page.getByRole('region', { name: 'Featured swarms' })).toBeVisible();
@@ -570,7 +570,7 @@ test('navigation away from the app and cross-origin fetches are blocked', async 
     window.location.href = 'https://example.com/';
   });
   await page.waitForTimeout(500);
-  expect(page.url()).toBe('app://swarm-explorer/index.html');
+  expect(page.url()).toBe('app://henge/index.html');
   const fetched = await page.evaluate(() =>
     fetch('https://example.com/').then(
       () => 'allowed',

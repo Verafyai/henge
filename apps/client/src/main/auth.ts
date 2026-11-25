@@ -1,7 +1,7 @@
 /**
  * Desktop sign in (ADDENDUM A3.1): OAuth 2.0 Authorization Code with PKCE in
  * the system browser, loopback redirect on 127.0.0.1 with a random port, and
- * swarmexplorer://auth/callback as the fallback. The refresh token and device
+ * henge://auth/callback as the fallback. The refresh token and device
  * key live in the OS keychain; the access token lives only in memory.
  */
 import { EventEmitter } from 'node:events';
@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { SecretStore } from './secrets';
 
 export const SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000;
-export const FALLBACK_REDIRECT = 'swarmexplorer://auth/callback';
+export const FALLBACK_REDIRECT = 'henge://auth/callback';
 
 const sessionSchema = z.object({ installId: z.uuid(), refreshToken: z.string().min(20) });
 type Session = z.infer<typeof sessionSchema>;
@@ -30,10 +30,10 @@ function sameString(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-const CALLBACK_PAGE = `<!doctype html><meta charset="utf-8"><title>Swarm Explorer</title>
+const CALLBACK_PAGE = `<!doctype html><meta charset="utf-8"><title>Henge</title>
 <body style="font-family:system-ui,sans-serif;max-width:32rem;margin:6rem auto;padding:0 1rem;color:#09090b">
-<h1 style="font-size:1.5rem">You are signed in</h1><p style="color:#52525b">You can close this tab and return to Swarm Explorer.</p></body>`;
-const CALLBACK_FAIL_PAGE = CALLBACK_PAGE.replace('You are signed in', 'Sign in did not finish').replace('You can close this tab and return to Swarm Explorer.', 'Close this tab and try again from the client.');
+<h1 style="font-size:1.5rem">You are signed in</h1><p style="color:#52525b">You can close this tab and return to Henge.</p></body>`;
+const CALLBACK_FAIL_PAGE = CALLBACK_PAGE.replace('You are signed in', 'Sign in did not finish').replace('You can close this tab and return to Henge.', 'Close this tab and try again from the client.');
 
 type Pending = { state: string; verifier: string; redirectUri: string; resolve: (code: string) => void; reject: (e: Error) => void; server?: Server; timer: NodeJS.Timeout };
 
@@ -171,7 +171,7 @@ export class AuthManager extends EventEmitter<{ changed: [AuthState] }> {
     });
   }
 
-  /** Fallback path: swarmexplorer://auth/callback?code=...&state=... from the deep link handler. */
+  /** Fallback path: henge://auth/callback?code=...&state=... from the deep link handler. */
   handleCallbackUrl(url: string): boolean {
     if (!this.pending || this.pending.redirectUri !== FALLBACK_REDIRECT) return false;
     return this.handleCallbackParams(new URL(url).searchParams);

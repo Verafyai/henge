@@ -57,7 +57,7 @@ export function Header({ active = 'store', signedIn = false, searchAction = '/' 
           </a>
         )}
         <a href="/download" className="inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-lg bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-hover">
-          Get Swarm Explorer
+          Get Henge
         </a>
       </div>
     </header>

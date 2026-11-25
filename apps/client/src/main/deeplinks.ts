@@ -1,5 +1,5 @@
 /**
- * swarmexplorer:// parsing with a versioned route and parameter allowlist (SPEC 4.4).
+ * henge:// parsing with a versioned route and parameter allowlist (SPEC 4.4).
  * Anything unknown returns null and is ignored with a notice. Links never carry
  * credentials or amounts and never trigger a write by themselves. The legacy
  * swarmstarter:// scheme is not registered: SPEC 4.4 allows it only as a redirect
@@ -7,7 +7,7 @@
  */
 import type { Route } from '../shared/routes';
 
-export const SCHEME = 'swarmexplorer';
+export const SCHEME = 'henge';
 /** Bump when the allowlist changes shape, so older clients can tell links apart. */
 export const DEEP_LINK_VERSION = 1;
 
@@ -33,7 +33,7 @@ export function parseDeepLink(raw: string): Parsed | null {
     return null;
   }
   if (u.protocol !== `${SCHEME}:` || u.username || u.password || u.port || u.hash) return null;
-  // swarmexplorer://swarm/x parses with host "swarm" and pathname "/x".
+  // henge://swarm/x parses with host "swarm" and pathname "/x".
   let parts: string[];
   try {
     parts = [u.hostname, ...u.pathname.split('/').filter(Boolean)].map(decodeURIComponent);

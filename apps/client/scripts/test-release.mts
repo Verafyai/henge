@@ -42,14 +42,14 @@ const version = arg('version', '0.2.0-internal.1');
 const platform = arg('platform', process.platform);
 const archName = arg('arch', process.arch);
 const artifact = arg('artifact', '');
-const payload = artifact ? readFileSync(artifact) : Buffer.from(`Swarm Explorer ${version} ${platform}-${archName} test payload`);
+const payload = artifact ? readFileSync(artifact) : Buffer.from(`Henge ${version} ${platform}-${archName} test payload`);
 const manifest: Manifest = {
   schema: 1,
   version,
   channel: 'internal',
   platform,
   arch: archName,
-  url: `https://releases.swarm-explorer.test/internal/${version}/SwarmExplorer-${version}-${platform}-${archName}.zip`,
+  url: `https://releases.swarm-explorer.test/internal/${version}/Henge-${version}-${platform}-${archName}.zip`,
   sha256: sha256Hex(payload),
   size: payload.byteLength,
   publishedAt: new Date().toISOString(),

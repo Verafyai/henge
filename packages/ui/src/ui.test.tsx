@@ -35,7 +35,7 @@ describe('copy rules', () => {
   });
   it('header is browse-only: no store purchase or propose actions', () => {
     const html = renderToStaticMarkup(<Header />);
-    expect(html).toContain('Get Swarm Explorer');
+    expect(html).toContain('Get Henge');
     expect(html).not.toMatch(/Propose|Back this|Buy/);
   });
 });

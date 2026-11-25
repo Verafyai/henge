@@ -64,7 +64,9 @@ describe('ModelManager guards (SPEC 5.4)', () => {
     expect(await t.mm.install({ slug: 'small', contentHash: H('a'), acceptLicense: true, diskBudgetBytes: 20 * GB })).toEqual({ ok: true });
     const o = t.mm.overview();
     expect(o.storage).toEqual({ diskBudgetBytes: 20 * GB, activeModel: H('a') });
-    expect(o.installed[0]).toMatchObject({ benchmarkTps: 30, fit: { status: 'runs_well', basis: 'estimate', reason: 'benchmark_uncalibrated' } });
+    // Fit stays the memory fact; the benchmark adds only measured tokens per second (decision 2026-11-25).
+    expect(o.installed[0]).toMatchObject({ benchmarkTps: 30, fit: { status: 'runs_well', basis: 'estimate' } });
+    expect(o.installed[0]!.fit.reason).not.toMatch(/benchmark/);
     expect(o.acceptedLicenses).toEqual([H('a')]);
   });
 

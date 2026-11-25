@@ -1,6 +1,6 @@
 import type { SwarmSummary } from '@swarm-explorer/api-client';
 import { categories, categoryLabel } from '@swarm-explorer/core';
-import { causeFit, enforcementLabel, fitLabel, memoryFacts, recommendStarter, type Mode } from '@swarm-explorer/node-core';
+import { causeFit, enforcementLabel, memoryFacts, memoryFitLabel, recommendStarter, type Mode } from '@swarm-explorer/node-core';
 import { Chip } from '@swarm-explorer/ui';
 import { useState } from 'react';
 import type { NodeOverview } from '../../shared/node';
@@ -217,7 +217,7 @@ export function SetupPage() {
             </p>
             {starter && (
               <p className="mt-2 text-sm" data-testid="starter">
-                <span className="text-zinc-500">Recommended starter model:</span> <b>{starter.displayName}</b> ({fitLabel[starter.fit.status]}, estimate).{' '}
+                <span className="text-zinc-500">Recommended starter model:</span> <b>{starter.displayName}</b> ({memoryFitLabel[starter.fit.reason].toLowerCase()}).{' '}
                 <span className="text-xs text-zinc-500">After you save, download it from Models with one confirmed click.</span>
               </p>
             )}

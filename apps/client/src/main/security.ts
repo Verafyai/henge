@@ -5,7 +5,7 @@
 import path from 'node:path';
 
 export const APP_SCHEME = 'app';
-export const APP_HOST = 'swarm-explorer';
+export const APP_HOST = 'henge';
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 
 /** Every privileged window uses exactly these. A test asserts them on each live window. */

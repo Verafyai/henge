@@ -11,7 +11,7 @@ export interface SecretStore {
 
 export type SecretName = 'session' | 'device-key' | 'cache-key';
 
-export const DEFAULT_KEYCHAIN_SERVICE = 'ai.verafy.swarmexplorer';
+export const DEFAULT_KEYCHAIN_SERVICE = 'ai.verafy.henge';
 
 export class KeyringStore implements SecretStore {
   constructor(private readonly service = DEFAULT_KEYCHAIN_SERVICE) {}

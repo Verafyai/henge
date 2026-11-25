@@ -22,7 +22,7 @@ export default async function Authorize({ searchParams }: { searchParams: SP }) 
   const sp = await searchParams;
   const flat = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]));
   const parsed = authorizeQuerySchema.safeParse(flat);
-  if (!parsed.success) return <Problem>Start sign in again from the Swarm Explorer client.</Problem>;
+  if (!parsed.success) return <Problem>Start sign in again from the Henge app.</Problem>;
   const q = parsed.data;
   const client = await findClient(q.client_id);
   if (!client || !redirectAllowed(client.redirectUris, q.redirect_uri)) return <Problem>The app that sent you here is not registered.</Problem>;

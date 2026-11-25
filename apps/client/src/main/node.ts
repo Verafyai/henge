@@ -97,7 +97,7 @@ export class NodeController extends EventEmitter {
   }
 
   private startProxy() {
-    const child = utilityProcess.fork(path.join(__dirname, 'proxy.js'), [], { serviceName: 'Swarm Explorer model proxy', env: { PATH: '' }, stdio: 'ignore' });
+    const child = utilityProcess.fork(path.join(__dirname, 'proxy.js'), [], { serviceName: 'Henge model proxy', env: { PATH: '' }, stdio: 'ignore' });
     this.proxy = child;
     const ollama = this.opts.testHooks?.ollamaHost ?? process.env['OLLAMA_HOST'];
     child.postMessage({ type: 'configure', key: this.capabilityKey, socketPath: this.socketPath, ollamaBase: ollamaBaseUrl({ OLLAMA_HOST: ollama }) });
@@ -147,7 +147,7 @@ export class NodeController extends EventEmitter {
     if (ollamaHost) env['OLLAMA_HOST'] = ollamaHost;
     if (this.opts.testHooks?.hardwareFixture) env['SWARM_EXPLORER_HARDWARE_FIXTURE'] = this.opts.testHooks.hardwareFixture;
     if (process.platform === 'win32') env['SystemRoot'] = process.env['SystemRoot'] ?? 'C:\\Windows';
-    const child = utilityProcess.fork(path.join(__dirname, 'supervisor.js'), [], { serviceName: 'Swarm Explorer node supervisor', env, stdio: 'ignore' });
+    const child = utilityProcess.fork(path.join(__dirname, 'supervisor.js'), [], { serviceName: 'Henge node supervisor', env, stdio: 'ignore' });
     this.child = child;
     child.on('message', (raw: unknown) => this.onMessage(raw));
     child.on('exit', () => {

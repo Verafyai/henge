@@ -1,5 +1,7 @@
 /**
- * Fit for this machine (SPEC 5.4): Runs well, Runs slowly, Will not fit.
+ * Fit for this machine (SPEC 5.4). Per Rex's decision of 2026-11-25 the UI shows only facts: whether
+ * the model fits in memory, and the tokens per second measured on this machine. No "Runs well" or
+ * "Runs slowly" labels ship until benchmark data from the alpha supports thresholds.
  *
  * Before download the estimate uses only memory facts: does the artifact fit in GPU memory, in
  * system memory, or in neither. That is a size comparison, not a speed claim. After download the
@@ -15,11 +17,15 @@ export const FIT_STATUSES = ['runs_well', 'runs_slowly', 'will_not_fit', 'unknow
 export type FitStatus = (typeof FIT_STATUSES)[number];
 export const fitStatusSchema = z.enum(FIT_STATUSES);
 
-export const fitLabel: Record<FitStatus, string> = {
-  runs_well: 'Runs well',
-  runs_slowly: 'Runs slowly',
-  will_not_fit: 'Will not fit',
-  unknown: 'Fit unknown',
+/** Short factual label for the memory comparison. */
+export const memoryFitLabel: Record<FitReason, string> = {
+  gpu_memory: 'Fits in GPU memory',
+  unified_memory: 'Fits in memory',
+  system_memory_only: 'Fits in system memory only',
+  too_large: 'Too large for this computer',
+  memory_unknown: 'Memory not measured',
+  benchmark: 'Measured',
+  benchmark_uncalibrated: 'Measured',
 };
 
 export type FitReason = 'gpu_memory' | 'unified_memory' | 'system_memory_only' | 'too_large' | 'memory_unknown' | 'benchmark' | 'benchmark_uncalibrated';
@@ -53,13 +59,13 @@ export function estimateFit(sizeBytes: number, m: MemoryFacts): FitEstimate {
 }
 
 export const fitReasonText: Record<FitReason, string> = {
-  gpu_memory: 'Estimate: fits in GPU memory. A benchmark after download confirms it.',
-  unified_memory: 'Estimate: fits in unified memory. A benchmark after download confirms it.',
-  system_memory_only: 'Estimate: larger than GPU memory, so it would run from system memory.',
+  gpu_memory: 'The download is smaller than this GPU\'s memory.',
+  unified_memory: 'The download is smaller than this computer\'s unified memory.',
+  system_memory_only: 'Larger than GPU memory, so it would run from system memory.',
   too_large: 'Larger than the memory on this computer.',
-  memory_unknown: 'Memory could not be measured, so fit is unknown until a benchmark.',
+  memory_unknown: 'Memory could not be measured on this computer.',
   benchmark: 'Measured on this computer.',
-  benchmark_uncalibrated: 'Benchmark recorded. Speed thresholds for this runtime are not calibrated yet, so the memory estimate stands.',
+  benchmark_uncalibrated: 'Measured on this computer.',
 };
 
 /** Per-runtime speed thresholds, stored with a catalog version on the server (SPEC 5.4). */

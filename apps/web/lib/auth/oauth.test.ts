@@ -49,10 +49,10 @@ function proof(d: ReturnType<typeof device>, installId: string, ts = Date.now())
 const bearer = (t: string) => new Request('http://x/v1/me', { headers: { authorization: `Bearer ${t}` } });
 
 describe('redirect matching', () => {
-  const reg = ['http://127.0.0.1/callback', 'swarmexplorer://auth/callback'];
+  const reg = ['http://127.0.0.1/callback', 'henge://auth/callback'];
   it('accepts any loopback port and the custom scheme exactly', () => {
     expect(redirectAllowed(reg, 'http://127.0.0.1:49152/callback')).toBe(true);
-    expect(redirectAllowed(reg, 'swarmexplorer://auth/callback')).toBe(true);
+    expect(redirectAllowed(reg, 'henge://auth/callback')).toBe(true);
   });
   it('refuses other hosts, paths, queries and userinfo', () => {
     expect(redirectAllowed(reg, 'http://localhost:49152/callback')).toBe(false);

@@ -87,7 +87,7 @@ export function SwarmPage({ slug }: { slug: string }) {
   );
 }
 
-/** Target of swarmexplorer://join/{swarm}. A link can only open this review, never join (SPEC 4.4). */
+/** Target of henge://join/{swarm}. A link can only open this review, never join (SPEC 4.4). */
 export function JoinReview({ slug }: { slug: string }) {
   const q = useSwarm(slug);
   const { go } = useNav();

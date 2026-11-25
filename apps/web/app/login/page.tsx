@@ -19,7 +19,7 @@ export default async function Login({ searchParams }: { searchParams: SP }) {
     <div className="mx-auto max-w-md px-4 py-16">
       <h1 className="text-3xl font-bold tracking-tight text-ink">Sign in to Swarm Explorer</h1>
       <p className="mt-3 text-ink-2">
-        Signing in here connects the Swarm Explorer desktop client to your account. Joining swarms, running your node and your Wallet live in the client.
+        Signing in here connects the Henge desktop app to your account. Joining swarms, running your node and your Wallet live in the client.
       </p>
       {dev ? (
         <section aria-labelledby="dev-sign-in" className="mt-8 rounded-card border border-line p-5">

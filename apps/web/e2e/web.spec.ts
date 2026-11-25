@@ -22,7 +22,7 @@ test('search narrows the list', async ({ page }) => {
 
 test('swarm page opens the app through a navigate-only deep link', async ({ page }) => {
   await page.goto('/swarms/verafy-dao-juries');
-  await expect(page.getByRole('link', { name: 'Open in Swarm Explorer' })).toHaveAttribute('href', 'swarmexplorer://swarm/verafy-dao-juries');
+  await expect(page.getByRole('link', { name: 'Open in Henge' })).toHaveAttribute('href', 'henge://swarm/verafy-dao-juries');
   await expect(page.getByText('12 credits per accepted task')).toBeVisible();
   await expect(page.getByText('Pool empty: no paid tasks until the publisher funds it.')).toBeVisible();
   await expect(page.getByText('Not enough history yet')).toBeVisible();

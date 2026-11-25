@@ -20,7 +20,7 @@ function TitleStrip({ online }: { online: boolean }) {
   return (
     <div className="app-drag flex h-9 shrink-0 items-center border-b border-zinc-200 bg-zinc-100 pl-20 pr-4 text-xs text-zinc-500">
       <span className="flex-1 text-center">
-        Swarm Explorer v{info.data.version} ({info.data.channel})
+        Henge v{info.data.version} ({info.data.channel})
       </span>
       <span className="flex items-center gap-1.5" data-testid="api-status">
         <span aria-hidden="true" className={online ? 'size-2 rounded-full bg-accent' : 'size-2 rounded-full border border-zinc-400'} />
@@ -192,11 +192,9 @@ function TopBar() {
   const active = tabOf(route);
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-teal-400/40 bg-white px-4">
-      <button type="button" onClick={() => go({ name: 'store' })} className="mr-4 flex items-center gap-2 whitespace-nowrap" aria-label="Swarm Explorer by Verafy, Store">
+      <button type="button" onClick={() => go({ name: 'store' })} className="mr-4 flex items-center gap-2 whitespace-nowrap" aria-label="Henge by Verafy, Store">
         <VerafyMark className="mr-2 h-[15px] w-auto text-ink" />
-        <span className="text-[15px] font-bold">
-          Swarm <span className="text-brand">Explorer</span>
-        </span>
+        <span className="text-[15px] font-bold">Henge</span>
       </button>
       <button type="button" aria-label="Back" disabled={!canBack} onClick={back} className="px-1 text-lg text-zinc-500 disabled:text-zinc-300">
         &#8249;

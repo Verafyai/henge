@@ -16,6 +16,6 @@ export function proxySocketDir(userDataDir: string): string {
 }
 
 export function proxySocketPath(userDataDir: string, tag: string, platform = process.platform): string {
-  if (platform === 'win32') return `\\\\.\\pipe\\swarm-explorer-proxy-${tag}`;
+  if (platform === 'win32') return `\\\\.\\pipe\\henge-proxy-${tag}`;
   return path.join(proxySocketDir(userDataDir), `proxy-${tag}.sock`);
 }

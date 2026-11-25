@@ -1,7 +1,7 @@
 # Local packaging only (SPEC 15.1). Builds are unsigned or ad-hoc signed.
 # Production signing and notarization need Rex's separate approval (docs/CERTIFICATES.md).
-appId: ai.verafy.swarmexplorer
-productName: Swarm Explorer
+appId: ai.verafy.henge
+productName: Henge
 copyright: Copyright Verafy
 directories:
   output: release
@@ -12,8 +12,8 @@ files:
 asar: true
 artifactName: SwarmExplorer-${version}-${os}-${arch}.${ext}
 protocols:
-  - name: Swarm Explorer
-    schemes: [swarmexplorer]
+  - name: Henge
+    schemes: [henge]
 electronFuses:
   runAsNode: false
   enableCookieEncryption: true

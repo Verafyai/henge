@@ -21,7 +21,7 @@ import {
   swarmReleases,
   swarms,
 } from './schema';
-import { seedAccounts, seedEconomicProposal, seedModels, seedOauthClients, seedPublisher, seedSwarmFiles } from './seed-data';
+import { seedAccounts, seedEconomicConfigV1, seedModels, seedOauthClients, seedPublisher, seedSwarmFiles } from './seed-data';
 
 export const FIXTURES = () => path.join(repoRoot(), 'packages', 'schema', 'fixtures');
 
@@ -156,7 +156,7 @@ export async function seed() {
     }
   }
 
-  await db.insert(economicConfigs).values({ ...seedEconomicProposal, status: 'proposal' });
+  await db.insert(economicConfigs).values({ ...seedEconomicConfigV1, status: 'approved' });
   return { accounts: acct.length, swarms: seedSwarmFiles.length, models: seedModels.length, publisherKeyId: key.keyId };
 }
 
