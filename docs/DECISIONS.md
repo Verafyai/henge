@@ -511,3 +511,9 @@ These settle the open items from M0 to M3. Where an earlier section below says *
   - The web suite does the same with `.data/pglite-e2e-web`.
   - Neither touches the dev database in `.data/pglite`, and neither reuses a running server. If port 3000 is
     busy, stop the dev server first.
+
+## Staging test nodes (2026-11-25)
+
+- The protection-bypass secret (approved by Rex) is read from `HENGE_VERCEL_BYPASS` in unpackaged runs only and sent
+  as `x-vercel-protection-bypass` only to the API's own origin (`apps/client/src/main/staging-bypass.ts`). Packaged
+  builds never read it, it is never in git or a build, and a plain-http API URL disables it.

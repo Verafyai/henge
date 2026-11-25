@@ -6,6 +6,7 @@ import type { Route } from '../shared/routes';
 import { AuthManager } from './auth';
 import { EncryptedCache } from './cache';
 import { API_BASE_URL, CHANNEL, DEV_SERVER, KEYCHAIN_SERVICE, isDev } from './config';
+import { installStagingBypass } from './staging-bypass';
 import { SCHEME, deepLinkFromArgv, parseDeepLink } from './deeplinks';
 import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
@@ -35,6 +36,9 @@ if (!app.requestSingleInstanceLock()) {
 if (app.isPackaged || process.env['SWARM_EXPLORER_REGISTER_PROTOCOL'] === '1') {
   app.setAsDefaultProtocolClient(SCHEME);
 }
+
+// Test nodes only: the staging protection-bypass secret from the environment, never in packaged builds.
+installStagingBypass({ isPackaged: app.isPackaged, apiBaseUrl: API_BASE_URL, env: process.env });
 
 const secrets = new KeyringStore(KEYCHAIN_SERVICE);
 const auth = new AuthManager({
