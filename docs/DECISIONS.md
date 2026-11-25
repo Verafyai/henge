@@ -414,6 +414,9 @@ These settle the open items from M0 to M3. Where an earlier section below says *
   - `danger`;
   - `live`.
 - The app header shows the Henge mark with "HENGE // by Verafy".
-- **E2E prerequisite (unchanged):** the client suite needs a fresh local database each run:
-  `pnpm db:reset && pnpm --filter @swarm-explorer/client release:test`, then `pnpm e2e`. A later test publishes
-  a permission-changing release, so a second run against the same database fails.
+- **E2E databases (Rex, 2026-11-25):** each Playwright suite owns its database and resets it on every run.
+  - The client suite uses `.data/pglite-e2e-client`. Its webServer step wipes, migrates and seeds it, publishes
+    the test-signed update manifest (`release:test`), then starts the website.
+  - The web suite does the same with `.data/pglite-e2e-web`.
+  - Neither touches the dev database in `.data/pglite`, and neither reuses a running server. If port 3000 is
+    busy, stop the dev server first.
