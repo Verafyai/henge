@@ -105,7 +105,7 @@ export function toModel(r: ModelRow): CatalogModel {
   };
 }
 
-export function toHarnessRelease(r: NonNullable<Awaited<ReturnType<typeof getHarnessRelease>>>): HarnessReleaseInfo {
+export function toHarnessRelease(r: NonNullable<Awaited<ReturnType<typeof getHarnessRelease>>>, downloadUrl: string | null = null): HarnessReleaseInfo {
   return {
     name: r.harness.name,
     version: r.release.version,
@@ -118,7 +118,8 @@ export function toHarnessRelease(r: NonNullable<Awaited<ReturnType<typeof getHar
     signature: r.release.signature,
     reviewed: r.release.reviewStatus === 'approved',
     revoked: r.release.revokedAt !== null,
-    downloadUrl: null,
+    signingKey: r.signingKey,
+    downloadUrl,
   };
 }
 

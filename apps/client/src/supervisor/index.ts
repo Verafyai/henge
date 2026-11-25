@@ -1,7 +1,7 @@
 /**
  * Node supervisor (SPEC 11.1, 11.2): a separate Electron utility process. It detects hardware and
- * runtimes, owns the pause state, and (M2) downloads, verifies, benchmarks and removes models;
- * scheduling and leases arrive in M5. It never imports the
+ * runtimes, owns the pause state, (M2) downloads, verifies, benchmarks and removes models, and
+ * (M4) verifies signed harness bundles and runs them in the sandbox. Scheduling arrives in M5. It never imports the
  * keychain module and never sees tokens or keys: the main process makes every authenticated call.
  */
 import { execFile } from 'node:child_process';
@@ -10,8 +10,20 @@ import path from 'node:path';
 import { discoverLlamaCpp, discoverOllama, hardwareFixture, ollamaBaseUrl } from '@swarm-explorer/node-core';
 import { detectHardware, systemProbeDeps } from '@swarm-explorer/node-core/probe';
 import { HF_DEFAULT_BASE, LLAMA_BENCH_ARGS, hfInstall, ollamaBenchmark, ollamaInstall, ollamaRemove, parseLlamaBench } from '@swarm-explorer/node-core/sources';
-import { mintCapability, proxyComplete, runSandboxChecks } from '@swarm-explorer/sandbox';
-import type { Detection, SandboxCheck, SupervisorCommand, SupervisorMessage } from '../shared/node';
+import { lookup as dnsLookup } from 'node:dns/promises';
+import {
+  completeResponseSchema,
+  egressFetch,
+  grantedCapabilities,
+  heuristicScreener,
+  mintCapability,
+  proxyComplete,
+  runHarness,
+  runSandboxChecks,
+  Scratch,
+  verifyBundle,
+} from '@swarm-explorer/sandbox';
+import type { Detection, HarnessRunResult, HarnessRunSpec, SandboxCheck, SupervisorCommand, SupervisorMessage } from '../shared/node';
 
 type ParentPort = { on(ev: 'message', cb: (e: { data: unknown }) => void): void; postMessage(m: unknown): void };
 const port = (process as unknown as { parentPort: ParentPort }).parentPort;
@@ -47,6 +59,68 @@ async function sandboxCheck(active: { contentHash: string; modelClass: string } 
 }
 
 const send = (m: SupervisorMessage) => port.postMessage(m);
+
+/** Engineering cap on tokens per model call for a sandboxed task. Not a business value. */
+const MAX_TOKENS_PER_CALL = 2048;
+const runs = new Map<number, AbortController>();
+
+/**
+ * One sandboxed task (SPEC 11.3): verify the signed bundle on disk, mint a capability scoped to
+ * this task, model and permission set, and run it. Network and scratch exist only if granted.
+ */
+async function harnessRun(id: number, spec: HarnessRunSpec): Promise<HarnessRunResult> {
+  const empty = { output: null, screen: null, modelCalls: 0 };
+  if (!sandbox) return { ...empty, status: 'refused', detail: 'The model proxy is not running.' };
+  const proxy = sandbox;
+  const check = verifyBundle(spec.bundleDir, spec.release, (k) => (k === spec.key.keyId ? spec.key : undefined), {
+    harnessReleases: new Set(spec.revoked.harnessReleases),
+    publisherKeys: new Set(spec.revoked.publisherKeys),
+  });
+  if (!check.ok) return { ...empty, status: 'bundle_rejected', detail: `The harness bundle was refused: ${check.reason}.` };
+  const bundle = check.bundle;
+  const ctl = new AbortController();
+  runs.set(id, ctl);
+  try {
+    const wallMs = Math.min(bundle.harness.limits.wall_s, spec.timeoutS) * 1000;
+    const token = mintCapability(
+      proxy.key,
+      { lease: spec.lease, model: spec.model.contentHash, model_class: spec.model.modelClass, max_tokens: MAX_TOKENS_PER_CALL, max_cost_usd_micros: 0, permissions_hash: spec.permissionsHash },
+      wallMs + 60_000,
+    );
+    const scratch = spec.permissions.scratchBytes > 0 ? await Scratch.open(path.join(diskDir, 'scratch'), spec.swarm, spec.permissions.scratchBytes) : null;
+    const lookup = async (host: string) => (await dnsLookup(host, { all: true })).map((a) => ({ address: a.address, family: a.family === 6 ? (6 as const) : (4 as const) }));
+    const r = await runHarness({
+      bundle,
+      input: spec.input,
+      granted: grantedCapabilities(bundle.harness.capabilities, { networkDomains: spec.permissions.network, scratchBytes: spec.permissions.scratchBytes }),
+      limits: { memoryMb: bundle.harness.limits.memory_mb, wallMs, maxModelCalls: bundle.harness.loop.max_steps, maxTokensPerCall: MAX_TOKENS_PER_CALL },
+      host: {
+        complete: async (req) => {
+          const res = await proxyComplete(proxy.socketPath, token, req).catch(() => ({ status: 0, body: null }));
+          const body = completeResponseSchema.safeParse(res.body);
+          if (res.status === 200 && body.success) return { ok: true, response: body.data };
+          const code = (res.body as { error?: { code?: unknown } } | null)?.error?.code;
+          return { ok: false, error: typeof code === 'string' ? code.slice(0, 60) : `proxy_http_${res.status}` };
+        },
+        fetch: spec.permissions.network.length ? (req) => egressFetch(req, { allowed: spec.permissions.network, lookup }) : null,
+        scratch,
+        screen: heuristicScreener,
+      },
+      signal: ctl.signal,
+    });
+    const screen = 'screen' in r ? r.screen : null;
+    if (r.status === 'ok') {
+      const out = r.output;
+      if (!out || typeof out !== 'object' || Array.isArray(out)) return { status: 'invalid_output', output: null, detail: 'The answer was not a JSON object.', screen, modelCalls: r.modelCalls };
+      return { status: 'ok', output: out as Record<string, unknown>, detail: 'finished', screen, modelCalls: r.modelCalls };
+    }
+    if (r.status === 'failed' && r.reason === 'cancelled') return { ...empty, status: 'cancelled', detail: 'Stopped.', screen };
+    const detail = r.status === 'limit_exceeded' ? `Stopped at the ${r.limit.replace('_', ' ')} limit.` : r.reason;
+    return { status: r.status, output: null, detail: detail.slice(0, 400), screen, modelCalls: 0 };
+  } finally {
+    runs.delete(id);
+  }
+}
 
 /** PATH lookup without running a shell or the binary itself. */
 async function which(bin: string): Promise<string | null> {
@@ -125,8 +199,9 @@ port.on('message', (e) => {
   if (cmd.type === 'detect' && Number.isInteger(cmd.id)) {
     void detect().then((detection) => send({ type: 'detected', id: cmd.id, detection }));
   } else if (cmd.type === 'pause' || cmd.type === 'resume') {
-    // Nothing runs yet; when leases exist (M5), pause abandons them immediately (SPEC 5.2, 7).
+    // Pause stops any sandboxed run at once (SPEC 5.2). Leases arrive in M5.
     paused = cmd.type === 'pause';
+    if (paused) for (const c of runs.values()) c.abort();
     send({ type: 'paused', paused });
   } else if (cmd.type === 'install' && Number.isInteger(cmd.id)) {
     void install(cmd.id, cmd.artifact).then(
@@ -144,6 +219,13 @@ port.on('message', (e) => {
       (results) => send({ type: 'sandbox-checked', id: cmd.id, results }),
       (e: unknown) => send({ type: 'sandbox-checked', id: cmd.id, results: [{ id: 'error', title: 'Sandbox checks ran', passed: false, detail: String(e).slice(0, 300) }] }),
     );
+  } else if (cmd.type === 'harness-run' && Number.isInteger(cmd.id)) {
+    void harnessRun(cmd.id, cmd.run).then(
+      (result) => send({ type: 'harness-ran', id: cmd.id, result }),
+      (e: unknown) => send({ type: 'harness-ran', id: cmd.id, result: { status: 'failed', output: null, detail: String(e).slice(0, 300), screen: null, modelCalls: 0 } }),
+    );
+  } else if (cmd.type === 'harness-cancel') {
+    runs.get(cmd.id)?.abort();
   } else if (cmd.type === 'remove' && Number.isInteger(cmd.id)) {
     void remove(cmd.runtime, cmd.location).then((ok) => send({ type: 'removed', id: cmd.id, ok }));
   }

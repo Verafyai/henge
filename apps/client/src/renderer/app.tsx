@@ -4,7 +4,9 @@ import { PLANNED_PAGES, PlaceholderPage, SettingsPage } from './pages/other';
 import { ModelsPage } from './pages/models';
 import { SetupPage } from './pages/setup';
 import { StorePage } from './pages/store';
-import { JoinReview, SwarmPage } from './pages/swarm';
+import { HarnessPage } from './pages/harness';
+import { LibraryPage } from './pages/library';
+import { JoinReview, ReconsentPage, SwarmPage } from './pages/swarm';
 import { Shell } from './ui/shell';
 
 function View() {
@@ -21,15 +23,18 @@ function View() {
       return <SwarmPage key={route.slug} slug={route.slug} />;
     case 'join':
       return <JoinReview key={route.slug} slug={route.slug} />;
+    case 'reconsent':
+      return <ReconsentPage key={route.membershipId} membershipId={route.membershipId} />;
     case 'model':
       return <ModelsPage highlight={route.slug} />;
     case 'models':
       return <ModelsPage />;
     case 'harness':
-      return <PlaceholderPage title={`Harness ${route.slug}`} body="Harness details (publisher, signature, prompt, tools and output schema) arrive with the Store in milestone M4." />;
+      return <HarnessPage key={route.slug} name={route.slug} />;
     case 'result':
       return <PlaceholderPage title="Result" body="Public results and verification receipts arrive in milestone M7." />;
     case 'library':
+      return <LibraryPage />;
     case 'activity':
     case 'community':
     case 'wallet':

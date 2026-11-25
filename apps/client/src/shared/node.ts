@@ -3,6 +3,7 @@
  * Messages between main and the supervisor are validated with these schemas on receipt.
  */
 import { fitStatusSchema, hardwareReportSchema, runtimeSchema, type Enforcement, type HardwareReport, type Mode, type Recommendation, type RuntimeInfo } from '@swarm-explorer/node-core';
+import type { JoinStarted, StoreHome } from '@swarm-explorer/api-client';
 import { z } from 'zod';
 
 export const detectionSchema = z.object({
@@ -39,6 +40,7 @@ export const supervisorMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('installed'), id: z.number().int(), outcome: installOutcomeSchema }),
   z.object({ type: z.literal('benchmarked'), id: z.number().int(), tps: z.number().positive().nullable(), detail: z.string().max(300).nullable() }),
   z.object({ type: z.literal('removed'), id: z.number().int(), ok: z.boolean() }),
+  z.object({ type: z.literal('harness-ran'), id: z.number().int(), result: z.lazy(() => harnessRunResultSchema) }),
   z.object({ type: z.literal('sandbox-checked'), id: z.number().int(), results: z.array(z.object({ id: z.string().max(60), title: z.string().max(200), passed: z.boolean(), detail: z.string().max(400) })).max(40) }),
 ]);
 
@@ -58,7 +60,36 @@ export type SupervisorCommand =
   | { type: 'remove'; id: number; runtime: 'ollama' | 'llama_cpp'; location: string }
   /** Session capability key and proxy socket (SPEC 11.2). Sent by message, never by environment. */
   | { type: 'sandbox-config'; key: string; socketPath: string }
-  | { type: 'sandbox-check'; id: number; activeModel: { contentHash: string; modelClass: string } | null };
+  | { type: 'sandbox-check'; id: number; activeModel: { contentHash: string; modelClass: string } | null }
+  /** Verify the bundle, then run one task in the sandbox through the proxy (SPEC 11.3). */
+  | { type: 'harness-run'; id: number; run: HarnessRunSpec }
+  | { type: 'harness-cancel'; id: number };
+
+/** Everything the supervisor needs for one sandboxed run. Main builds it from reviewed API facts. */
+export type HarnessRunSpec = {
+  bundleDir: string;
+  release: { publisher: string; name: string; version: string; bundleHash: string; signature: string; reviewed: boolean; revoked: boolean };
+  key: { keyId: string; publisher: string; publicKey: string; status: 'active' | 'revoked' };
+  revoked: { harnessReleases: string[]; publisherKeys: string[] };
+  swarm: string;
+  /** What the user approved. Network and scratch are linked only when granted. */
+  permissions: { network: string[]; scratchBytes: number };
+  permissionsHash: string;
+  model: { contentHash: string; modelClass: string };
+  /** Capability scope label, for example `qualification:<membership id>`. */
+  lease: string;
+  timeoutS: number;
+  input: Record<string, unknown>;
+};
+
+export const harnessRunResultSchema = z.object({
+  status: z.enum(['ok', 'refused', 'limit_exceeded', 'failed', 'invalid_output', 'bundle_rejected', 'cancelled']),
+  output: z.record(z.string(), z.unknown()).nullable(),
+  detail: z.string().max(400),
+  screen: z.object({ verdict: z.enum(['allow', 'flag']), reasons: z.array(z.string().max(60)).max(20), screener: z.string().max(60) }).nullable(),
+  modelCalls: z.number().int().nonnegative(),
+});
+export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
 
 const fitSchema = z.object({ status: fitStatusSchema, basis: z.enum(['estimate', 'benchmark']), reason: z.string().max(40) });
 
@@ -148,6 +179,27 @@ export type NodeOverview = {
   /** Smallest catalog artifact used for the GPU check, or null when the catalog was offline. */
   catalogMinBytes: number | null;
   models: ModelsOverview;
+  memberships: MembershipsOverview;
+};
+
+/** A local join or qualification in progress, for the Library and join screens. */
+export type MembershipJob = {
+  membershipId: string;
+  swarm: string;
+  phase: 'downloading' | 'verifying' | 'running' | 'submitting' | 'done' | 'stopped' | 'error';
+  detail: string;
+};
+
+export type Permissions = JoinStarted['permissions'];
+export type MembershipResult<T = object> = ({ ok: true } & T) | { ok: false; code: string; message: string };
+
+/** Your swarms as the Library and Store show them. Contains no secrets. */
+export type MembershipsOverview = {
+  home: StoreHome | null;
+  jobs: MembershipJob[];
+  /** Permissions last approved per membership, for showing what a new release changes. */
+  granted: Record<string, Permissions>;
+  error: string | null;
 };
 
 export type { HardwareReport, Mode, RuntimeInfo };

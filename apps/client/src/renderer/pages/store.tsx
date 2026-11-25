@@ -1,10 +1,11 @@
 import type { SwarmSummary } from '@swarm-explorer/api-client';
-import { categories, categoryLabel } from '@swarm-explorer/core';
+import { categories, categoryLabel, formatShare } from '@swarm-explorer/core';
+import { useEffect } from 'react';
 import { Chip } from '@swarm-explorer/ui';
 import { useNode, useRecent, useSwarms } from '../api';
 import { useNav } from '../router';
 import { Btn, Empty, Eyebrow } from '../ui/bits';
-import { permissionLines, rewardText, verificationLabel } from '../view';
+import { membershipLabel, permissionLines, rewardText, verificationLabel } from '../view';
 
 function SwarmTile({ s }: { s: SwarmSummary }) {
   const { go } = useNav();
@@ -31,7 +32,7 @@ function SwarmTile({ s }: { s: SwarmSummary }) {
   );
 }
 
-/** Store home (SPEC 4.2): featured swarms, category tiles, Your node panel. No store-sale UI. */
+/** Store home (SPEC 4.2): Your swarms first, then categories, featured swarms and Your node. No store-sale UI. */
 export function StorePage({ category }: { category?: string }) {
   const swarms = useSwarms();
   const recent = useRecent();
@@ -40,6 +41,10 @@ export function StorePage({ category }: { category?: string }) {
   const setup = node.data?.setup ?? null;
   const all = swarms.data ?? [];
   const shown = category ? all.filter((s) => s.category === category) : all;
+  const joined = node.data?.memberships.home?.joined ?? [];
+  useEffect(() => {
+    void window.swarm.swarms.refresh();
+  }, []);
 
   return (
     <div className="mx-auto max-w-[1180px] px-6 py-6">
@@ -69,6 +74,25 @@ export function StorePage({ category }: { category?: string }) {
         </ul>
       </section>
 
+      {!category && joined.length > 0 && (
+        <section aria-label="Your swarms" className="mt-6">
+          <Eyebrow>Your swarms</Eyebrow>
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {joined.map((m) => (
+              <li key={m.id}>
+                <button type="button" onClick={() => go({ name: 'library' })} className="w-full rounded-xl border border-zinc-200 bg-white p-4 text-left hover:border-brand">
+                  <span className="block font-bold text-ink">{all.find((s) => s.slug === m.swarm)?.name ?? m.swarm}</span>
+                  <span className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
+                    <Chip tone={membershipLabel[m.status].tone}>{membershipLabel[m.status].text}</Chip>
+                    {`${formatShare(m.share_bp)} share`}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_280px]">
         <section aria-label="Featured swarms">
           <Eyebrow>{category ? 'Swarms in this category' : 'Featured swarms'}</Eyebrow>
@@ -93,7 +117,7 @@ export function StorePage({ category }: { category?: string }) {
             {setup ? (
               <>
                 <p className="text-sm font-semibold text-ink">{node.data?.paused ? 'Paused' : `${{ local: 'Local', api: 'API key', hybrid: 'Hybrid' }[setup.mode]} mode`}</p>
-                <p className="mt-1 text-xs text-zinc-600">{`Cause: ${all.find((s) => s.slug === setup.swarm)?.name ?? setup.swarm}. ${node.data?.models.installed.length ? `${node.data.models.installed.length} model ready.` : 'No model downloaded yet.'} Joining arrives in M4, so nothing runs yet.`}</p>
+                <p className="mt-1 text-xs text-zinc-600">{`Cause: ${all.find((s) => s.slug === setup.swarm)?.name ?? setup.swarm}. ${node.data?.models.installed.length ? `${node.data.models.installed.length} model ready.` : 'No model downloaded yet.'} ${node.data?.memberships.home?.joined.length ? '' : 'Join a swarm from its page to start.'}`}</p>
                 <Btn variant="quiet" className="mt-2 px-2 py-1 text-xs" onClick={() => go({ name: 'models' })}>
                   Models and storage
                 </Btn>

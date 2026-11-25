@@ -270,7 +270,6 @@ export function SettingsPage() {
 
 /** Pages reserved by SPEC 4.1 that later milestones fill in (SPEC 16.4). */
 export const PLANNED_PAGES = {
-  library: { title: 'Library', body: 'Your joined swarms, their shares and per-swarm pause and leave. Joining arrives in milestone M4.' },
   activity: { title: 'Activity', body: 'Your node timeshare, queue and run history. Task leasing arrives in milestone M5; until then nothing runs.' },
   community: { title: 'Community', body: 'Profiles, teams and result discussions arrive in milestone M10.' },
   wallet: { title: 'Wallet', body: 'Credits earned for verified work in funded swarms, and impact from volunteer swarms. The ledger view arrives in milestone M6.' },

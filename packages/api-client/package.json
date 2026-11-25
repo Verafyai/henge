@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./contracts": "./src/contracts.ts",
-    "./release": "./src/release.ts"
+    "./release": "./src/release.ts",
+    "./swarm-view": "./src/swarm-view.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
@@ -14,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@swarm-explorer/core": "workspace:*",
     "zod": "4.6.7"
   },
   "devDependencies": {

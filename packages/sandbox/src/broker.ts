@@ -109,7 +109,8 @@ const harnessCompleteSchema = z
   })
   .strict();
 
-export async function runHarness(o: { bundle: VerifiedBundle; input: unknown; granted: ReadonlySet<Capability>; limits: RunLimits; host: HostServices; now?: () => number }): Promise<RunResult> {
+/** Runs one task. Aborting `signal` (Leave, Pause) terminates the worker at once and reports `cancelled`. */
+export async function runHarness(o: { bundle: VerifiedBundle; input: unknown; granted: ReadonlySet<Capability>; limits: RunLimits; host: HostServices; now?: () => number; signal?: AbortSignal }): Promise<RunResult> {
   const events: RunEvent[] = [];
   const now = o.now ?? Date.now;
   const ev = (kind: string, detail: string) => events.push({ at: now(), kind, detail: detail.slice(0, 300) });
@@ -145,6 +146,7 @@ export async function runHarness(o: { bundle: VerifiedBundle; input: unknown; gr
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      o.signal?.removeEventListener('abort', onAbort);
       void worker.terminate();
       resolve(r);
     };
@@ -152,6 +154,12 @@ export async function runHarness(o: { bundle: VerifiedBundle; input: unknown; gr
       ev('limit', `wall time ${o.limits.wallMs} ms`);
       finish({ status: 'limit_exceeded', limit: 'wall_time', screen, events });
     }, o.limits.wallMs);
+    const onAbort = () => {
+      ev('cancel', 'stopped by the node');
+      finish({ status: 'failed', reason: 'cancelled', screen, events });
+    };
+    if (o.signal?.aborted) onAbort();
+    o.signal?.addEventListener('abort', onAbort, { once: true });
 
     const reply = (body: unknown) => {
       const bytes = new TextEncoder().encode(JSON.stringify(body));

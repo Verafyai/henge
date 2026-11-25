@@ -471,6 +471,39 @@ export const qualifications = pgTable('qualifications', {
   completedAt: ts('completed_at'),
 });
 
+/**
+ * Known-answer qualification tasks (SPEC 3.2, 4.2), held by the coordinator. `expected_json` names
+ * the output fields a correct answer must match; it never leaves the server. Qualification is not
+ * credited work: it creates no ledger entries.
+ */
+export const qualificationTasks = pgTable(
+  'qualification_tasks',
+  {
+    id: id(),
+    swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
+    inputJson: jsonb('input_json').notNull(),
+    expectedJson: jsonb('expected_json').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('qualification_tasks_swarm_idx').on(t.swarmId)],
+);
+
+/** One leased qualification task within one qualification round. Each task is answered at most once per round. */
+export const qualificationAttempts = pgTable(
+  'qualification_attempts',
+  {
+    id: id(),
+    qualificationId: uuid('qualification_id').notNull().references(() => qualifications.id),
+    taskId: uuid('task_id').notNull().references(() => qualificationTasks.id),
+    leasedAt: createdAt(),
+    deadlineAt: ts('deadline_at').notNull(),
+    submittedAt: ts('submitted_at'),
+    outputHash: text('output_hash'),
+    correct: boolean('correct'),
+  },
+  (t) => [uniqueIndex('qualification_attempts_task_idx').on(t.qualificationId, t.taskId)],
+);
+
 export const tasks = pgTable(
   'tasks',
   {

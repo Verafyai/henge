@@ -334,3 +334,66 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - **GGUF re-hash:** the proxy re-hashes GGUF files before first use and refuses a changed file.
 - **Stubbed:** serving GGUF through llama.cpp (starting `llama-server` under the proxy) arrives with task leasing
   (M5). Ollama models are served now.
+
+## M4 Store, swarm pages, join, qualification and leave (2026-11-25)
+
+### Swarm pages (SPEC 4.2)
+- Henge and the website render the same six questions in source order from one shared helper,
+  `packages/api-client/src/swarm-view.ts` (`swarmQuestions`), so both always say the same thing.
+- **Store home** (`GET /v1/store/home`, device-signed) puts Your swarms first, then categories and featured swarms.
+- **Labels:** an active membership says "Joined, no tasks yet" until task leasing exists (M5). No fit adjectives
+  (decision 2026-11-25).
+
+### Join and permissions (SPEC 3.2, 11.4)
+- A join pins the swarm's reviewed manifest by hash. If the release changed while the user was reading, the
+  server answers `release_changed` and nothing is joined.
+- **Approving permissions** sends their exact `permissions_hash`. Main approves only a hash that Henge itself showed
+  for review (`review_first` otherwise), so the renderer cannot approve permissions nobody saw.
+- **Reconsent:** an approved release with a different permissions hash moves active members to
+  `reconsent_required`. Joining or qualifying members restart as joining, with their grants revoked. Shares are
+  kept while stopped. Henge shows the old and new permissions side by side and marks what changed.
+- **Policy check:** the server decides which installed models a swarm's policy accepts. Henge keeps that list per
+  membership.
+
+### Qualification (SPEC 3.2)
+- **Tables:** `qualification_tasks` and `qualification_attempts` (migration 0004). The seed has 3 known-answer
+  tasks per swarm, matching each manifest's `qualification.tasks`.
+- **Scoring:** an answer matches when the expected fields are equal under canonical JSON. Late answers and runs that
+  end without valid output count as wrong. The outcome is decided as soon as it can no longer change. A failed round
+  can be retried, and the message says how many answers matched.
+- **Challenge Vaults:** known answers check `status` only until the coordinator's Lean machine-check lands (M6).
+- **No credit:** qualification writes no ledger entries.
+- **Running it:** qualification runs in the sandbox through the proxy with the user's own model, like real work. It
+  respects Pause but is not limited by run rules.
+- **Token cap:** Henge caps each model call at 2,048 tokens (`MAX_TOKENS_PER_CALL`) on top of the harness's
+  own limit. This is an engineering safety cap, not a business value.
+
+### Bundles
+- **lean-prover:** restructured as a wasm harness with no network. It returns proof text, and the coordinator
+  checks proofs (decision 2026-11-25).
+- **Fixture harnesses:** the three fixture bundles now carry a real `harness.wasm` built by
+  `pnpm --filter @swarm-explorer/sandbox build:fixtures`, with manifest hashes re-pinned.
+- **Local bundle host (flag for Rex):** `GET /v1/harnesses/{name}/releases/{version}/bundle` serves fixture
+  bundles as base64 JSON. It is not in the SPEC 13.1 table. It stands in for object storage, which comes with hosting
+  in M5. It returns 404 if the digest does not match. Henge downloads bundles only from the API origin,
+  re-verifies the digest and signature, and keeps each bundle in a folder named by its hash.
+- **Signing key:** the harness release response now includes the signing key (id, public key, status), so Henge can
+  verify a bundle offline against a key it has been told about.
+
+### Leave (SPEC 3.2)
+- **Order:** Henge aborts the local run first, then sends `DELETE /v1/memberships/{id}`. The server marks open leases
+  abandoned, revokes grants and rebalances shares. Henge then deletes the swarm's scratch folder, and the bundle
+  too if no other joined swarm uses it.
+- **Offline:** if the server cannot be reached, the leave is queued and retried. Local cleanup happens immediately
+  either way. Earned credits stay.
+
+### Reviews
+- `POST /v1/admin/reviews/{id}` (bearer, reviewer or admin role, Idempotency-Key) records a release review. An
+  approval publishes the release and applies the reconsent rules above. This is the release review stub; the full
+  queue UI is M9.
+- **Dev-only route:** `POST /v1/dev/swarm-releases` exists only with `DEV_SIGN_IN=1` and the `x-dev-tool: 1` header.
+  It publishes an example permission-changing release, approved by the seeded reviewer, so e2e can test reconsent.
+
+### Stubbed in M4
+- No real tasks yet: the coordinator and task leasing are M5.
+- Per-swarm pause, pins and priority are shown as status only; editing them arrives with the scheduler (M5).

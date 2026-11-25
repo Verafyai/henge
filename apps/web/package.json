@@ -18,6 +18,7 @@
     "@swarm-explorer/core": "workspace:*",
     "@swarm-explorer/db": "workspace:*",
     "@swarm-explorer/node-core": "workspace:*",
+    "@swarm-explorer/schema": "workspace:*",
     "@swarm-explorer/ui": "workspace:*",
     "drizzle-orm": "0.45.4",
     "next": "16.4.6",

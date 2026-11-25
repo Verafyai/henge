@@ -13,15 +13,8 @@ const r = (method: string, path: string, milestone: string): PlannedRoute => ({
 });
 
 export const PLANNED_ROUTES: PlannedRoute[] = [
-  // 13.1 Node and catalog
-  r('GET', '/store/home', 'M4'),
   // 13.2 Join and qualification
-  r('POST', '/swarms/{id}/memberships', 'M4'),
-  r('POST', '/memberships/{id}/permission-grants', 'M4'),
-  r('POST', '/memberships/{id}/qualification/lease', 'M4'),
-  r('POST', '/memberships/{id}/qualification/results', 'M4'),
   r('PATCH', '/nodes/{node_id}/shares', 'M5'),
-  r('DELETE', '/memberships/{id}', 'M4'),
   // 13.3 Task protocol
   r('POST', '/coordinators/{swarm}/leases', 'M5'),
   r('POST', '/leases/{lease_id}/renew', 'M5'),
@@ -42,7 +35,6 @@ export const PLANNED_ROUTES: PlannedRoute[] = [
   r('POST', '/publishers/{id}/credit-purchases', 'M9'),
   r('POST', '/swarms/{id}/tasks:batch', 'M5'),
   r('GET', '/publishers/{id}/dashboard', 'M9'),
-  r('POST', '/admin/reviews/{id}', 'M4'),
   r('POST', '/admin/revocations', 'M7'),
 ];
 

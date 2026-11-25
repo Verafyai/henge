@@ -2,8 +2,8 @@
   "harness_version": 1,
   "name": "lean-prover",
   "version": "1.4.0",
-  "runtime": "container",
-  "entry": "oci:fixture-image-not-built",
+  "runtime": "wasm",
+  "entry": "harness.wasm",
   "system_prompt": "system-prompt.md",
   "tools": [],
   "loop": {
@@ -15,18 +15,14 @@
   "output_schema": "output.schema.json",
   "min_model_class": "code-7b-plus",
   "capabilities": [
-    "model.complete",
-    "scratch.read",
-    "scratch.write",
-    "network.fetch",
-    "checker.run"
+    "model.complete"
   ],
   "limits": {
     "memory_mb": 1024,
     "cpu_ms": 600000,
     "wall_s": 900,
-    "scratch_mb": 2048,
-    "processes": 8
+    "scratch_mb": 0,
+    "processes": 1
   },
   "fixtures": [
     "fixtures/sample-task.json"
@@ -35,5 +31,5 @@
     "LICENSE"
   ],
   "sbom": "sbom.cdx.json",
-  "x-example": "Fixture bundle for schema and hashing tests. Not a reviewed or runnable release; limits are illustrations."
+  "x-example": "Fixture bundle. Nodes only run the model and return candidate proof text; Lean checking runs on the coordinator as the swarm's machine-check verifier (decision 2026-11-25). Limits are illustrations."
 }

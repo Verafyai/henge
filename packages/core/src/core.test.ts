@@ -102,3 +102,20 @@ describe('copy rules', () => {
     expect(incomeClaim('Earn credits for verified work, usable inside the network')).toBeNull();
   });
 });
+
+describe('equal timeshares (SPEC 7.1)', () => {
+  it('always sums to 10,000 basis points with at most 1 bp spread', async () => {
+    const { equalShares, formatShare, TOTAL_SHARE_BP } = await import('./shares');
+    expect(equalShares(0)).toEqual([]);
+    expect(equalShares(1)).toEqual([10_000]);
+    expect(equalShares(3)).toEqual([3334, 3333, 3333]);
+    for (let n = 1; n <= 64; n++) {
+      const s = equalShares(n);
+      expect(s.reduce((a, b) => a + b, 0)).toBe(TOTAL_SHARE_BP);
+      expect(Math.max(...s) - Math.min(...s)).toBeLessThanOrEqual(1);
+    }
+    expect(() => equalShares(-1)).toThrow(RangeError);
+    expect(formatShare(3334)).toBe('33.3%');
+    expect(formatShare(5000)).toBe('50%');
+  });
+});

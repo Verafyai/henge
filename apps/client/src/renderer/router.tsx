@@ -75,6 +75,8 @@ export function tabOf(r: Route): Tab | null {
     case 'harness':
     case 'result':
       return 'store';
+    case 'reconsent':
+      return 'library';
     case 'library':
     case 'activity':
     case 'community':

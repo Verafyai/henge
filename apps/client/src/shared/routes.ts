@@ -7,6 +7,8 @@ export type Route =
   | { name: 'swarm'; slug: string }
   /** Opened from henge://join/{swarm}: shows the join review, never joins. */
   | { name: 'join'; slug: string }
+  /** A new release changed this membership's permissions; review them again (SPEC 11.4). */
+  | { name: 'reconsent'; membershipId: string }
   | { name: 'model'; slug: string }
   /** The model catalog with fit, downloads and storage (SPEC 5.4). */
   | { name: 'models' }

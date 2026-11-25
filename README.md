@@ -35,7 +35,10 @@ pnpm --filter @swarm-explorer/client release:test       # TEST key in .data/rele
 pnpm --filter @swarm-explorer/client package:internal   # optional: ad-hoc signed zip in apps/client/release
 ```
 
-Both are local only. Nothing is uploaded, and production signing needs separate approval (`docs/CERTIFICATES.md`).
+To try joining: download a model in Models, open a swarm, choose Join, then review and approve its permissions.
+Henge downloads the signed harness and qualifies on known-answer tasks with your own model. Ollama must be running.
+
+Both update commands above are local only. Nothing is uploaded, and production signing needs separate approval (`docs/CERTIFICATES.md`).
 
 Stop the dev server before `pnpm db:reset` (PGlite allows one process at a time). To use Postgres instead, set
 `DATABASE_URL` and run `pnpm db:migrate && pnpm db:seed`.
@@ -52,7 +55,8 @@ pnpm e2e                                     # website suite, TEST release, then
 
 ```
 apps/web             Next.js website (browse-only: swarms, swarm pages, models, download, sign in) and the /v1 API
-apps/client          Electron client: Pick a cause first run, Store, swarm pages, Settings > Node; node
+apps/client          Electron client: Pick a cause first run, Store, swarm pages, join and qualify, Your
+                     swarms (shares, reconsent, leave), Settings > Node; node
                      supervisor utility process; tray and menu Pause; PKCE sign in, keychain, device-signed
                      node requests, encrypted cache, henge:// deep links (navigate only), signed updates
 apps/cli             `swarm` CLI: swarms, show, validate; developer commands arrive in M11

@@ -4,3 +4,4 @@ export * from './credits';
 export * from './policy';
 export * from './states';
 export * from './time';
+export * from './shares';

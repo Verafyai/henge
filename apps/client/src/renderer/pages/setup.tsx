@@ -104,7 +104,7 @@ function SwarmChoice({ s, onChoose }: { s: SwarmSummary; onChoose: () => void })
   );
 }
 
-/** Pick a cause (SPEC 3.1). Steps 4 and 5 (model download, harness install, join) arrive in M2 to M4. */
+/** Pick a cause (SPEC 3.1): category, featured cause, detection and mode. Download and join follow with their own confirmations. */
 export function SetupPage() {
   const node = useNode();
   const swarms = useSwarms();
@@ -221,7 +221,7 @@ export function SetupPage() {
                 <span className="text-xs text-zinc-500">After you save, download it from Models with one confirmed click.</span>
               </p>
             )}
-            <p className="mt-1 text-xs text-zinc-500">Later milestones add the sandboxed harness (M3), then join and qualify (M4).</p>
+            <p className="mt-1 text-xs text-zinc-500">Then join your cause from its page: you review its permissions, and it qualifies on your own model.</p>
           </section>
 
           {error && (

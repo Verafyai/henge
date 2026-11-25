@@ -94,7 +94,14 @@ export async function getHarnessRelease(name: string, version: string) {
     .innerJoin(harnesses, eq(harnesses.id, harnessReleases.harnessId))
     .innerJoin(publishers, eq(publishers.id, harnesses.publisherId))
     .where(and(eq(harnesses.name, name), eq(harnessReleases.version, version), eq(harnessReleases.reviewStatus, 'approved')));
-  return row ?? null;
+  if (!row) return null;
+  const keyId = row.release.signature.split(':')[0] ?? '';
+  const [key] = await db
+    .select({ keyId: publisherKeys.keyId, publicKey: publisherKeys.publicKey, status: publisherKeys.status })
+    .from(publisherKeys)
+    .innerJoin(publishers, eq(publishers.id, publisherKeys.publisherId))
+    .where(and(eq(publisherKeys.keyId, keyId), eq(publishers.slug, row.publisher.slug)));
+  return { ...row, signingKey: key ?? null };
 }
 
 export async function listRevocations(since: Date | null) {

@@ -39,7 +39,7 @@ run('pnpm', ['exec', 'electron-builder', '--config', 'electron-builder.yml', '--
 
 const os = { darwin: 'mac', win32: 'win', linux: 'linux' }[process.platform as 'darwin' | 'win32' | 'linux'];
 const releaseDir = path.join(appDir, 'release');
-const zip = readdirSync(releaseDir).find((f) => f === `SwarmExplorer-${version}-${os}-${process.arch}.zip` || f === `SwarmExplorer-${version}-${os}-${process.arch}.tar.gz`);
+const zip = readdirSync(releaseDir).find((f) => f === `Henge-${version}-${os}-${process.arch}.zip` || f === `Henge-${version}-${os}-${process.arch}.tar.gz`);
 if (!zip) throw new Error(`No artifact for ${version} in ${releaseDir}`);
 
 run('pnpm', ['release:test', '--version', version, '--artifact', path.join(releaseDir, zip)]);

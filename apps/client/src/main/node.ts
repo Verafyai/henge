@@ -10,9 +10,10 @@ import path from 'node:path';
 import { utilityProcess, type UtilityProcess } from 'electron';
 import { capabilitiesAcceptedSchema, createApiClient, registerInstallResponseSchema } from '@swarm-explorer/api-client';
 import { DEFAULT_RUN_RULES, describeRunRules, enforcementSupport, minimizeCapabilities, ollamaBaseUrl, recommendMode } from '@swarm-explorer/node-core';
-import { nodeSetupSchema, supervisorMessageSchema, type Detection, type NodeOverview, type NodeSetup, type SandboxCheck, type SupervisorCommand, type SupervisorMessage } from '../shared/node';
+import { nodeSetupSchema, supervisorMessageSchema, type Detection, type HarnessRunResult, type HarnessRunSpec, type NodeOverview, type NodeSetup, type SandboxCheck, type SupervisorCommand, type SupervisorMessage } from '../shared/node';
 import type { AuthManager } from './auth';
 import type { EncryptedCache } from './cache';
+import { MembershipManager } from './memberships';
 import { ModelManager } from './models';
 import { proxySocketDir, proxySocketPath } from './socket-path';
 
@@ -41,6 +42,7 @@ export class NodeController extends EventEmitter {
   /** Replies from the supervisor for install, benchmark and remove, keyed by request id. */
   private replies = new Map<number, { on: (m: SupervisorMessage) => void; fail: (e: Error) => void }>();
   readonly models: ModelManager;
+  readonly memberships: MembershipManager;
   private proxy: UtilityProcess | null = null;
   private proxyRestarts = 0;
   /** Session capability key shared by the supervisor (mints) and proxy (verifies). Never on disk. */
@@ -82,6 +84,17 @@ export class NodeController extends EventEmitter {
         remove: (runtime, location) => call({ type: 'remove', id: this.nextId++, runtime, location }, (m) => (m.type === 'removed' ? m.ok : undefined)),
       },
     });
+    this.memberships = new MembershipManager({
+      auth: opts.auth,
+      cache: opts.cache,
+      apiBaseUrl: opts.apiBaseUrl,
+      userDataDir: opts.userDataDir,
+      models: this.models,
+      nodeId: () => this.registration()?.nodeId ?? null,
+      isPaused: () => this.paused,
+      changed: () => this.emit('changed'),
+      run: (spec, signal) => this.runHarness(spec, signal),
+    });
   }
 
   /** A private 0700 socket folder (stale sockets cleared), or a named pipe on Windows (SPEC 11.2). */
@@ -112,6 +125,28 @@ export class NodeController extends EventEmitter {
   private syncProxyModels() {
     const list = this.models.installed().map((m) => ({ contentHash: m.contentHash, runtime: m.runtime, ref: m.runtime === 'ollama' ? m.location : m.sourceRef, ...(m.runtime === 'llama_cpp' ? { path: m.location } : {}) }));
     this.proxy?.postMessage({ type: 'models', list });
+  }
+
+  /** One sandboxed run in the supervisor. Aborting stops it at once (Leave, Pause). */
+  private runHarness(spec: HarnessRunSpec, signal: AbortSignal): Promise<HarnessRunResult> {
+    const id = this.nextId++;
+    const stopped: HarnessRunResult = { status: 'cancelled', output: null, detail: 'Stopped.', screen: null, modelCalls: 0 };
+    return new Promise((resolve) => {
+      if (!this.child) return resolve({ ...stopped, status: 'failed', detail: 'The node supervisor is not running.' });
+      if (signal.aborted) return resolve(stopped);
+      const onAbort = () => this.send({ type: 'harness-cancel', id });
+      signal.addEventListener('abort', onAbort, { once: true });
+      this.replies.set(id, {
+        on: (m) => {
+          if (m.type !== 'harness-ran') return;
+          this.replies.delete(id);
+          signal.removeEventListener('abort', onAbort);
+          resolve(m.result);
+        },
+        fail: () => resolve({ ...stopped, status: 'failed', detail: 'The node supervisor stopped during the run.' }),
+      });
+      this.send({ type: 'harness-run', id, run: spec });
+    });
   }
 
   async sandboxCheck(): Promise<SandboxCheck[]> {
@@ -208,6 +243,8 @@ export class NodeController extends EventEmitter {
   setPaused(paused: boolean) {
     this.paused = paused;
     this.send({ type: paused ? 'pause' : 'resume' });
+    if (paused) this.memberships.stopAll('Paused. Qualification continues when you resume.');
+    else this.memberships.resumeQualifying();
     this.emit('changed');
   }
 
@@ -262,6 +299,7 @@ export class NodeController extends EventEmitter {
       registration: reg ? { nodeId: reg.nodeId, capabilitiesReportedAt: reg.capabilitiesReportedAt } : null,
       catalogMinBytes: this.catalogMinBytes,
       models: this.models.overview(),
+      memberships: this.memberships.overview(),
     };
   }
 
@@ -280,6 +318,7 @@ export class NodeController extends EventEmitter {
       await this.registerAndReport();
     } finally {
       await this.models.share();
+      await this.memberships.refresh();
     }
   }
 

@@ -172,6 +172,7 @@ auth.on('changed', (s) => {
   send(IPC.authChanged, s);
   // Registers the install and node and reports capabilities (SPEC 13.1).
   if (s.status === 'signed_in') void node?.report();
+  else if (s.status === 'signed_out') node?.memberships.stopAll('Signed out. Sign in to continue.');
 });
 
 /** Menu bar and tray Pause stay reachable at all times (SPEC 4.1). */

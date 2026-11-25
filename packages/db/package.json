@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "0.6.0",
+    "@swarm-explorer/core": "workspace:*",
     "@swarm-explorer/schema": "workspace:*",
     "drizzle-orm": "0.45.4",
     "pg": "8.23.1"

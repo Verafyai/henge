@@ -4,7 +4,7 @@ import { Chip } from '@swarm-explorer/ui';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { toSwarmDetail } from '@/lib/api';
-import { formatDuration, permissionLines, policyLabel, rewardLine, verificationLabel } from '@/lib/view';
+import { swarmQuestions } from '@/lib/view';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,12 +24,11 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-/** Public swarm page (SPEC 4.1). Browse-only: joining happens in the desktop client. */
+/** Public swarm page (SPEC 4.1, 4.2): the six questions in source order. Browse-only: joining happens in Henge. */
 export default async function SwarmPage({ params }: { params: Params }) {
   const row = await getSwarm((await params).slug);
   if (!row) notFound();
   const s = toSwarmDetail(row);
-  const reward = rewardLine(s);
   const deepLink = `henge://swarm/${s.slug}`;
 
   return (
@@ -55,64 +54,33 @@ export default async function SwarmPage({ params }: { params: Params }) {
       </div>
       <p className="mt-2 text-xs text-zinc-500">Opening the app shows this swarm. Nothing joins, installs or runs until you confirm there.</p>
 
-      <div className="mt-10 grid gap-8 md:grid-cols-2">
-        <section aria-labelledby="reward" className="rounded-card border border-zinc-200 bg-white p-5">
-          <h2 id="reward" className="font-semibold text-ink">Reward and verification</h2>
-          <dl className="mt-2">
-            <Fact label="Reward">{reward.text}</Fact>
-            <Fact label="Verified by">{s.verification.map((v) => verificationLabel[v]).join(', ')}</Fact>
-            <Fact label="Pending window">{formatDuration(s.verificationConfig.pendingWindowS)}</Fact>
-            <Fact label="Acceptance rate">{s.acceptance.status === 'measured' ? `${(s.acceptance.acceptedBp / 100).toFixed(1)}%` : 'Not enough history yet'}</Fact>
-          </dl>
-          {reward.note && <p className="mt-2 text-xs text-zinc-500">{reward.note}</p>}
-        </section>
-
-        <section aria-labelledby="perms" className="rounded-card border border-zinc-200 bg-white p-5">
-          <h2 id="perms" className="font-semibold text-ink">What it can do on your node</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">
-            {permissionLines(s.permissions).map((l) => (
-              <li key={l}>{l}</li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-zinc-500">Runs only inside the sandbox. A new release that changes these permissions asks you again.</p>
-        </section>
-
-        <section aria-labelledby="models" className="rounded-card border border-zinc-200 bg-white p-5">
-          <h2 id="models" className="font-semibold text-ink">Models</h2>
-          <dl className="mt-2">
-            <Fact label="Policy">{policyLabel[s.models.policy]}</Fact>
-            {s.models.classes.length > 0 && <Fact label="Classes">{s.models.classes.join(', ')}</Fact>}
-            <Fact label="API models">{s.models.apiAllowed ? 'Allowed, with your keys and caps' : 'Not allowed'}</Fact>
-            <Fact label="Qualification">{`Pass ${s.qualification.pass} of ${s.qualification.tasks} tasks`}</Fact>
-          </dl>
-        </section>
-
-        <section aria-labelledby="trust" className="rounded-card border border-zinc-200 bg-white p-5">
-          <h2 id="trust" className="font-semibold text-ink">Trust</h2>
-          <dl className="mt-2">
-            <Fact label="Harness">{`${s.harness.name} ${s.harness.version} (${s.harness.runtime})`}</Fact>
-            <Fact label="Release reviewed">{s.trust.releaseReviewed ? 'Yes' : 'Not yet'}</Fact>
-            <Fact label="Data">{s.dataPolicy.sensitiveDataProhibited ? 'Public inputs, no sensitive data' : 'See publisher policy'}</Fact>
-            <Fact label="Retention">{`${s.dataPolicy.retentionDays} days`}</Fact>
-          </dl>
-          <p className="mt-2 break-all font-mono text-[11px] text-zinc-500">{s.release.manifestHash}</p>
-        </section>
+      <div className="mt-10 grid gap-6 md:grid-cols-2">
+        {swarmQuestions(s).map((q) => (
+          <section key={q.id} aria-labelledby={`q-${q.id}`} data-question={q.id} className="rounded-card border border-zinc-200 bg-white p-5">
+            <h2 id={`q-${q.id}`} className="font-semibold text-ink">
+              {q.question}
+            </h2>
+            {q.facts.length > 0 && (
+              <dl className="mt-2">
+                {q.facts.map((f) => (
+                  <Fact key={f.label} label={f.label}>
+                    {f.value}
+                  </Fact>
+                ))}
+              </dl>
+            )}
+            {q.items.length > 0 && (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">
+                {q.items.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            )}
+            {q.note && <p className="mt-2 text-xs text-zinc-500">{q.note}</p>}
+          </section>
+        ))}
       </div>
-
-      <section aria-labelledby="outcomes" className="mt-10">
-        <h2 id="outcomes" className="text-xl font-bold text-ink">Verified outcomes</h2>
-        {s.outcomes.length === 0 ? (
-          <p className="mt-2 rounded-card border border-dashed border-zinc-300 p-5 text-zinc-600">No verified results yet. Results appear here with receipts once they pass verification.</p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {s.outcomes.map((o) => (
-              <li key={o.id}>
-                <a href={o.receiptUrl} className="text-brand">{o.title}</a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <p className="mt-6 break-all font-mono text-[11px] text-zinc-500">Manifest {s.release.manifestHash}</p>
     </article>
   );
 }

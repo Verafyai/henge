@@ -29,6 +29,19 @@ test('swarm page opens the app through a navigate-only deep link', async ({ page
   expect(await page.locator('body').innerText()).not.toMatch(/[–—]/);
 });
 
+test('swarm page answers the six questions in source order (M4 acceptance, SPEC 4.2)', async ({ page }) => {
+  await page.goto('/swarms/challenge-vaults');
+  await expect(page.locator('[data-question] h2')).toHaveText([
+    'What is it for, and who runs it?',
+    'What has it produced?',
+    'What does it need from your computer?',
+    'What does it pay, and how often is work accepted?',
+    'How is work checked?',
+    'Can you trust it?',
+  ]);
+  await expect(page.locator('[data-question="requirements"]')).toContainText('No network access');
+});
+
 test('unknown swarm is a 404 page', async ({ page }) => {
   const res = await page.goto('/swarms/does-not-exist');
   expect(res?.status()).toBe(404);

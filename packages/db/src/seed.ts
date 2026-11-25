@@ -6,6 +6,7 @@ import { bundleDigest, generatePublisherKey, sha256Digest, signManifestV1 } from
 import { sql } from 'drizzle-orm';
 import { getDb, repoRoot } from './client';
 import {
+  qualificationTasks,
   accounts,
   creditAccounts,
   economicConfigs,
@@ -21,7 +22,7 @@ import {
   swarmReleases,
   swarms,
 } from './schema';
-import { seedAccounts, seedEconomicConfigV1, seedModels, seedOauthClients, seedPublisher, seedSwarmFiles } from './seed-data';
+import { seedAccounts, seedEconomicConfigV1, seedModels, seedOauthClients, seedPublisher, seedQualificationTasks, seedSwarmFiles } from './seed-data';
 
 export const FIXTURES = () => path.join(repoRoot(), 'packages', 'schema', 'fixtures');
 
@@ -31,7 +32,7 @@ const ALL_TABLES = [
   'notifications', 'notification_prefs', 'share_cards', 'team_members', 'teams', 'account_badges', 'badges',
   'economic_configs', 'credit_purchases', 'ledger_entries', 'pools', 'credit_accounts',
   'impact_events', 'reputation_events', 'verification_records', 'results', 'run_records', 'leases', 'tasks',
-  'qualifications', 'permission_grants', 'memberships',
+  'qualification_attempts', 'qualification_tasks', 'qualifications', 'permission_grants', 'memberships',
   'revocations', 'reports', 'reviews', 'swarm_releases', 'swarms', 'harness_releases', 'harnesses',
   'node_models', 'model_artifacts', 'models', 'publisher_keys', 'publishers',
   'spend_caps', 'compute_sources', 'node_capabilities', 'nodes', 'installs', 'oauth_clients', 'account_identities', 'accounts',
@@ -148,6 +149,10 @@ export async function seed() {
       reviewStatus: 'approved',
       publishedAt: new Date(),
     });
+
+    const known = seedQualificationTasks[manifest.id] ?? [];
+    if (known.length !== manifest.qualification.tasks) throw new Error(`${file}: needs ${manifest.qualification.tasks} qualification tasks`);
+    await db.insert(qualificationTasks).values(known.map((k) => ({ swarmId: swarm!.id, inputJson: k.input, expectedJson: k.expected })));
 
     if (manifest.credits.funded) {
       // Funded but empty: no pricing is approved, so nothing has been purchased (SPEC 9.6A).

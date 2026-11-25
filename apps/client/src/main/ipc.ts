@@ -134,5 +134,17 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
   handle(IPC.modelsSetActive, hash, (h) => deps.node().models.setActive(h), refusedModel);
   handle(IPC.modelsSetBudget, z.number().int().positive().max(2 ** 50), (b) => deps.node().models.setDiskBudget(b), refusedModel);
 
+  const refusedJoin = { ok: false as const, code: 'refused', message: 'That request was refused.' };
+  const digest = z.string().regex(/^sha256-[a-f0-9]{64}$/);
+  handle(IPC.swarmsRefresh, none, async () => {
+    await deps.node().memberships.refresh();
+    return deps.node().memberships.overview();
+  }, null);
+  handle(IPC.swarmsStartJoin, slug, (s) => deps.node().memberships.startJoin(s), refusedJoin);
+  handle(IPC.swarmsReviewChange, z.uuid(), (id) => deps.node().memberships.reviewChange(id), refusedJoin);
+  handle(IPC.swarmsApprove, z.object({ membershipId: z.uuid(), permissionsHash: digest }).strict(), (a) => deps.node().memberships.approve(a.membershipId, a.permissionsHash), refusedJoin);
+  handle(IPC.swarmsRetry, z.uuid(), (id) => deps.node().memberships.retry(id), refusedJoin);
+  handle(IPC.swarmsLeave, z.uuid(), (id) => deps.node().memberships.leave(id), refusedJoin);
+
   handle(IPC.launchRoute, none, () => deps.takeLaunchRoute(), null);
 }

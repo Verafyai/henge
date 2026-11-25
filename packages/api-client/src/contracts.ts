@@ -167,9 +167,22 @@ export const harnessReleaseSchema = z.object({
   signature: z.string(),
   reviewed: z.boolean(),
   revoked: z.boolean(),
-  /** No bundle host exists yet; null until one does. */
+  /** The publisher key named by `signature`, so a node can verify the bundle (SPEC 11.6). */
+  signingKey: z.object({ keyId: z.string(), publicKey: z.string(), status: z.enum(['active', 'revoked']) }).nullable(),
+  /** Where the bundle archive can be fetched. The node checks its digest and signature, so the host is not trusted. */
   downloadUrl: z.url().nullable(),
 });
+
+/**
+ * A harness bundle archive: every file of the bundle directory, base64 encoded. The node writes the
+ * files to a private folder and accepts them only if the folder digest equals `bundleHash`.
+ */
+export const bundleArchiveSchema = z.object({
+  format: z.literal('henge-bundle-v1'),
+  bundleHash: digestSchema,
+  files: z.record(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,3}$/), z.string().max(8 * 1024 * 1024)),
+});
+export type BundleArchive = z.infer<typeof bundleArchiveSchema>;
 export type HarnessReleaseInfo = z.infer<typeof harnessReleaseSchema>;
 
 export const revocationSchema = z.object({
@@ -220,3 +233,99 @@ export const runRecordSchema = z.object({
   signature: z.string().min(1),
 });
 export type RunRecord = z.infer<typeof runRecordSchema>;
+
+/* ----------------------------------------------------------------------------
+ * Store home, join and qualification (SPEC 13.1, 13.2). Node-signed.
+ * ------------------------------------------------------------------------- */
+
+export const membershipStatusSchema = z.enum(['joining', 'qualifying', 'active', 'paused', 'reconsent_required', 'left']);
+export type MembershipStatus = z.infer<typeof membershipStatusSchema>;
+
+export const qualificationProgressSchema = z.object({
+  id: z.uuid(),
+  tasks: z.number().int().positive(),
+  pass: z.number().int().positive(),
+  attempts: z.number().int().nonnegative(),
+  passed: z.number().int().nonnegative(),
+  outcome: z.enum(['in_progress', 'passed', 'failed']),
+  retry_reason: z.string().nullable(),
+});
+export type QualificationProgress = z.infer<typeof qualificationProgressSchema>;
+
+export const membershipSchema = z.object({
+  id: z.uuid(),
+  swarm: slugSchema,
+  node_id: z.uuid(),
+  status: membershipStatusSchema,
+  /** Basis points of this node's time; qualified swarms sum to 10,000 (SPEC 7.1). */
+  share_bp: z.number().int().min(0).max(10_000),
+  release_id: z.uuid(),
+  manifest_hash: digestSchema,
+  permissions_hash: digestSchema,
+  harness: z.object({ name: z.string(), version: semverSchema, hash: digestSchema }),
+  joined_at: isoDate,
+  qualification: qualificationProgressSchema.nullable(),
+});
+export type MembershipView = z.infer<typeof membershipSchema>;
+
+/** GET /v1/store/home?node_id= : joined swarms first, then featured and categories (SPEC 4.2). */
+export const storeHomeSchema = z.object({
+  joined: z.array(membershipSchema),
+  featured: z.array(swarmSummarySchema).max(3),
+  categories: z.array(z.object({ key: categorySchema, label: z.string(), listed: z.number().int().nonnegative() })),
+  node: z.object({ id: z.uuid(), qualified_swarms: z.number().int().nonnegative(), share_total_bp: z.number().int().min(0).max(10_000) }),
+});
+export type StoreHome = z.infer<typeof storeHomeSchema>;
+
+export const permissionsSchema = swarmSummarySchema.shape.permissions;
+
+/** POST /v1/swarms/{id}/memberships */
+export const joinStartSchema = z.object({ node_id: z.uuid(), manifest_hash: digestSchema }).strict();
+export const joinStartedSchema = z.object({
+  membership: membershipSchema,
+  resumed: z.boolean(),
+  /** Exactly what the user approves (SPEC 4.2 Join permissions). */
+  permissions: permissionsSchema,
+  permissions_hash: digestSchema,
+  qualification: z.object({ tasks: z.number().int().positive(), pass: z.number().int().positive() }),
+  models: z.array(z.object({ content_hash: digestSchema, display_name: z.string(), license_id: z.string() })).min(1),
+});
+export type JoinStarted = z.infer<typeof joinStartedSchema>;
+
+/** POST /v1/memberships/{id}/permission-grants */
+export const permissionGrantSchema = z.object({ permissions_hash: digestSchema }).strict();
+export const permissionGrantedSchema = z.object({ membership: membershipSchema, granted_at: isoDate });
+
+/** POST /v1/memberships/{id}/qualification/lease */
+export const qualificationLeaseSchema = z.object({
+  qualification: qualificationProgressSchema,
+  task: z.object({ id: z.uuid(), input: z.record(z.string(), z.unknown()) }),
+  deadline_at: isoDate,
+});
+export type QualificationLease = z.infer<typeof qualificationLeaseSchema>;
+
+/** POST /v1/memberships/{id}/qualification/results */
+export const qualificationResultSchema = z
+  .object({
+    task_id: z.uuid(),
+    output: z.record(z.string(), z.unknown()),
+    output_sha256: digestSchema,
+    run: z
+      .object({
+        model_artifact_hash: digestSchema,
+        harness_hash: digestSchema,
+        screen: z.object({ verdict: z.enum(['allow', 'flag']), reasons: z.array(z.string().max(60)).max(20), screener: z.string().max(60) }),
+      })
+      .strict(),
+  })
+  .strict();
+export const qualificationScoredSchema = z.object({ correct: z.boolean(), qualification: qualificationProgressSchema, membership: membershipSchema });
+
+/** DELETE /v1/memberships/{id} */
+export const membershipLeftSchema = z.object({ id: z.uuid(), left_at: isoDate, abandoned_leases: z.number().int().nonnegative() });
+
+/** POST /v1/admin/reviews/{id}: release review stub (SPEC 13.4). `id` is a swarm release in review. */
+export const releaseReviewSchema = z
+  .object({ outcome: z.enum(['approved', 'rejected', 'changes_requested']), checklist: z.record(z.string(), z.boolean()), rationale: z.string().min(1).max(4000) })
+  .strict();
+export const releaseReviewedSchema = z.object({ release_id: z.uuid(), review_status: z.enum(['approved', 'rejected', 'draft']), reconsent_required: z.number().int(), moved: z.number().int() });

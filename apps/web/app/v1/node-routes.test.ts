@@ -1,50 +1,16 @@
-import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
-import { DESKTOP_CLIENT_ID, DEVICE_HEADERS, deviceRequestMessage, registerInstallResponseSchema } from '@swarm-explorer/api-client';
-import { accounts, fitCalibrations, getDb, licenseAcceptances, modelArtifacts, models, nodeCapabilities, nodeModels } from '@swarm-explorer/db';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { registerInstallResponseSchema } from '@swarm-explorer/api-client';
+import { fitCalibrations, getDb, licenseAcceptances, modelArtifacts, models, nodeCapabilities, nodeModels } from '@swarm-explorer/db';
 import { runMigrations, seed } from '@swarm-explorer/db/testing';
 import { enforcementSupport, hardwareFixture, minimizeCapabilities } from '@swarm-explorer/node-core';
 import { eq } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { exchangeCode, issueCode } from '@/lib/auth/oauth';
-import { s256 } from '@/lib/auth/tokens';
+import { signIn, signed, type Device } from '@/lib/test-device';
 import { PUT as putCapabilities } from './nodes/[id]/capabilities/route';
 import { POST as registerInstall } from './installs/route';
 import { POST as acceptLicense } from './me/license-acceptances/route';
 import { GET as getFit } from './models/[id]/fit/route';
 import { POST as postBenchmark } from './nodes/[id]/models/[artifact]/benchmark/route';
-
-const REDIRECT = 'http://127.0.0.1:53117/callback';
-type Device = { pub: string; privateKey: KeyObject; token: string; installId: string };
-
-async function signIn(handle: string): Promise<Device> {
-  const db = await getDb();
-  const [a] = await db.select().from(accounts).where(eq(accounts.handle, handle));
-  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
-  const pub = publicKey.export({ type: 'spki', format: 'der' }).toString('base64url');
-  const verifier = randomBytes(32).toString('base64url');
-  const code = await issueCode({ clientId: DESKTOP_CLIENT_ID, accountId: a!.id, redirectUri: REDIRECT, codeChallenge: s256(verifier) });
-  const res = await exchangeCode({
-    grant_type: 'authorization_code', client_id: DESKTOP_CLIENT_ID, code, code_verifier: verifier, redirect_uri: REDIRECT,
-    device_platform: 'darwin', device_arch: 'arm64', app_version: '0.1.0', channel: 'dev', device_pubkey: pub,
-  });
-  if (!res.ok) throw new Error(res.err.error_description);
-  return { pub, privateKey, token: res.tokens.access_token, installId: res.tokens.install_id };
-}
-
-function signed(d: Device, method: string, path: string, body: string, over: { ts?: number; nonce?: string; key?: KeyObject; idem?: string | null } = {}) {
-  const ts = over.ts ?? Date.now();
-  const nonce = over.nonce ?? randomBytes(16).toString('base64url');
-  const msg = deviceRequestMessage({ method, path, bodySha256: createHash('sha256').update(body).digest('base64url'), ts, nonce });
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${d.token}`,
-    'content-type': 'application/json',
-    [DEVICE_HEADERS.ts]: String(ts),
-    [DEVICE_HEADERS.nonce]: nonce,
-    [DEVICE_HEADERS.signature]: sign(null, Buffer.from(msg), over.key ?? d.privateKey).toString('base64url'),
-  };
-  if (over.idem !== null) headers['idempotency-key'] = over.idem ?? randomBytes(16).toString('base64url');
-  return new Request(`http://localhost${path}`, { method, headers, body: method === "GET" ? undefined : body });
-}
 
 const install = { app_version: '0.2.0', channel: 'dev', platform: 'darwin', arch: 'arm64' };
 const report = JSON.stringify(minimizeCapabilities(hardwareFixture('apple-silicon-32gb')!, enforcementSupport('darwin')));

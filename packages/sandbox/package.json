@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "build:checks": "tsx scripts/build-checks.mts"
+    "build:checks": "tsx scripts/build-checks.mts",
+    "build:fixtures": "tsx scripts/build-fixture-harnesses.mts"
   },
   "dependencies": {
     "@swarm-explorer/schema": "workspace:*",

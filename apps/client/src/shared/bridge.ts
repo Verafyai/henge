@@ -3,7 +3,8 @@
  * named, typed methods. No generic invoke, no filesystem, no Node globals.
  * Tokens never cross this bridge; the main process makes authenticated calls.
  */
-import type { ModelActionResult, ModelInstallInput, NodeOverview, NodeSetup, SandboxCheck } from './node';
+import type { JoinStarted, SwarmDetail } from '@swarm-explorer/api-client';
+import type { MembershipResult, MembershipsOverview, ModelActionResult, ModelInstallInput, NodeOverview, NodeSetup, Permissions, SandboxCheck } from './node';
 import type { Route } from './routes';
 
 export type Channel = 'stable' | 'beta' | 'internal' | 'dev';
@@ -78,6 +79,18 @@ export interface SwarmBridge {
     setActive(contentHash: string): Promise<ModelActionResult>;
     setDiskBudget(bytes: number): Promise<ModelActionResult>;
   };
+  /**
+   * Your swarms (SPEC 13.2). Main re-checks everything with the server. Approval names a hash the
+   * app itself showed for review, so the renderer cannot approve permissions nobody saw.
+   */
+  swarms: {
+    refresh(): Promise<MembershipsOverview>;
+    startJoin(slug: string): Promise<MembershipResult<{ join: JoinStarted; swarm: SwarmDetail }>>;
+    reviewChange(membershipId: string): Promise<MembershipResult<{ swarm: SwarmDetail; previous: Permissions | null }>>;
+    approve(membershipId: string, permissionsHash: string): Promise<MembershipResult>;
+    retry(membershipId: string): Promise<MembershipResult>;
+    leave(membershipId: string): Promise<MembershipResult<{ abandonedLeases: number }>>;
+  };
   /** Deep links and menu commands. Navigation only, never a write. */
   onNavigate(cb: (route: Route) => void): () => void;
   /** A deep link that launched the app before the UI was listening, consumed once. */
@@ -112,6 +125,12 @@ export const IPC = {
   modelsRemove: 'models:remove',
   modelsSetActive: 'models:set-active',
   modelsSetBudget: 'models:set-budget',
+  swarmsRefresh: 'swarms:refresh',
+  swarmsStartJoin: 'swarms:start-join',
+  swarmsReviewChange: 'swarms:review-change',
+  swarmsApprove: 'swarms:approve',
+  swarmsRetry: 'swarms:retry',
+  swarmsLeave: 'swarms:leave',
   navigate: 'nav:navigate',
   launchRoute: 'nav:launch-route',
   notice: 'nav:notice',

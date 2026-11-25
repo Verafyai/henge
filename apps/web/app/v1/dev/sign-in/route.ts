@@ -12,7 +12,7 @@ const bodySchema = z.object({ handle: z.string().min(1).max(64), next: z.string(
 /** Development only: sign in as a seeded example user. 404 when disabled. */
 export async function POST(req: Request) {
   if (!devSignInEnabled()) return apiError(404, 'unknown_endpoint', 'No such API endpoint.');
-  if (!sameOrigin(req)) return apiError(403, 'cross_origin', 'This form must be submitted from SwarmStarter.');
+  if (!sameOrigin(req)) return apiError(403, 'cross_origin', 'This form must be submitted from Swarm Explorer.');
   const parsed = bodySchema.safeParse(await formBody(req));
   if (!parsed.success) return apiError(400, 'invalid_request', 'Pick an example user.');
   const db = await getDb();

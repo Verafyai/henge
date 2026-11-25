@@ -1,8 +1,9 @@
-import { harnessReleaseSchema, modelListSchema, revocationFeedSchema, swarmDetailSchema, swarmListSchema } from '@swarm-explorer/api-client';
+import { bundleArchiveSchema, harnessReleaseSchema, modelListSchema, revocationFeedSchema, swarmDetailSchema, swarmListSchema } from '@swarm-explorer/api-client';
 import { runMigrations, seed } from '@swarm-explorer/db/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GET as catchAll, POST as catchAllPost } from './[...path]/route';
 import { GET as harness } from './harnesses/[name]/releases/[version]/route';
+import { GET as bundle } from './harnesses/[name]/releases/[version]/bundle/route';
 import { GET as models } from './models/route';
 import { GET as revocations } from './revocations/route';
 import { GET as swarm } from './swarms/[slug]/route';
@@ -47,6 +48,12 @@ describe('/v1 catalog routes', () => {
     expect(m.items.find((x) => x.slug === 'qwen2.5-coder-7b')?.acceptedSwarms).toContain('challenge-vaults');
     const h = harnessReleaseSchema.parse(await (await harness(req('/harnesses/lean-prover/releases/1.4.0'), params({ name: 'lean-prover', version: '1.4.0' }))).json());
     expect(h.bundleHash).toMatch(/^sha256-[0-9a-f]{64}$/);
+    expect(h.runtime).toBe('wasm');
+    expect(h.signingKey).toMatchObject({ keyId: h.signature.split(':')[0], status: 'active' });
+    expect(h.downloadUrl).toBe('http://localhost/v1/harnesses/lean-prover/releases/1.4.0/bundle');
+    const a = bundleArchiveSchema.parse(await (await bundle(req('/harnesses/lean-prover/releases/1.4.0/bundle'), params({ name: 'lean-prover', version: '1.4.0' }))).json());
+    expect(a.bundleHash).toBe(h.bundleHash);
+    expect(Object.keys(a.files)).toContain('harness.wasm');
     const missing = await harness(req('/harnesses/lean-prover/releases/9.9.9'), params({ name: 'lean-prover', version: '9.9.9' }));
     expect(missing.status).toBe(404);
     const r = await revocations(req('/revocations'));
