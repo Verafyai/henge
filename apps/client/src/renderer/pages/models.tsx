@@ -175,7 +175,7 @@ export function ModelsPage({ highlight }: { highlight?: string }) {
         {st?.diskBudgetBytes ? `Disk budget: ${gb(o!.models.usedBytes)} of ${gb(st.diskBudgetBytes)} used.` : 'Disk budget: set when you download your first model.'}
       </p>
       {job && (
-        <div className="mt-3 rounded-lg border border-zinc-200 bg-white p-3 text-sm" role="status" aria-label="Model job">
+        <div className="mt-3 rounded-lg border border-zinc-200 bg-surface p-3 text-sm" role="status" aria-label="Model job">
           {job.phase === 'benchmarking' ? `Benchmarking ${job.slug}` : `Downloading ${job.slug}`}
           {job.phase === 'downloading' && job.total ? (
             <progress className="ml-3 align-middle" max={job.total} value={job.completed} aria-label="Download progress" />
@@ -195,7 +195,7 @@ export function ModelsPage({ highlight }: { highlight?: string }) {
               <li
                 key={key}
                 aria-label={m.displayName}
-                className={`rounded-xl border bg-white p-4 ${highlight && (m.slug === highlight || m.modelClass === highlight) ? 'border-brand' : 'border-zinc-200'}`}
+                className={`rounded-xl border bg-surface p-4 ${highlight && (m.slug === highlight || m.modelClass === highlight) ? 'border-brand' : 'border-zinc-200'}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>

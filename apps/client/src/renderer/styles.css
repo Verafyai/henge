@@ -4,6 +4,88 @@
 @import "@fontsource-variable/jetbrains-mono";
 @source "../../../../packages/ui/src";
 
+/*
+ * Henge desktop app: dark only, matching www.verafy.ai Henge pages (Henge SPEC 9.1; Rex,
+ * 2026-11-25). Overrides the shared Verafy preset for this app alone; the web app stays light.
+ * Zinc is inverted so existing utilities keep their meaning (50 = faintest fill, 500 = muted text,
+ * 900 = strongest text). Brand moves from teal to Henge red. Status tints become dark tints with
+ * light text so chips keep WCAG AA contrast.
+ */
+@theme {
+  --color-page: #050506;
+  --color-surface: #111214;
+  --color-ink: #e6e8eb;
+  --color-ink-2: #c9ccd1;
+  --color-ink-muted: #9a9ea6;
+  --color-line: #26272b;
+  --color-fill: #0d0d0f;
+
+  --color-brand: #e11d2e;
+  --color-brand-hover: #c8102e;
+  --color-accent: #ff2a3d;
+  --color-brand-2: #c9ccd1;
+
+  --color-status-approved: #3fd0a8;
+  --color-status-rejected: #ff6b78;
+  --color-status-pending: #e0b862;
+  --color-status-appealed: #b69cff;
+  --color-status-info: #8fb4ff;
+
+  --color-bar: #0b0b0c;
+  --color-bar-ink: #e6e8eb;
+  --color-bar-muted: #c9ccd1;
+  --color-bar-note: #9a9ea6;
+  --color-bar-line: #5b5e65;
+  --color-bar-track: #26272b;
+  --color-toast: #1a1b1e;
+  /* Healthy dots stay green: red would read as an error. */
+  --color-live: #3fd0a8;
+  --color-danger: #c8102e;
+  --color-danger-hover: #a50d26;
+
+  --color-zinc-50: #0d0d0f;
+  --color-zinc-100: #16171a;
+  --color-zinc-200: #26272b;
+  --color-zinc-300: #3a3b40;
+  --color-zinc-400: #6b6e75;
+  --color-zinc-500: #9a9ea6;
+  --color-zinc-600: #b0b4bb;
+  --color-zinc-700: #c9ccd1;
+  --color-zinc-800: #dcdee2;
+  --color-zinc-900: #e6e8eb;
+  --color-zinc-950: #f4f4f5;
+
+  /* Selected and "approved" tints: Henge red on dark. */
+  --color-teal-50: #1c0b0e;
+  --color-teal-100: #2a0f13;
+  --color-teal-200: #4a1a20;
+  --color-teal-300: #7a2430;
+  --color-teal-400: #ff2a3d;
+  --color-teal-700: #ff7a85;
+  --color-teal-800: #ff9aa3;
+  --color-teal-900: #ffc2c7;
+
+  --color-red-50: #250b0e;
+  --color-red-200: #5a1a20;
+  --color-red-400: #ff5a68;
+  --color-red-700: #ff7a85;
+  --color-red-800: #ff9aa3;
+
+  --color-amber-50: #231a07;
+  --color-amber-200: #4d3a10;
+  --color-amber-400: #e0b862;
+  --color-amber-800: #e8c36f;
+  --color-amber-900: #f0d58f;
+
+  --color-violet-50: #170f2a;
+  --color-violet-200: #33245a;
+  --color-violet-800: #c4b0ff;
+
+  --color-blue-50: #0c1426;
+  --color-blue-200: #1e3a6a;
+  --color-blue-800: #a9c4ff;
+}
+
 :root {
   --font-inter: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-jetbrains: "JetBrains Mono Variable", ui-monospace, monospace;
@@ -14,6 +96,7 @@ body,
   height: 100%;
 }
 html {
+  color-scheme: dark;
   background: var(--color-page);
   color: var(--color-ink);
 }

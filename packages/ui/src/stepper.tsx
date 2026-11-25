@@ -14,7 +14,7 @@ export function Stepper({ steps, className }: { steps: Step[]; className?: strin
               className={cn(
                 'flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
                 s.state === 'done' && 'bg-brand text-white',
-                s.state === 'current' && 'bg-white text-brand ring-2 ring-brand',
+                s.state === 'current' && 'bg-surface text-brand ring-2 ring-brand',
                 s.state === 'upcoming' && 'bg-fill text-ink-muted',
               )}
             >

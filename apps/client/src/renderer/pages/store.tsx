@@ -15,7 +15,7 @@ function SwarmTile({ s }: { s: SwarmSummary }) {
         type="button"
         aria-label={`Open ${s.name}`}
         onClick={() => go({ name: 'swarm', slug: s.slug })}
-        className="flex h-full w-full flex-col rounded-xl border border-zinc-200 bg-white p-4 text-left hover:border-brand"
+        className="flex h-full w-full flex-col rounded-xl border border-zinc-200 bg-surface p-4 text-left hover:border-brand"
       >
         <span className="flex flex-wrap gap-1.5">
           <Chip tone="info">{categoryLabel(s.category)}</Chip>
@@ -63,7 +63,7 @@ export function StorePage({ category }: { category?: string }) {
                   type="button"
                   aria-pressed={category === c.key}
                   onClick={() => go(category === c.key ? { name: 'store' } : { name: 'store', category: c.key })}
-                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${category === c.key ? 'border-brand bg-teal-50' : 'border-zinc-200 bg-white hover:border-brand'}`}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${category === c.key ? 'border-brand bg-teal-50' : 'border-zinc-200 bg-surface hover:border-brand'}`}
                 >
                   <span className="block font-semibold text-ink">{c.label}</span>
                   <span className="text-xs text-zinc-500">{n ? `${n} listed` : 'Coming soon'}</span>
@@ -80,7 +80,7 @@ export function StorePage({ category }: { category?: string }) {
           <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {joined.map((m) => (
               <li key={m.id}>
-                <button type="button" onClick={() => go({ name: 'library' })} className="w-full rounded-xl border border-zinc-200 bg-white p-4 text-left hover:border-brand">
+                <button type="button" onClick={() => go({ name: 'library' })} className="w-full rounded-xl border border-zinc-200 bg-surface p-4 text-left hover:border-brand">
                   <span className="block font-bold text-ink">{all.find((s) => s.slug === m.swarm)?.name ?? m.swarm}</span>
                   <span className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
                     <Chip tone={membershipLabel[m.status].tone}>{membershipLabel[m.status].text}</Chip>
@@ -112,7 +112,7 @@ export function StorePage({ category }: { category?: string }) {
         </section>
 
         <aside aria-label="Your node" className="space-y-4">
-          <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <div className="rounded-xl border border-zinc-200 bg-surface p-4">
             <Eyebrow>Your node</Eyebrow>
             {setup ? (
               <>
@@ -131,7 +131,7 @@ export function StorePage({ category }: { category?: string }) {
               </>
             )}
           </div>
-          <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <div className="rounded-xl border border-zinc-200 bg-surface p-4">
             <Eyebrow>Recently viewed</Eyebrow>
             {(recent.data ?? []).length === 0 ? (
               <p className="text-xs text-zinc-500">Swarms you open appear here, even offline.</p>

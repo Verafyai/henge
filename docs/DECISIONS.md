@@ -397,3 +397,23 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 ### Stubbed in M4
 - No real tasks yet: the coordinator and task leasing are M5.
 - Per-swarm pause, pins and priority are shown as status only; editing them arrives with the scheduler (M5).
+
+## Desktop app is dark only (Rex, 2026-11-25)
+- Henge SPEC 9.1: the app is dark only and matches the Henge pages on www.verafy.ai. There is no light mode.
+- **How:** `apps/client/src/renderer/styles.css` overrides the shared Verafy preset for the desktop app alone.
+  - The zinc scale is inverted, so existing utilities keep their meaning: 50 is the faintest fill, 500 is muted
+    text and 900 is the strongest text.
+  - Brand and accent move to Henge red.
+  - Status tints become dark tints with light text.
+  - Healthy and running dots use `--color-live` (green), because red would read as an error.
+  - The window background is `#050506`, and `nativeTheme.themeSource = 'dark'`.
+- **Shared tokens:** these keep today's values in `packages/config/verafy.css`, so the web app renders
+  unchanged:
+  - `surface` (replaces `bg-white`);
+  - `bar*` and `toast` (surfaces that are dark in every theme);
+  - `danger`;
+  - `live`.
+- The app header shows the Henge mark with "HENGE // by Verafy".
+- **E2E prerequisite (unchanged):** the client suite needs a fresh local database each run:
+  `pnpm db:reset && pnpm --filter @swarm-explorer/client release:test`, then `pnpm e2e`. A later test publishes
+  a permission-changing release, so a second run against the same database fails.
