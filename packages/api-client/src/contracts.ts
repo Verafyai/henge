@@ -103,7 +103,8 @@ export const modelArtifactSchema = z.object({
   versionLabel: z.string(),
   contentHash: digestSchema,
   sizeBytes: z.number().int().positive(),
-  contextLength: z.number().int().positive(),
+  /** Null when the pinned catalog source does not record it. */
+  contextLength: z.number().int().positive().nullable(),
   quantization: z.string(),
   runtimeFormats: z.array(z.string()),
   catalogVersion: z.number().int().nonnegative(),
@@ -187,7 +188,7 @@ export type HarnessReleaseInfo = z.infer<typeof harnessReleaseSchema>;
 
 export const revocationSchema = z.object({
   id: z.uuid(),
-  targetType: z.enum(['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version']),
+  targetType: z.enum(['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version', 'platform']),
   targetId: z.string(),
   reason: z.string(),
   severity: z.enum(['low', 'high', 'critical']),

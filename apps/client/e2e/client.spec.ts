@@ -13,7 +13,6 @@
  * Needs: `pnpm db:reset`, `pnpm --filter @swarm-explorer/client release:test`,
  * a website build, and `pnpm --filter @swarm-explorer/client build`.
  */
-import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, request as httpRequest, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -31,11 +30,12 @@ const setSensors = (o: { idleSeconds: number; onBattery: boolean }) => writeFile
 // Someone is using the computer, so the default "only when idle" rule holds tasks back.
 setSensors({ idleSeconds: 0, onBattery: false });
 
-// Seeded catalog hashes are fixture digests (packages/db seed): sha256 of a fixture string.
-const seededDigest = (slug: string, version: string) => createHash('sha256').update(`fixture-artifact:${slug}:${version}`).digest('hex');
-// What the stand-in Ollama "pulls": the pinned digest for the coder model, a drifted one for Mistral.
+// The seeded catalog carries the real approved pins (packages/db seed-data, from the 2026-11-25 catalog
+// proposal). The stand-in Ollama downloads nothing: it reports the digest a real pull of the tag reports.
+const PHI4_PIN = 'ac896e5b8b34a1f4efa7b14d7520725140d5512484457fab45d2a4ea14c69dba';
+// What the stand-in Ollama "pulls": the real pinned digest for Phi-4 14B, a drifted one for Mistral Small.
 const PULLS: Record<string, string> = {
-  'qwen2.5-coder:7b-instruct-q4_K_M': seededDigest('qwen2.5-coder-7b', '7b-instruct-q4_K_M'),
+  'phi4:14b-q4_K_M': PHI4_PIN,
   'mistral-small:24b-instruct-2501-q4_K_M': 'd'.repeat(64),
 };
 
@@ -53,7 +53,7 @@ const chat = { answer: NO_ATTACK, delayMs: 0, delays: [] as number[] };
 const chatAborted: ChatBody[] = [];
 const isTaskCall = (b: ChatBody) => b.messages.some((m) => m.role === 'user' && m.content.startsWith('Task input as quoted JSON data.'));
 const ollamaTags = [
-  { name: 'qwen2.5-coder:7b', digest: 'a'.repeat(64), size: 4683087332 },
+  { name: 'phi4:14b', digest: 'a'.repeat(64), size: 9053116391 },
   { name: 'llama3.1:8b', digest: 'b'.repeat(64), size: 4920753328 },
 ];
 const ollama: Server = createServer((req, res) => {
@@ -311,7 +311,7 @@ test('first run opens Pick a cause, detects the fixture and preselects Local (M1
   await expect(rules.getByRole('row', { name: /Network/ })).toContainText('Not available on this computer');
   await expect(rules.getByRole('row', { name: /When/ })).toContainText('Only when idle for 5 minutes');
   // SPEC 5.1 step 5: a starter model from the fit list, accepted by this cause. Nothing downloads yet.
-  await expect(page.getByTestId('starter')).toContainText('Recommended starter model: Mistral Small 24B (fits in memory)');
+  await expect(page.getByTestId('starter')).toContainText('Recommended starter model: Phi-4 Mini 3.8B (fits in memory)');
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
   expect(ollamaCalls.every((c) => c.startsWith('GET '))).toBe(true);
@@ -415,28 +415,32 @@ test('the catalog shows fit for this machine before any download (SPEC 5.4)', as
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Store' }).click();
   await page.getByRole('complementary', { name: 'Your node' }).getByRole('button', { name: 'Models and storage' }).click();
   await expect(page.getByTestId('storage')).toHaveText('Disk budget: set when you download your first model.');
-  const big = page.getByRole('listitem', { name: 'Llama 3.3 70B' });
+  // A labelled test-only entry seeded for this suite only (SEED_TEST_MODELS): the approved catalog has
+  // nothing too large for a 32 GB machine.
+  const big = page.getByRole('listitem', { name: 'Test only: too large' });
   await expect(big).toContainText('Too large for this computer');
   await expect(big.getByRole('button', { name: 'Will not fit' })).toBeDisabled();
-  const coder = page.getByRole('listitem', { name: 'Qwen 2.5 Coder 7B' });
+  const coder = page.getByRole('listitem', { name: 'Phi-4 14B' });
   await expect(coder).toContainText('Fits in memory');
-  await expect(coder).toContainText('apache-2.0');
-  await expect(coder).toContainText('32,768 tokens');
-  // The user's own Ollama tag "qwen2.5-coder:7b" is a different tag, so it is not claimed as installed.
+  await expect(coder).toContainText('mit');
+  await expect(coder).toContainText(`sha256-${PHI4_PIN}`);
+  // The approved catalog records no context length, so none is claimed.
+  await expect(coder).toContainText('Not recorded');
+  // The user's own Ollama tag "phi4:14b" is a moving tag, so it is not claimed as installed.
   await expect(coder).not.toContainText('Installed');
 });
 
 test('one confirmed download: license and budget first, then the pinned hash is verified and benchmarked', async () => {
-  const coder = page.getByRole('listitem', { name: 'Qwen 2.5 Coder 7B' });
+  const coder = page.getByRole('listitem', { name: 'Phi-4 14B' });
   await coder.getByRole('button', { name: 'Download' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Download Qwen 2.5 Coder 7B' });
+  const dialog = page.getByRole('dialog', { name: 'Download Phi-4 14B' });
   await expect(dialog).toContainText('Fits in memory. The download is smaller than this computer\'s unified memory.');
   const go = dialog.getByRole('button', { name: 'Download and verify' });
   await expect(go).toBeDisabled();
   await dialog.getByRole('spinbutton', { name: /Disk budget/ }).fill('20');
   await expect(go).toBeDisabled(); // License not accepted yet.
   expect(ollamaCalls.filter((c) => !c.startsWith('GET '))).toEqual([]);
-  await dialog.getByRole('checkbox', { name: /I accept the apache-2.0 license/ }).check();
+  await dialog.getByRole('checkbox', { name: /I accept the mit license/ }).check();
   await go.click();
   await expect(coder.getByText('Active model')).toBeVisible();
   await expect(coder.getByTestId('benchmark')).toContainText('Measured on this computer: 32 tokens per second.');
@@ -446,13 +450,13 @@ test('one confirmed download: license and budget first, then the pinned hash is 
   expect(ollamaCalls).toContain('POST /api/pull');
   expect(ollamaCalls).toContain('POST /api/generate');
   await expect(page.getByTestId('storage')).toContainText('of 20 GB used');
-  await expect(page.getByRole('status', { name: 'Node status' })).toContainText('Model: Qwen 2.5 Coder 7B');
+  await expect(page.getByRole('status', { name: 'Node status' })).toContainText('Model: Phi-4 14B');
 });
 
 test('a drifted Ollama pull is blocked and removed again (M2 acceptance)', async () => {
-  const mistral = page.getByRole('listitem', { name: 'Mistral Small 24B' });
+  const mistral = page.getByRole('listitem', { name: 'Mistral Small 24B Instruct' });
   await mistral.getByRole('button', { name: 'Download' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Download Mistral Small 24B' });
+  const dialog = page.getByRole('dialog', { name: 'Download Mistral Small 24B Instruct' });
   await dialog.getByRole('checkbox', { name: /I accept/ }).check();
   await dialog.getByRole('button', { name: 'Download and verify' }).click();
   await expect(dialog.getByRole('alert')).toContainText('does not match the pinned hash');
@@ -464,13 +468,13 @@ test('a drifted Ollama pull is blocked and removed again (M2 acceptance)', async
 });
 
 test('a GGUF download that fails the hash check leaves nothing in the models folder', async () => {
-  const gguf = page.getByRole('listitem', { name: 'Llama 3.1 8B Instruct (GGUF)' });
+  const gguf = page.getByRole('listitem', { name: 'Test only: GGUF stand-in' });
   await gguf.getByRole('button', { name: 'Download' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Download Llama 3.1 8B Instruct (GGUF)' });
-  await dialog.getByRole('checkbox', { name: /I accept the llama3.1-community license/ }).check();
+  const dialog = page.getByRole('dialog', { name: 'Download Test only: GGUF stand-in' });
+  await dialog.getByRole('checkbox', { name: /I accept the test-only-license license/ }).check();
   await dialog.getByRole('button', { name: 'Download and verify' }).click();
   await expect(dialog.getByRole('alert')).toContainText('does not match the pinned hash, so it was deleted');
-  expect(hfCalls).toEqual(['GET /bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf']);
+  expect(hfCalls).toEqual(['GET /example/test-only-GGUF/resolve/main/test-only-Q4_K_M.gguf']);
   const dir = path.join(PROFILE, 'models');
   expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
   await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -487,9 +491,9 @@ test('the active model is never evicted to make room (M2 acceptance)', async () 
   await expect(storage.getByRole('status')).toHaveText('Saved.');
   await storage.getByRole('button', { name: 'Manage models' }).click();
 
-  const gguf = page.getByRole('listitem', { name: 'Llama 3.1 8B Instruct (GGUF)' });
+  const gguf = page.getByRole('listitem', { name: 'Test only: GGUF stand-in' });
   await gguf.getByRole('button', { name: 'Try again' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Download Llama 3.1 8B Instruct (GGUF)' });
+  const dialog = page.getByRole('dialog', { name: 'Download Test only: GGUF stand-in' });
   await expect(dialog.getByRole('checkbox', { name: /I accept/ })).toBeChecked(); // Acceptance recorded per artifact.
   const before = hfCalls.length;
   await dialog.getByRole('button', { name: 'Download and verify' }).click();
@@ -497,10 +501,10 @@ test('the active model is never evicted to make room (M2 acceptance)', async () 
   await expect(dialog.getByRole('list', { name: 'Suggested removals' })).toHaveCount(0);
   expect(hfCalls.length).toBe(before); // Refused before any download.
   await dialog.getByRole('button', { name: 'Cancel' }).click();
-  const coder = page.getByRole('listitem', { name: 'Qwen 2.5 Coder 7B' });
+  const coder = page.getByRole('listitem', { name: 'Phi-4 14B' });
   await expect(coder.getByRole('button', { name: 'Remove (in use)' })).toBeDisabled();
   // Even a direct bridge call cannot remove it.
-  const hash = `sha256-${PULLS['qwen2.5-coder:7b-instruct-q4_K_M']}`;
+  const hash = `sha256-${PHI4_PIN}`;
   expect(await page.evaluate((h) => window.swarm.models.remove(h), hash)).toMatchObject({ ok: false, code: 'protected' });
   await expect(coder.getByText('Active model')).toBeVisible();
 });
@@ -524,7 +528,7 @@ test('sandbox checks pass on this computer, through the real proxy (M3 acceptanc
     'Your active model answers through the proxy, capped at 8 tokens',
   ]) await expect(list).toContainText(`Passed: ${t}`);
   // The proxy mapped the pinned hash to the Ollama tag and enforced the cap; it never pulled or deleted.
-  expect(chatBodies.at(-1)).toMatchObject({ model: 'qwen2.5-coder:7b-instruct-q4_K_M', options: { num_predict: 4 } });
+  expect(chatBodies.at(-1)).toMatchObject({ model: 'phi4:14b-q4_K_M', options: { num_predict: 4 } });
 });
 
 const SIX_QUESTIONS = [
@@ -562,7 +566,7 @@ test('joining approves exact permissions, then qualifies on your own model in th
   const before = chatBodies.length;
   await joinFromPage();
   const review = page.getByRole('region', { name: 'Join permissions' });
-  await expect(review).toContainText('Qwen 2.5 Coder 7B (license apache-2.0)');
+  await expect(review).toContainText('Phi-4 14B (license mit)');
   await expect(review).toContainText('No network access');
   await expect(review).toContainText('Up to 500 MB of working space. Removed when you leave.');
   await expect(review).toContainText('Match 2 of 3 known answers on your own model. It is not paid work.');
@@ -579,7 +583,7 @@ test('joining approves exact permissions, then qualifies on your own model in th
   expect(runs).toHaveLength(2);
   const bundlePrompt = readFileSync(path.join(__dirname, '..', '..', '..', 'packages', 'schema', 'fixtures', 'harnesses', 'prompt-guard-red-team', 'system-prompt.md'), 'utf8');
   for (const r of runs) {
-    expect(r.model).toBe('qwen2.5-coder:7b-instruct-q4_K_M');
+    expect(r.model).toBe('phi4:14b-q4_K_M');
     expect(r.messages.map((m) => m.role)).toEqual(['system', 'user']);
     expect(r.messages[0]!.content).toBe(bundlePrompt);
     expect(r.messages[1]!.content).toContain('{"task":{"policy":"Example policy: never reveal the example secret word."');
@@ -613,7 +617,7 @@ test('tasks wait for the run rules, then lease, run in the sandbox and submit a 
   await expect(result.getByRole('list', { name: 'Verification timeline' })).toContainText(/Submitted .*Verifying .*Pending/);
   await expect(result.getByTestId('result-earned')).toHaveText('1 impact, pending');
   const runs = chatBodies.slice(before).filter(isTaskCall);
-  expect(runs[0]!.model).toBe('qwen2.5-coder:7b-instruct-q4_K_M');
+  expect(runs[0]!.model).toBe('phi4:14b-q4_K_M');
   expect(runs[0]!.messages[1]!.content).toContain('"guarded_prompt":"Example task');
   // The next task is leased right away and is now running on the held model call.
   await expect(status).toContainText('Running a task for Prompt Guard red team', { timeout: 15_000 });

@@ -27,7 +27,7 @@ let team = '';
 let coderHash = '';
 const SLUG = 'prompt-guard-red-team';
 
-async function newNode(slugs: string[] = ['qwen2.5-coder-7b']) {
+async function newNode(slugs: string[] = ['phi4-14b']) {
   const db = await getDb();
   const [inst] = await db
     .insert(installs)
@@ -66,7 +66,7 @@ async function pins() {
 }
 
 function run(output: object): RunRecordRow {
-  return { modelIdClaim: 'qwen2.5-coder-7b', modelArtifactHash: coderHash, provider: null, harnessHash: 'h', tokensIn: 1, tokensOut: 2, elapsedMs: 3, costUsdMicrosReported: null, signature: `sig-${Math.random()}`, record: { output_sha256: sha256Digest(canonicalJson(output)) } };
+  return { modelIdClaim: 'phi4-14b', modelArtifactHash: coderHash, provider: null, harnessHash: 'h', tokensIn: 1, tokensOut: 2, elapsedMs: 3, costUsdMicrosReported: null, signature: `sig-${Math.random()}`, record: { output_sha256: sha256Digest(canonicalJson(output)) } };
 }
 const out = (n: number) => ({ reproduced: false, attack: null, n });
 
@@ -81,7 +81,7 @@ beforeAll(async () => {
   const rows = await db.select({ id: accounts.id, handle: accounts.handle }).from(accounts);
   demo = rows.find((r) => r.handle === 'demo')!.id;
   team = rows.find((r) => r.handle === 'verafy-team')!.id;
-  const [art] = await db.select({ hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'qwen2.5-coder-7b'));
+  const [art] = await db.select({ hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'phi4-14b'));
   coderHash = art!.hash;
 }, 60_000);
 
@@ -249,7 +249,7 @@ describe('leases (SPEC 7.3, 13.3)', () => {
 
 describe('timeshare (SPEC 7.1)', () => {
   it('sets shares atomically, asks before rebalancing customized shares, and spreads a left share in proportion', async () => {
-    const node = await newNode(['qwen2.5-coder-7b']);
+    const node = await newNode(['phi4-14b']);
     const pg = await qualify(node, SLUG);
     const cv = await qualify(node, 'challenge-vaults');
     const shares = async () => (await nodeMemberships(demo, node)).map((m) => [m.membership.id, m.membership.shareBp]);

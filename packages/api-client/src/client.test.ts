@@ -113,7 +113,7 @@ describe('task protocol contracts (SPEC 13.3)', () => {
     const rec = {
       lease_id: lease.lease_id,
       node_id: lease.task_id,
-      model: { source: 'local', claimed_id: 'qwen2.5-coder-7b', artifact_hash: D('e') },
+      model: { source: 'local', claimed_id: 'phi4-14b', artifact_hash: D('e') },
       harness_hash: D('a'),
       tokens: { input: null, output: 120 },
       elapsed_ms: 5400,

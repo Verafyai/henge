@@ -29,7 +29,7 @@ async function device(accountId: string): Promise<Device> {
     .values({ accountId, clientId: 'swarm-explorer-desktop', platform: 'darwin', arch: 'arm64', clientVersion: '0.2.0', channel: 'dev', devicePublicKey: publicKey.export({ type: 'spki', format: 'der' }).toString('base64url') })
     .returning();
   const [node] = await db.insert(nodes).values({ installId: inst!.id, accountId, name: 'Test node', runRulesJson: {} }).returning();
-  const [art] = await db.select({ id: modelArtifacts.id, hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'qwen2.5-coder-7b'));
+  const [art] = await db.select({ id: modelArtifacts.id, hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'phi4-14b'));
   coderHash = art!.hash;
   await db.insert(nodeModels).values({ nodeId: node!.id, modelArtifactId: art!.id, verifiedHash: art!.hash, fitStatus: 'runs_well' });
   const d = { accountId, nodeId: node!.id, key: privateKey };

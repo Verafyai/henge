@@ -70,7 +70,7 @@ async function runOne(output: object) {
   const r = await call(requestLease, demo, 'POST', `/v1/coordinators/${SLUG}/leases`, { node_id: nodeId, mode: 'local', model_artifact_hash: modelHash, reputation_token: null, spend_reservation: null }, { params: Promise.resolve({ swarm: SLUG }) });
   const lease: Lease = leaseResponseSchema.parse(r.body).lease!;
   await call(start, demo, 'POST', `/v1/leases/${lease.lease_id}/start`, { harness_hash: lease.harness.hash, permissions_hash: lease.permissions_hash, model_artifact_hash: modelHash }, id(lease.lease_id));
-  const rec = { lease_id: lease.lease_id, node_id: nodeId, model: { source: 'local' as const, claimed_id: 'qwen2.5-coder-7b', artifact_hash: modelHash }, harness_hash: lease.harness.hash, tokens: { input: 4, output: 2 }, elapsed_ms: 10, api_cost: { reported_usd_micros: null, provider_request_ids: [] }, output_sha256: digestOf(output), client_version: '0.2.0' };
+  const rec = { lease_id: lease.lease_id, node_id: nodeId, model: { source: 'local' as const, claimed_id: 'phi4-14b', artifact_hash: modelHash }, harness_hash: lease.harness.hash, tokens: { input: 4, output: 2 }, elapsed_ms: 10, api_cost: { reported_usd_micros: null, provider_request_ids: [] }, output_sha256: digestOf(output), client_version: '0.2.0' };
   const run_record = { ...rec, signature: sign(null, Buffer.from(runRecordMessage(canonicalJson(rec))), demo.privateKey).toString('base64url') };
   const s = await call(results, demo, 'POST', `/v1/leases/${lease.lease_id}/results`, { output, output_sha256: digestOf(output), run_record }, id(lease.lease_id));
   return resultSubmittedSchema.parse(s.body);
@@ -86,7 +86,7 @@ beforeAll(async () => {
   const r = await (await registerInstall(signed(demo, 'POST', '/v1/installs', JSON.stringify({ app_version: '0.2.0', channel: 'dev', platform: 'darwin', arch: 'arm64' })), undefined as never)).json();
   nodeId = (r as { node_id: string }).node_id;
   const db = await getDb();
-  const [art] = await db.select({ id: modelArtifacts.id, hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'qwen2.5-coder-7b'));
+  const [art] = await db.select({ id: modelArtifacts.id, hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'phi4-14b'));
   modelHash = art!.hash;
   await db.insert(nodeModels).values({ nodeId, modelArtifactId: art!.id, verifiedHash: art!.hash, fitStatus: 'runs_well' });
   const s = (await getSwarm(SLUG))!;

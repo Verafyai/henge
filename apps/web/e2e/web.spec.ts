@@ -49,7 +49,8 @@ test('unknown swarm is a 404 page', async ({ page }) => {
 
 test('models and download pages render without a fake download', async ({ page }) => {
   await page.goto('/models');
-  await expect(page.getByRole('heading', { name: 'Qwen 2.5 Coder 7B' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Phi-4 14B' })).toBeVisible();
+  await expect(page.getByText('phi4:14b-q4_K_M')).toBeVisible();
   await page.goto('/download');
   await expect(page.getByText('Public builds are not available yet.')).toBeVisible();
 });

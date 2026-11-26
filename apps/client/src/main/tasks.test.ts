@@ -15,7 +15,7 @@ const MEM = '00000000-0000-7000-8000-000000000002';
 const input = { policy: 'p', guarded_prompt: 'q' };
 
 const membership = { id: MEM, swarm: 'prompt-guard-red-team', node_id: NODE, status: 'active', share_bp: 10_000, permissions_hash: H('b'), queue: { queued: 1, urgent: 0 } } as unknown as MembershipView;
-const model = { contentHash: H('a'), slug: 'qwen2.5-coder-7b', displayName: 'Qwen 2.5 Coder 7B' } as InstalledModel;
+const model = { contentHash: H('a'), slug: 'phi4-14b', displayName: 'Phi-4 14B' } as InstalledModel;
 
 function lease(n: number, over: Record<string, unknown> = {}) {
   return {

@@ -50,6 +50,13 @@
       "when": 1795648854193,
       "tag": "0006_m6_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795652121303,
+      "tag": "0007_m7_release_readiness",
+      "breakpoints": true
     }
   ]
 }

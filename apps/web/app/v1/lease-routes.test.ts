@@ -51,7 +51,7 @@ function runRecord(lease: Lease, output: object, key = demo.privateKey) {
   const rec = {
     lease_id: lease.lease_id,
     node_id: nodeId,
-    model: { source: 'local' as const, claimed_id: 'qwen2.5-coder-7b', artifact_hash: modelHash },
+    model: { source: 'local' as const, claimed_id: 'phi4-14b', artifact_hash: modelHash },
     harness_hash: lease.harness.hash,
     tokens: { input: 40, output: 12 },
     elapsed_ms: 1234,
@@ -70,7 +70,7 @@ beforeAll(async () => {
   const r = registerInstallResponseSchema.parse(await (await registerInstall(signed(demo, 'POST', '/v1/installs', JSON.stringify({ app_version: '0.2.0', channel: 'dev', platform: 'darwin', arch: 'arm64' })), undefined as never)).json());
   nodeId = r.node_id;
   const db = await getDb();
-  const [art] = await db.select({ id: modelArtifacts.id, hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'qwen2.5-coder-7b'));
+  const [art] = await db.select({ id: modelArtifacts.id, hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'phi4-14b'));
   modelHash = art!.hash;
   await db.insert(nodeModels).values({ nodeId, modelArtifactId: art!.id, verifiedHash: art!.hash, fitStatus: 'runs_well' });
   // Join and qualify directly; the signed join routes have their own tests.

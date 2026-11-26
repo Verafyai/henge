@@ -210,7 +210,7 @@ export function ModelsPage({ highlight }: { highlight?: string }) {
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs md:grid-cols-4">
                   <div><dt className="text-zinc-500">Size on disk</dt><dd>{gb(a.sizeBytes)}</dd></div>
-                  <div><dt className="text-zinc-500">Context</dt><dd>{`${a.contextLength.toLocaleString('en-US')} tokens`}</dd></div>
+                  <div><dt className="text-zinc-500">Context</dt><dd>{a.contextLength === null ? 'Not recorded' : `${a.contextLength.toLocaleString('en-US')} tokens`}</dd></div>
                   <div><dt className="text-zinc-500">Quantization</dt><dd>{a.quantization}</dd></div>
                   <div><dt className="text-zinc-500">License</dt><dd>{m.licenseId}</dd></div>
                   <div className="col-span-2"><dt className="text-zinc-500">Accepted by</dt><dd>{m.acceptedSwarms.length ? m.acceptedSwarms.join(', ') : 'No listed swarm yet'}</dd></div>
