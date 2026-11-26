@@ -132,11 +132,11 @@ describe('task protocol over the signed API (SPEC 13.3)', () => {
     const rec = runRecord(lease, output);
     const first = await call(results, demo, 'POST', path, { output, output_sha256: digestOf(output), run_record: rec }, id(lease.lease_id));
     expect(first.status).toBe(201);
-    expect(resultSubmittedSchema.parse(first.body)).toMatchObject({ status: 'submitted', disposition: 'on_time', duplicate: false, awaiting_verification: true });
+    expect(resultSubmittedSchema.parse(first.body)).toMatchObject({ status: 'verifying', disposition: 'on_time', duplicate: false, awaiting_verification: true });
     const dup = await call(results, demo, 'POST', path, { output, output_sha256: digestOf(output), run_record: rec }, id(lease.lease_id));
     expect(resultSubmittedSchema.parse(dup.body)).toMatchObject({ duplicate: true, result_id: (first.body as { result_id: string }).result_id });
     const view = leaseViewSchema.parse((await call(getLease, demo, 'GET', `/v1/leases/${lease.lease_id}`, undefined, id(lease.lease_id), { idem: null })).body);
-    expect(view).toMatchObject({ lease: { status: 'submitted' }, result: { disposition: 'on_time', output_sha256: digestOf(output) } });
+    expect(view).toMatchObject({ lease: { status: 'verifying' }, result: { disposition: 'on_time', output_sha256: digestOf(output) } });
     expect((await call(getLease, reviewer, 'GET', `/v1/leases/${lease.lease_id}`, undefined, id(lease.lease_id), { idem: null })).status).toBe(404);
   });
 

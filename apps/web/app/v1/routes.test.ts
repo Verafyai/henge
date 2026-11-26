@@ -62,9 +62,9 @@ describe('/v1 catalog routes', () => {
   });
 
   it('planned endpoints answer 501 with their milestone; unknown ones 404', async () => {
-    const verify = await catchAllPost(req('/verifications', { method: 'POST' }), params({ path: ['verifications'] }));
-    expect(verify.status).toBe(501);
-    expect((await verify.json()).error.message).toContain('M6');
+    const jobs = await catchAllPost(req('/jobs', { method: 'POST' }), params({ path: ['jobs'] }));
+    expect(jobs.status).toBe(501);
+    expect((await jobs.json()).error.message).toContain('M9');
     const nope = await catchAll(req('/withdrawals'), params({ path: ['withdrawals'] }));
     expect(nope.status).toBe(404);
   });

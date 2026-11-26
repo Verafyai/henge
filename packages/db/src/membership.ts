@@ -7,6 +7,8 @@ import { canonicalJson, type ManifestV1 } from '@swarm-explorer/schema';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb, type Db } from './client';
 import { rebalanceShares as rebalance } from './coordinator';
+import { rescoreQualification } from './verification';
+import { MembershipError } from './errors';
 import { getSwarm, policyAccepts, type SwarmRow } from './queries';
 import {
   harnessReleases,
@@ -28,16 +30,7 @@ import {
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type Membership = typeof memberships.$inferSelect;
 
-export class MembershipError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-    readonly details?: Record<string, unknown>,
-  ) {
-    super(message);
-  }
-}
+export { MembershipError } from './errors';
 
 async function ownedMembership(tx: Tx, accountId: string, membershipId: string): Promise<Membership> {
   const [m] = await tx.select().from(memberships).where(eq(memberships.id, membershipId)).limit(1);
@@ -203,6 +196,8 @@ export async function leaseQualificationTask(o: { accountId: string; membershipI
     let attempt = open;
     if (!attempt) {
       const next = all.find((t) => !attempts.some((a) => a.taskId === t.id));
+      if (!next && attempts.some((a) => a.checkStatus === 'awaiting'))
+        throw new MembershipError(409, 'qualification_checking', 'Your answers are with the swarm’s checker. Qualification finishes when it reports.', { qualification: progress(q!, rule) });
       if (!next) throw new MembershipError(409, 'no_qualification_tasks', 'This swarm has no qualification tasks available right now.');
       [attempt] = await tx
         .insert(qualificationAttempts)
@@ -245,21 +240,16 @@ export async function submitQualificationResult(o: { accountId: string; membersh
     if (a.submittedAt) throw new MembershipError(409, 'already_submitted', 'That task already has a result.');
     const [task] = await tx.select().from(qualificationTasks).where(eq(qualificationTasks.id, o.taskId)).limit(1);
     // A late answer counts as wrong.
-    const correct = now <= a.deadlineAt && matchesKnownAnswer(task!.expectedJson as Record<string, unknown>, o.output);
-    await tx.update(qualificationAttempts).set({ submittedAt: now, outputHash: o.outputHash, correct }).where(eq(qualificationAttempts.id, a.id));
-
-    const attempts = q.attempts + 1;
-    const passed = q.passed + (correct ? 1 : 0);
-    const outcome = passed >= rule.pass ? 'passed' : attempts - passed > rule.tasks - rule.pass ? 'failed' : 'in_progress';
-    const [updated] = await tx
-      .update(qualifications)
-      .set({ attempts, passed, outcome, completedAt: outcome === 'in_progress' ? null : now })
-      .where(eq(qualifications.id, q.id))
-      .returning();
-    if (outcome === 'passed') {
-      await tx.update(memberships).set({ status: 'active' }).where(eq(memberships.id, m.id));
-      await rebalance(tx, m.nodeId);
-    }
+    const matches = now <= a.deadlineAt && matchesKnownAnswer(task!.expectedJson as Record<string, unknown>, o.output);
+    // A matching answer on a machine-checked task (for example a Lean proof) counts only once the
+    // swarm's verifier worker accepts it; until then it is neither right nor wrong (M6).
+    const awaiting = matches && task!.machineCheck;
+    const correct = awaiting ? null : matches;
+    await tx
+      .update(qualificationAttempts)
+      .set({ submittedAt: now, outputHash: o.outputHash, correct, ...(awaiting ? { outputJson: o.output as object, checkStatus: 'awaiting' as const } : {}) })
+      .where(eq(qualificationAttempts.id, a.id));
+    const updated = await rescoreQualification(tx, q.id, now);
     return { correct, qualification: progress(updated!, rule) };
   });
 }

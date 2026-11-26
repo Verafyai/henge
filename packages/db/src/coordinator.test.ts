@@ -19,6 +19,7 @@ import {
 import { grantPermissions, leaseQualificationTask, leaveMembership, nodeMemberships, startJoin, submitQualificationResult } from './membership';
 import { getSwarm } from './queries';
 import { accounts, deadlineMisses, installs, leaseRules, leases, ledgerEntries, modelArtifacts, models, nodeModels, nodes, qualificationTasks, results, tasks } from './schema';
+import { settleMachineChecks } from './test-support';
 import { runMigrations, seed } from './testing';
 
 let demo = '';
@@ -51,6 +52,8 @@ async function qualify(nodeId: string, slug = SLUG) {
     const output = known.find((k) => k.id === l.task.id)!.expectedJson as Record<string, unknown>;
     await submitQualificationResult({ accountId: demo, membershipId: membership.id, taskId: l.task.id, output, outputHash: sha256Digest(canonicalJson(output)) });
   }
+  // Challenge Vaults answers wait for the Lean machine check; a test worker accepts them.
+  await settleMachineChecks();
   return membership.id;
 }
 
@@ -63,7 +66,7 @@ async function pins() {
 }
 
 function run(output: object): RunRecordRow {
-  return { modelIdClaim: 'qwen2.5-coder-7b', modelArtifactHash: coderHash, provider: null, harnessHash: 'h', tokensIn: 1, tokensOut: 2, elapsedMs: 3, costUsdMicrosReported: null, signature: 'sig', record: { output_sha256: sha256Digest(canonicalJson(output)) } };
+  return { modelIdClaim: 'qwen2.5-coder-7b', modelArtifactHash: coderHash, provider: null, harnessHash: 'h', tokensIn: 1, tokensOut: 2, elapsedMs: 3, costUsdMicrosReported: null, signature: `sig-${Math.random()}`, record: { output_sha256: sha256Digest(canonicalJson(output)) } };
 }
 const out = (n: number) => ({ reproduced: false, attack: null, n });
 

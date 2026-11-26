@@ -344,7 +344,15 @@ export class MembershipManager {
         const lres = await this.d.auth.signedFetch('POST', `/v1/memberships/${m.id}/qualification/lease`);
         if (!lres.ok) {
           const e = await errorOf(lres);
-          return this.setJob(job, 'error', e.message);
+          if (e.code !== 'qualification_checking') return this.setJob(job, 'error', e.message);
+          // Every answer is in; a machine check (Lean for Challenge Vaults) decides them. Wait for it.
+          this.setJob(job, 'verifying', 'Waiting for the swarm’s machine check of your answers');
+          await new Promise((r) => setTimeout(r, 3_000));
+          await this.refresh();
+          const now = this.home?.joined.find((j) => j.id === m.id);
+          if (now?.status === 'active') return this.setJob(job, 'done', `Qualified: ${now.qualification?.passed ?? 0} of ${now.qualification?.attempts ?? 0} answers checked correct.`);
+          if (now?.qualification?.outcome === 'failed') return this.setJob(job, 'error', now.qualification.retry_reason ?? 'Qualification did not pass.');
+          continue;
         }
         const lease = qualificationLeaseSchema.parse(await lres.json());
         const q = lease.qualification;

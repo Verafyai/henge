@@ -64,9 +64,13 @@ test('the /v1 API answers with contracts and the error envelope', async ({ reque
   const list = await request.get('/v1/swarms');
   expect(list.headers()['access-control-allow-origin']).toBe('*');
   expect((await list.json()).items).toHaveLength(3);
-  const planned = await request.post('/v1/verifications');
+  const planned = await request.post('/v1/jobs');
   expect(planned.status()).toBe(501);
   expect((await planned.json()).error.code).toBe('not_implemented');
+  // The verification endpoints are live (M6): unsigned verifiers and anonymous wallets are refused.
+  expect((await request.post('/v1/verifications', { data: {} })).status()).toBe(401);
+  expect((await request.get('/v1/verifier/work')).status()).toBe(401);
+  expect((await request.get('/v1/wallet')).status()).toBe(401);
   expect((await request.get('/api/v1/health')).status()).toBe(404);
   // The lease endpoints are live (M5) and refuse unsigned callers.
   expect((await request.post('/v1/coordinators/challenge-vaults/leases', { data: {} })).status()).toBe(401);

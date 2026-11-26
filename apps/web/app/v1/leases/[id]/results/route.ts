@@ -1,17 +1,19 @@
 import { resultSubmitSchema, resultSubmittedSchema } from '@swarm-explorer/api-client';
-import { getDb, submitResult, tasks } from '@swarm-explorer/db';
+import { getDb, intakeResult, leases, runCoordinatorMethods, submitResult, tasks } from '@swarm-explorer/db';
 import { eq } from 'drizzle-orm';
 import { apiError, json } from '@/lib/api';
 import { digestOf, guardLease, outputSchemaValid, runRecordSignatureValid } from '@/lib/lease-api';
 import { membershipErrorResponse } from '@/lib/membership-api';
 import { parseJsonBody, withNodeAuth } from '@/lib/node-auth';
+import { pipelineDeps } from '@/lib/verifier-auth';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /v1/leases/{id}/results (SPEC 13.3): output plus a device-signed run record. Idempotent by
  * lease and result hash. Late and after-abandon results are recorded and never paid. On-time results
- * wait in Submitted for the swarm's verifier (M6); nothing is credited here.
+ * go through intake (schema and signature) to Verifying, then the coordinator-side methods run; a
+ * machine check waits for the verifier worker. Nothing is credited here.
  */
 export const POST = withNodeAuth<{ params: Promise<{ id: string }> }>(async (_req, auth, { params }) => {
   const l = await guardLease(auth, (await params).id);
@@ -44,9 +46,17 @@ export const POST = withNodeAuth<{ params: Promise<{ id: string }> }>(async (_re
         record: rec,
       },
     });
+    let status = r.lease.status;
+    if (r.result.disposition === 'on_time') {
+      const deps = pipelineDeps();
+      await intakeResult(r.result.id, deps);
+      await runCoordinatorMethods(r.result.id, deps);
+      const [now] = await db.select({ status: leases.status }).from(leases).where(eq(leases.id, l.id));
+      status = now!.status;
+    }
     return json(
       resultSubmittedSchema,
-      { lease_id: l.id, result_id: r.result.id, status: r.lease.status, disposition: r.result.disposition, duplicate: r.duplicate, awaiting_verification: r.result.disposition === 'on_time' },
+      { lease_id: l.id, result_id: r.result.id, status, disposition: r.result.disposition, duplicate: r.duplicate, awaiting_verification: r.result.disposition === 'on_time' },
       { status: r.duplicate ? 200 : 201 },
     );
   } catch (e) {
