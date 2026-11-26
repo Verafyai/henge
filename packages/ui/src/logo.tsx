@@ -10,7 +10,7 @@ export function VerafyMark({ className }: { className?: string }) {
 }
 
 /** Verafy logo, thin divider, then the Henge web wordmark with "web" in the brand color (SPEC 4.3; renamed per DECISIONS 2026-11-25). */
-export function Logo({ className, href = '/' }: { className?: string; href?: string }) {
+export function Logo({ className, href = '/swarms' }: { className?: string; href?: string }) {
   return (
     <a href={href} className={cn('flex shrink-0 items-center gap-3 whitespace-nowrap text-ink', className)} aria-label="Henge web by Verafy, home">
       <VerafyMark className="h-[18px] w-auto" />
