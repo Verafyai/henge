@@ -8,6 +8,8 @@ import { getDb, repoRoot } from './client';
 import {
   qualificationTasks,
   accounts,
+  leaseRules,
+  tasks,
   creditAccounts,
   economicConfigs,
   harnesses,
@@ -22,7 +24,7 @@ import {
   swarmReleases,
   swarms,
 } from './schema';
-import { seedAccounts, seedEconomicConfigV1, seedModels, seedOauthClients, seedPublisher, seedQualificationTasks, seedSwarmFiles } from './seed-data';
+import { seedAccounts, seedEconomicConfigV1, seedModels, seedOauthClients, seedPublisher, seedQualificationTasks, seedSwarmFiles, seedTasks } from './seed-data';
 
 export const FIXTURES = () => path.join(repoRoot(), 'packages', 'schema', 'fixtures');
 
@@ -31,7 +33,7 @@ const ALL_TABLES = [
   'outbox_events', 'device_nonces', 'license_acceptances', 'fit_calibrations', 'idempotency_records', 'client_releases', 'web_sessions', 'access_tokens', 'refresh_tokens', 'oauth_codes',
   'notifications', 'notification_prefs', 'share_cards', 'team_members', 'teams', 'account_badges', 'badges',
   'economic_configs', 'credit_purchases', 'ledger_entries', 'pools', 'credit_accounts',
-  'impact_events', 'reputation_events', 'verification_records', 'results', 'run_records', 'leases', 'tasks',
+  'impact_events', 'reputation_events', 'verification_records', 'results', 'run_records', 'deadline_misses', 'lease_rules', 'leases', 'tasks',
   'qualification_attempts', 'qualification_tasks', 'qualifications', 'permission_grants', 'memberships',
   'revocations', 'reports', 'reviews', 'swarm_releases', 'swarms', 'harness_releases', 'harnesses',
   'node_models', 'model_artifacts', 'models', 'publisher_keys', 'publishers',
@@ -137,7 +139,7 @@ export async function seed() {
         featuredStatus: 'featured',
       })
       .returning();
-    await db.insert(swarmReleases).values({
+    const [release] = await db.insert(swarmReleases).values({
       swarmId: swarm!.id,
       manifestVersion: manifest.manifest_version,
       manifestJson: manifest,
@@ -148,7 +150,27 @@ export async function seed() {
       permissionsHash: permissionsHash(manifest),
       reviewStatus: 'approved',
       publishedAt: new Date(),
-    });
+    }).returning();
+
+    // Lease rule version 1 (SPEC 7.3): no approved miss threshold and no renewals until Rex sets them.
+    await db.insert(leaseRules).values({ swarmId: swarm!.id, version: 1, notes: 'No repeated-miss threshold or renewal limit approved yet. Misses are counted only.' });
+
+    // Example queued tasks for the hosted coordinator (M5 demo path). Volunteer swarms carry no reward.
+    const reward = manifest.credits.funded ? (manifest.credits.per_accepted_task ?? null) : null;
+    const queued = seedTasks[manifest.id] ?? [];
+    if (queued.length)
+      await db.insert(tasks).values(
+        queued.map((t) => ({
+          swarmId: swarm!.id,
+          releaseId: release!.id,
+          coordinatorTaskId: t.id,
+          inputRef: `coordinator:${manifest.id}/${t.id}`,
+          inputHash: sha256Digest(canonicalJson(t.input)),
+          inputJson: t.input,
+          modelRequirementJson: { policy: manifest.models.policy, allowed_classes: manifest.models.class ? [manifest.models.class] : (manifest.models.allowed_classes ?? []) },
+          rewardCredits: reward,
+        })),
+      );
 
     const known = seedQualificationTasks[manifest.id] ?? [];
     if (known.length !== manifest.qualification.tasks) throw new Error(`${file}: needs ${manifest.qualification.tasks} qualification tasks`);

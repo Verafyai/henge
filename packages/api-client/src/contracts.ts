@@ -198,16 +198,25 @@ export const revocationFeedSchema = z.object({ items: z.array(revocationSchema),
 export const revocationsQuerySchema = z.object({ since: isoDate.optional() });
 
 /* ----------------------------------------------------------------------------
- * Task protocol (SPEC 13.3). Contracts only in M0; endpoints arrive in M5.
+ * Task protocol (SPEC 13.3), served by the hosted coordinator from M5. Device-signed. Nodes always
+ * pull; the coordinator never opens a connection to a node.
  * ------------------------------------------------------------------------- */
+
+/** Lease states, exactly SPEC 7.3. M5 moves leases up to `submitted`; verification (M6) does the rest. */
+export const leaseStatusSchema = z.enum(['leased', 'running', 'submitted', 'verifying', 'pending', 'settled', 'rejected', 'abandoned', 'expired', 'clawed_back']);
+export type LeaseStatus = z.infer<typeof leaseStatusSchema>;
 
 export const leaseSchema = z.object({
   lease_id: z.uuid(),
   task_id: z.uuid(),
+  swarm: slugSchema,
   swarm_release_id: z.uuid(),
+  status: leaseStatusSchema,
+  urgent: z.boolean(),
   deadline_at: isoDate,
   harness: z.object({ version: semverSchema, hash: digestSchema }),
   model_requirement: z.object({ policy: z.enum(['any', 'class', 'diverse']), allowed_classes: z.array(z.string()) }),
+  /** A device-signed, lease-scoped URL; it answers only while the lease is running. */
   input: z.object({ uri: z.url(), sha256: digestSchema }),
   output_schema_hash: digestSchema,
   reward: z.discriminatedUnion('funded', [
@@ -216,23 +225,100 @@ export const leaseSchema = z.object({
   ]),
   permissions_hash: digestSchema,
 });
-/** A lease request returns zero or one lease. */
-export const leaseResponseSchema = z.object({ lease: leaseSchema.nullable() });
 export type Lease = z.infer<typeof leaseSchema>;
 
-export const runRecordSchema = z.object({
-  lease_id: z.uuid(),
-  node_id: z.uuid(),
-  model: z.object({ source: z.enum(['local', 'provider']), claimed_id: z.string().min(1), artifact_hash: digestSchema.nullable() }),
-  harness_hash: digestSchema,
-  tokens: z.object({ input: z.number().int().nonnegative().nullable(), output: z.number().int().nonnegative().nullable() }),
-  elapsed_ms: z.number().int().nonnegative(),
-  api_cost: z.object({ reported_usd_micros: z.number().int().nonnegative().nullable(), provider_request_ids: z.array(z.string()) }),
-  output_sha256: digestSchema,
-  client_version: semverSchema,
-  signature: z.string().min(1),
+/**
+ * POST /v1/coordinators/{swarm}/leases. API mode is off (decision 2026-11-25), so there is no spend
+ * reservation, and reputation tokens arrive with reputation (M6); both are sent as null.
+ */
+export const leaseRequestSchema = z
+  .object({
+    node_id: z.uuid(),
+    mode: z.literal('local'),
+    model_artifact_hash: digestSchema,
+    reputation_token: z.null(),
+    spend_reservation: z.null(),
+  })
+  .strict();
+
+export const leaseUnavailableSchema = z.enum(['no_tasks', 'pool_empty', 'paid_leasing_unavailable']);
+export type LeaseUnavailable = z.infer<typeof leaseUnavailableSchema>;
+
+/** A lease request returns zero or one lease; with zero, `unavailable` says why. */
+export const leaseResponseSchema = z.object({
+  lease: leaseSchema.nullable(),
+  unavailable: z.object({ code: leaseUnavailableSchema, message: z.string() }).nullable(),
 });
+
+/** POST /v1/leases/{id}/start: Leased to Running once the node verified its pins (SPEC 7.3). */
+export const leaseStartSchema = z.object({ harness_hash: digestSchema, permissions_hash: digestSchema, model_artifact_hash: digestSchema }).strict();
+export const leaseInputSchema = z.object({ lease_id: z.uuid(), input: z.record(z.string(), z.unknown()), input_sha256: digestSchema });
+export const leaseStartedSchema = leaseInputSchema.extend({ status: z.literal('running'), deadline_at: isoDate });
+
+/** POST /v1/leases/{id}/renew. The coordinator may refuse (409 renewal_refused). */
+export const leaseRenewedSchema = z.object({ lease_id: z.uuid(), deadline_at: isoDate, renewals: z.number().int().nonnegative() });
+
+/** POST /v1/leases/{id}/abandon: an immediate, unpaid return. */
+export const abandonReasonSchema = z.enum(['paused', 'left', 'run_rules', 'local_failure', 'signed_out', 'pin_mismatch']);
+export type AbandonReason = z.infer<typeof abandonReasonSchema>;
+export const leaseAbandonSchema = z.object({ reason: abandonReasonSchema }).strict();
+export const leaseAbandonedSchema = z.object({ lease_id: z.uuid(), status: leaseStatusSchema, requeued: z.boolean() });
+
+export const runRecordSchema = z
+  .object({
+    lease_id: z.uuid(),
+    node_id: z.uuid(),
+    model: z.object({ source: z.enum(['local', 'provider']), claimed_id: z.string().min(1).max(120), artifact_hash: digestSchema.nullable() }).strict(),
+    harness_hash: digestSchema,
+    tokens: z.object({ input: z.number().int().nonnegative().nullable(), output: z.number().int().nonnegative().nullable() }).strict(),
+    elapsed_ms: z.number().int().nonnegative(),
+    api_cost: z.object({ reported_usd_micros: z.number().int().nonnegative().nullable(), provider_request_ids: z.array(z.string().max(200)).max(64) }).strict(),
+    output_sha256: digestSchema,
+    client_version: semverSchema,
+    /** Ed25519 device signature, base64url, over `runRecordMessage` of the record without this field. */
+    signature: z.string().regex(/^[A-Za-z0-9_-]{80,90}$/),
+  })
+  .strict();
 export type RunRecord = z.infer<typeof runRecordSchema>;
+
+/** The bytes a device signs for a run record: a domain tag and the canonical JSON of the record minus `signature`. */
+export function runRecordMessage(canonicalRecordWithoutSignature: string): string {
+  return `swarm-explorer-run-record-v1\n${canonicalRecordWithoutSignature}`;
+}
+
+/** POST /v1/leases/{id}/results. Idempotent by lease id and output hash. */
+export const resultSubmitSchema = z.object({ output: z.record(z.string(), z.unknown()), output_sha256: digestSchema, run_record: runRecordSchema }).strict();
+export const resultSubmittedSchema = z.object({
+  lease_id: z.uuid(),
+  result_id: z.uuid(),
+  status: leaseStatusSchema,
+  /** Late and after-abandon results are recorded and never paid (SPEC 7.3). */
+  disposition: z.enum(['on_time', 'late', 'after_abandon']),
+  duplicate: z.boolean(),
+  /** True only for an on-time result; it now waits for the swarm's verifier (M6). */
+  awaiting_verification: z.boolean(),
+});
+
+/** GET /v1/leases/{id}: status for recovery. */
+export const leaseViewSchema = z.object({
+  lease: leaseSchema,
+  result: z.object({ id: z.uuid(), output_sha256: digestSchema, disposition: z.enum(['on_time', 'late', 'after_abandon']), submitted_at: isoDate }).nullable(),
+});
+
+/** POST /v1/swarms/{id}/tasks:batch: the publisher uploads tasks to the hosted coordinator. */
+export const taskBatchSchema = z
+  .object({
+    tasks: z
+      .array(z.object({ coordinator_task_id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/), input: z.record(z.string(), z.unknown()), urgent: z.boolean().optional() }).strict())
+      .min(1)
+      .max(500),
+  })
+  .strict();
+export const taskBatchAcceptedSchema = z.object({ accepted: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative() });
+
+/** PATCH /v1/nodes/{id}/shares: every qualified membership, basis points summing to 10,000 (SPEC 7.1). */
+export const sharesUpdateSchema = z.object({ shares: z.array(z.object({ membership_id: z.uuid(), share_bp: z.number().int().min(0).max(10_000) }).strict()).min(1).max(64) }).strict();
+export const sharesUpdatedSchema = z.object({ node_id: z.uuid(), customized: z.boolean(), shares: z.array(z.object({ membership_id: z.uuid(), share_bp: z.number().int() })) });
 
 /* ----------------------------------------------------------------------------
  * Store home, join and qualification (SPEC 13.1, 13.2). Node-signed.
@@ -265,6 +351,8 @@ export const membershipSchema = z.object({
   harness: z.object({ name: z.string(), version: semverSchema, hash: digestSchema }),
   joined_at: isoDate,
   qualification: qualificationProgressSchema.nullable(),
+  /** Tasks waiting at the hosted coordinator, so the node's scheduler knows where work is (M5). */
+  queue: z.object({ queued: z.number().int().nonnegative(), urgent: z.number().int().nonnegative() }).nullable(),
 });
 export type MembershipView = z.infer<typeof membershipSchema>;
 
@@ -273,7 +361,14 @@ export const storeHomeSchema = z.object({
   joined: z.array(membershipSchema),
   featured: z.array(swarmSummarySchema).max(3),
   categories: z.array(z.object({ key: categorySchema, label: z.string(), listed: z.number().int().nonnegative() })),
-  node: z.object({ id: z.uuid(), qualified_swarms: z.number().int().nonnegative(), share_total_bp: z.number().int().min(0).max(10_000) }),
+  node: z.object({
+    id: z.uuid(),
+    qualified_swarms: z.number().int().nonnegative(),
+    share_total_bp: z.number().int().min(0).max(10_000),
+    /** The user moved a slider; a new join then asks before rebalancing (SPEC 7.1). */
+    shares_customized: z.boolean(),
+    open_leases: z.array(z.object({ id: z.uuid(), swarm: slugSchema, status: leaseStatusSchema, deadline_at: isoDate })),
+  }),
 });
 export type StoreHome = z.infer<typeof storeHomeSchema>;
 

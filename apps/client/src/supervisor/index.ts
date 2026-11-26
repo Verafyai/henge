@@ -79,6 +79,7 @@ async function harnessRun(id: number, spec: HarnessRunSpec): Promise<HarnessRunR
   if (!check.ok) return { ...empty, status: 'bundle_rejected', detail: `The harness bundle was refused: ${check.reason}.` };
   const bundle = check.bundle;
   const ctl = new AbortController();
+  const tokens = { input: 0, output: 0 };
   runs.set(id, ctl);
   try {
     const wallMs = Math.min(bundle.harness.limits.wall_s, spec.timeoutS) * 1000;
@@ -96,9 +97,14 @@ async function harnessRun(id: number, spec: HarnessRunSpec): Promise<HarnessRunR
       limits: { memoryMb: bundle.harness.limits.memory_mb, wallMs, maxModelCalls: bundle.harness.loop.max_steps, maxTokensPerCall: MAX_TOKENS_PER_CALL },
       host: {
         complete: async (req) => {
-          const res = await proxyComplete(proxy.socketPath, token, req).catch(() => ({ status: 0, body: null }));
+          // Pause, leave or a rule stop aborts the run; hanging up cancels the model call in the runtime.
+          const res = await proxyComplete(proxy.socketPath, token, req, ctl.signal).catch(() => ({ status: 0, body: null }));
           const body = completeResponseSchema.safeParse(res.body);
-          if (res.status === 200 && body.success) return { ok: true, response: body.data };
+          if (res.status === 200 && body.success) {
+            tokens.input += body.data.usage.input_tokens;
+            tokens.output += body.data.usage.output_tokens;
+            return { ok: true, response: body.data };
+          }
           const code = (res.body as { error?: { code?: unknown } } | null)?.error?.code;
           return { ok: false, error: typeof code === 'string' ? code.slice(0, 60) : `proxy_http_${res.status}` };
         },
@@ -112,7 +118,7 @@ async function harnessRun(id: number, spec: HarnessRunSpec): Promise<HarnessRunR
     if (r.status === 'ok') {
       const out = r.output;
       if (!out || typeof out !== 'object' || Array.isArray(out)) return { status: 'invalid_output', output: null, detail: 'The answer was not a JSON object.', screen, modelCalls: r.modelCalls };
-      return { status: 'ok', output: out as Record<string, unknown>, detail: 'finished', screen, modelCalls: r.modelCalls };
+      return { status: 'ok', output: out as Record<string, unknown>, detail: 'finished', screen, modelCalls: r.modelCalls, tokens };
     }
     if (r.status === 'failed' && r.reason === 'cancelled') return { ...empty, status: 'cancelled', detail: 'Stopped.', screen };
     const detail = r.status === 'limit_exceeded' ? `Stopped at the ${r.limit.replace('_', ' ')} limit.` : r.reason;

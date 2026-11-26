@@ -47,6 +47,8 @@ type Deps = {
   detection: () => Detection | null;
   nodeId: () => string | null;
   changed: () => void;
+  /** The model of a running lease, if any (M5). */
+  leasedModel?: () => string | null;
   /** Injected in tests; defaults to global fetch. */
   fetch?: typeof fetch;
 };
@@ -83,10 +85,11 @@ export class ModelManager {
     return this.read('license-acceptances', z.array(z.object({ contentHash: z.string(), licenseId: z.string(), sharedAt: z.number().nullable() })), []);
   }
 
-  /** Never removable: the active model. Leased models join this set in M5. */
+  /** Never removable: the active model and the model a running lease uses. */
   protectedHashes(): Set<string> {
     const a = this.storage().activeModel;
-    return new Set(a ? [a] : []);
+    const l = this.d.leasedModel?.() ?? null;
+    return new Set([a, l].filter((x): x is string => Boolean(x)));
   }
 
   overview(): ModelsOverview {
@@ -241,7 +244,9 @@ export class ModelManager {
     const ok = canRemove(contentHash, list, this.protectedHashes());
     if (!ok.ok) {
       return ok.reason === 'protected'
-        ? fail('protected', 'This is your active model. Choose another active model first.')
+        ? contentHash === this.d.leasedModel?.() && contentHash !== this.storage().activeModel
+          ? fail('protected', 'A task is running on this model. Pause or wait for it to finish first.')
+          : fail('protected', 'This is your active model. Choose another active model first.')
         : ok.reason === 'not_managed'
           ? fail('not_managed', 'You installed this model in Ollama yourself, so Henge leaves it alone.')
           : fail('not_installed', 'That model is not installed.');

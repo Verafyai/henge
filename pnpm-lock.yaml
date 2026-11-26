@@ -168,6 +168,9 @@ importers:
       '@swarm-explorer/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@electric-sql/pglite@0.6.0)(@types/pg@8.23.1)(pg@8.23.1)

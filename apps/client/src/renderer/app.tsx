@@ -1,5 +1,6 @@
 import { useNode } from './api';
 import { useNav } from './router';
+import { ActivityPage } from './pages/activity';
 import { PLANNED_PAGES, PlaceholderPage, SettingsPage } from './pages/other';
 import { ModelsPage } from './pages/models';
 import { SetupPage } from './pages/setup';
@@ -36,6 +37,7 @@ function View() {
     case 'library':
       return <LibraryPage />;
     case 'activity':
+      return <ActivityPage />;
     case 'community':
     case 'wallet':
     case 'publisher':

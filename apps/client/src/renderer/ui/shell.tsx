@@ -265,9 +265,14 @@ function NodeStatus({ online }: { online: boolean }) {
   const o = node.data;
   const setup = o?.setup ?? null;
   const paused = o?.paused ?? false;
+  const t = o?.tasks;
   const state = paused
     ? { label: 'Paused', tone: 'paused' as const, detail: 'nothing will run until you resume' }
-    : setup
+    : t?.current
+      ? { label: 'Running', tone: 'active' as const, detail: `a task for ${t.current.swarm} on ${t.current.model}` }
+      : t && t.phase !== 'off'
+        ? { label: t.phase === 'blocked' ? 'Waiting' : 'Ready', tone: online ? ('idle' as const) : ('offline' as const), detail: t.detail }
+        : setup
       ? { label: 'Set up', tone: online ? ('idle' as const) : ('offline' as const), detail: 'no swarm joined yet' }
       : { label: 'Node not set up', tone: online ? ('idle' as const) : ('offline' as const), detail: 'nothing runs on this computer yet' };
   return (

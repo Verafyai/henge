@@ -5,17 +5,19 @@
  */
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { chmodSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { accessSync, chmodSync, constants, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { utilityProcess, type UtilityProcess } from 'electron';
 import { capabilitiesAcceptedSchema, createApiClient, registerInstallResponseSchema } from '@swarm-explorer/api-client';
-import { DEFAULT_RUN_RULES, describeRunRules, enforcementSupport, minimizeCapabilities, ollamaBaseUrl, recommendMode } from '@swarm-explorer/node-core';
+import { describeRunRules, enforcementSupport, minimizeCapabilities, ollamaBaseUrl, recommendMode, type RunRules } from '@swarm-explorer/node-core';
 import { nodeSetupSchema, supervisorMessageSchema, type Detection, type HarnessRunResult, type HarnessRunSpec, type NodeOverview, type NodeSetup, type SandboxCheck, type SupervisorCommand, type SupervisorMessage } from '../shared/node';
 import type { AuthManager } from './auth';
 import type { EncryptedCache } from './cache';
 import { MembershipManager } from './memberships';
 import { ModelManager } from './models';
+import { readSensors } from './sensors';
 import { proxySocketDir, proxySocketPath } from './socket-path';
+import { TaskRunner } from './tasks';
 
 type Registration = { installId: string; nodeId: string; capabilitiesReportedAt: number | null };
 
@@ -27,8 +29,25 @@ export type NodeControllerOpts = {
   appVersion: string;
   channel: string;
   /** Unpackaged test hooks; main passes them only when the app is not packaged. */
-  testHooks: { hardwareFixture?: string; ollamaHost?: string; hfBase?: string } | null;
+  testHooks: { hardwareFixture?: string; ollamaHost?: string; hfBase?: string; sensorFixture?: string } | null;
 };
+
+/** Absolute path of an executable on PATH, without running it. The proxy itself has an empty PATH. */
+function onPath(bin: string): string | null {
+  const names = process.platform === 'win32' ? [`${bin}.exe`] : [bin];
+  for (const dir of (process.env['PATH'] ?? '').split(path.delimiter).filter((d) => path.isAbsolute(d)).slice(0, 64)) {
+    for (const n of names) {
+      const p = path.join(dir, n);
+      try {
+        accessSync(p, constants.X_OK);
+        return p;
+      } catch {
+        // Not here.
+      }
+    }
+  }
+  return null;
+}
 
 export class NodeController extends EventEmitter {
   private child: UtilityProcess | null = null;
@@ -43,6 +62,7 @@ export class NodeController extends EventEmitter {
   private replies = new Map<number, { on: (m: SupervisorMessage) => void; fail: (e: Error) => void }>();
   readonly models: ModelManager;
   readonly memberships: MembershipManager;
+  readonly tasks: TaskRunner;
   private proxy: UtilityProcess | null = null;
   private proxyRestarts = 0;
   /** Session capability key shared by the supervisor (mints) and proxy (verifies). Never on disk. */
@@ -73,6 +93,7 @@ export class NodeController extends EventEmitter {
       detection: () => this.detection,
       nodeId: () => this.registration()?.nodeId ?? null,
       changed: () => this.emit('changed'),
+      leasedModel: () => this.tasks?.leasedModel() ?? null,
       rpc: {
         install: (artifact, onProgress) =>
           call(
@@ -94,6 +115,22 @@ export class NodeController extends EventEmitter {
       isPaused: () => this.paused,
       changed: () => this.emit('changed'),
       run: (spec, signal) => this.runHarness(spec, signal),
+      beforeLeave: (id) => this.tasks.onLeave(id),
+    });
+    const support = () => enforcementSupport(this.detection?.hardware.os.platform ?? process.platform);
+    this.tasks = new TaskRunner({
+      auth: opts.auth,
+      cache: opts.cache,
+      memberships: this.memberships,
+      nodeId: () => this.registration()?.nodeId ?? null,
+      isPaused: () => this.paused,
+      run: (spec, signal) => this.runHarness(spec, signal),
+      sensors: () => readSensors(opts.testHooks?.sensorFixture ?? null),
+      get support() {
+        return support();
+      },
+      appVersion: opts.appVersion,
+      changed: () => this.emit('changed'),
     });
   }
 
@@ -113,7 +150,8 @@ export class NodeController extends EventEmitter {
     const child = utilityProcess.fork(path.join(__dirname, 'proxy.js'), [], { serviceName: 'Henge model proxy', env: { PATH: '' }, stdio: 'ignore' });
     this.proxy = child;
     const ollama = this.opts.testHooks?.ollamaHost ?? process.env['OLLAMA_HOST'];
-    child.postMessage({ type: 'configure', key: this.capabilityKey, socketPath: this.socketPath, ollamaBase: ollamaBaseUrl({ OLLAMA_HOST: ollama }) });
+    // llama.cpp is the second local source; the proxy starts llama-server itself, by absolute path.
+    child.postMessage({ type: 'configure', key: this.capabilityKey, socketPath: this.socketPath, ollamaBase: ollamaBaseUrl({ OLLAMA_HOST: ollama }), llamaServer: onPath('llama-server') });
     this.syncProxyModels();
     child.on('exit', () => {
       this.proxy = null;
@@ -196,9 +234,11 @@ export class NodeController extends EventEmitter {
     });
     if (this.paused) this.send({ type: 'pause' });
     this.send({ type: 'sandbox-config', key: this.capabilityKey, socketPath: this.socketPath });
+    this.tasks.start();
   }
 
   stop() {
+    this.tasks.stop();
     this.restarts = Infinity;
     this.proxyRestarts = Infinity;
     this.child?.kill();
@@ -240,12 +280,26 @@ export class NodeController extends EventEmitter {
     return done;
   }
 
+  /**
+   * Pause (SPEC 7.2): the supervisor stops the sandbox at once, which hangs up on the model proxy
+   * and cancels the model call; the leased task is abandoned unpaid and no new lease starts until
+   * Resume. Reachable from the tray, the app menu and the status bar.
+   */
   setPaused(paused: boolean) {
     this.paused = paused;
     this.send({ type: paused ? 'pause' : 'resume' });
-    if (paused) this.memberships.stopAll('Paused. Qualification continues when you resume.');
-    else this.memberships.resumeQualifying();
+    if (paused) {
+      this.tasks.pause();
+      this.memberships.stopAll('Paused. Qualification continues when you resume.');
+    } else {
+      this.memberships.resumeQualifying();
+      this.tasks.resume();
+    }
     this.emit('changed');
+  }
+
+  setRunRules(r: RunRules) {
+    this.tasks.setRules(r);
   }
 
   get isPaused() {
@@ -293,13 +347,16 @@ export class NodeController extends EventEmitter {
     return {
       detection: d,
       recommendation: d ? recommendMode(d.hardware, { minVramBytes: this.catalogMinBytes }) : null,
-      runRules: describeRunRules(DEFAULT_RUN_RULES, enforcementSupport(platform)),
+      runRules: describeRunRules(this.tasks.rules(), enforcementSupport(platform)),
+      rules: this.tasks.rules(),
+      support: enforcementSupport(platform),
       setup: this.getSetup(),
       paused: this.paused,
       registration: reg ? { nodeId: reg.nodeId, capabilitiesReportedAt: reg.capabilitiesReportedAt } : null,
       catalogMinBytes: this.catalogMinBytes,
       models: this.models.overview(),
       memberships: this.memberships.overview(),
+      tasks: this.tasks.overview(),
     };
   }
 

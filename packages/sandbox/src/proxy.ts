@@ -5,8 +5,10 @@
  * - every request carries a capability token scoped to one lease, model, token cap and cost cap;
  * - exposes one route, `POST /v1/complete`; runtime administration (pull, delete, load) is never
  *   reachable through it;
- * - the harness never learns the runtime address, the model tag or any credential.
+ * - the harness never learns the runtime address, the model tag or any credential;
+ * - if the caller goes away (Pause, leave, a rule stop), the runtime call is cancelled.
  *
+ * Sources: Ollama, and llama.cpp's `llama-server` for GGUF files (sources.ts).
  * API providers (keychain access) are off until the provider terms review (SPEC 5.5).
  */
 import { createHash } from 'node:crypto';
@@ -15,6 +17,7 @@ import { chmod, rm } from 'node:fs/promises';
 import http from 'node:http';
 import { z } from 'zod';
 import { verifyCapability } from './capability';
+import { LlamaServerSource, ollamaSource, SourceError, type CompletionSource } from './sources';
 
 export type ProxyModel = { contentHash: string; runtime: 'ollama' | 'llama_cpp'; ref: string; path?: string };
 
@@ -36,8 +39,6 @@ export const completeResponseSchema = z.object({
 });
 export type CompleteResponse = z.infer<typeof completeResponseSchema>;
 
-const ollamaChatSchema = z.object({ message: z.object({ content: z.string() }), eval_count: z.number().int().optional(), prompt_eval_count: z.number().int().optional() }).loose();
-
 const MAX_BODY = 1024 * 1024;
 
 function hashFile(file: string): Promise<string> {
@@ -57,7 +58,30 @@ export class ModelProxy {
   /** Calls the proxy made, for tests and the self-check; never contains prompts. */
   readonly audit: Array<{ capability: string; model: string; outcome: string }> = [];
 
-  constructor(private opts: { key: Buffer; socketPath: string; ollamaBase: string | null; fetch?: typeof fetch; now?: () => number }) {}
+  private readonly sources: Partial<Record<ProxyModel['runtime'], CompletionSource>>;
+
+  constructor(
+    private opts: {
+      key: Buffer;
+      socketPath: string;
+      ollamaBase: string | null;
+      /** Absolute path of `llama-server`, or null when llama.cpp is not installed. */
+      llamaServer?: string | null;
+      fetch?: typeof fetch;
+      now?: () => number;
+      /** Tests replace the runtimes. */
+      sources?: Partial<Record<ProxyModel['runtime'], CompletionSource>>;
+    },
+  ) {
+    this.sources = {
+      ...(opts.ollamaBase ? { ollama: ollamaSource(opts.ollamaBase, opts.fetch) } : {}),
+      ...(opts.llamaServer ? { llama_cpp: new LlamaServerSource({ binary: opts.llamaServer, ...(opts.fetch ? { fetch: opts.fetch } : {}) }) } : {}),
+      ...opts.sources,
+    };
+  }
+
+  /** Calls in flight, for tests and the self-check. */
+  inFlight = 0;
 
   /** Registers installed models. GGUF files are re-hashed before first use (SPEC 5.4). */
   async setModels(list: readonly ProxyModel[]): Promise<{ refused: string[] }> {
@@ -88,6 +112,7 @@ export class ModelProxy {
   }
 
   async stop(): Promise<void> {
+    for (const s of Object.values(this.sources)) await s.stop?.();
     await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r()));
     if (process.platform !== 'win32') await rm(this.opts.socketPath, { force: true });
   }
@@ -121,19 +146,23 @@ export class ModelProxy {
     }
     const model = this.models.get(c.model);
     if (!model) return this.send(res, 409, { error: 'model_not_available' });
-    if (model.runtime !== 'ollama' || !this.opts.ollamaBase) return this.send(res, 503, { error: 'runtime_unavailable' });
+    const source = this.sources[model.runtime];
+    if (!source) return this.send(res, 503, { error: 'runtime_unavailable' });
+    // The caller hanging up (the sandbox was stopped) cancels the generation in the runtime.
+    const ctl = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) ctl.abort();
+    });
     let out: CompleteResponse;
+    this.inFlight++;
     try {
-      const r = await (this.opts.fetch ?? fetch)(new URL('/api/chat', this.opts.ollamaBase), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ model: model.ref, messages: parsed.data.messages, stream: false, options: { num_predict: parsed.data.max_tokens } }),
-      });
-      const j = ollamaChatSchema.parse(await r.json());
-      const output = Math.min(j.eval_count ?? parsed.data.max_tokens, parsed.data.max_tokens);
-      out = { content: j.message.content, usage: { input_tokens: j.prompt_eval_count ?? 0, output_tokens: output }, cost_usd_micros: 0 };
-    } catch {
-      return this.send(res, 502, { error: 'runtime_error' });
+      out = await source.complete(model, parsed.data, ctl.signal);
+    } catch (e) {
+      const code = e instanceof SourceError ? e.code : 'runtime_error';
+      this.audit.push({ capability: c.id, model: c.model, outcome: code });
+      return ctl.signal.aborted ? undefined : this.send(res, code === 'runtime_unavailable' ? 503 : 502, { error: code });
+    } finally {
+      this.inFlight--;
     }
     // Count the whole request's cap as spent if the runtime did not report usage.
     this.used.set(c.id, used + out.usage.output_tokens);
@@ -142,9 +171,10 @@ export class ModelProxy {
   }
 }
 
-/** Client side, used by the sandbox broker. */
-export function proxyComplete(socketPath: string, token: string, body: CompleteRequest): Promise<{ status: number; body: unknown }> {
+/** Client side, used by the sandbox broker. Aborting `signal` hangs up, which cancels the runtime call. */
+export function proxyComplete(socketPath: string, token: string, body: CompleteRequest, signal?: AbortSignal): Promise<{ status: number; body: unknown }> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('cancelled'));
     const data = JSON.stringify(body);
     const req = http.request({ socketPath, path: '/v1/complete', method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } }, (res) => {
       let raw = '';
@@ -158,6 +188,7 @@ export function proxyComplete(socketPath: string, token: string, body: CompleteR
       });
     });
     req.on('error', reject);
+    signal?.addEventListener('abort', () => req.destroy(new Error('cancelled')), { once: true });
     req.end(data);
   });
 }

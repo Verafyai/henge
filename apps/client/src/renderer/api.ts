@@ -80,5 +80,6 @@ export function useNodeActions() {
     saveSetup: async (s: Parameters<typeof window.swarm.node.saveSetup>[0]) => set(await window.swarm.node.saveSetup(s)),
     resetSetup: async () => set(await window.swarm.node.resetSetup()),
     setPaused: async (p: boolean) => set(await window.swarm.node.setPaused(p)),
+    setRunRules: async (r: Parameters<typeof window.swarm.node.setRunRules>[0]) => set(await window.swarm.node.setRunRules(r)),
   };
 }

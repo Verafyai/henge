@@ -3,10 +3,10 @@
  * change runs in one transaction. Qualification is known-answer only and never creates ledger
  * entries: it is not credited work.
  */
-import { equalShares } from '@swarm-explorer/core';
 import { canonicalJson, type ManifestV1 } from '@swarm-explorer/schema';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb, type Db } from './client';
+import { rebalanceShares as rebalance } from './coordinator';
 import { getSwarm, policyAccepts, type SwarmRow } from './queries';
 import {
   harnessReleases,
@@ -37,25 +37,6 @@ export class MembershipError extends Error {
   ) {
     super(message);
   }
-}
-
-/** Statuses that hold a timeshare. Paused and reconsent-required swarms keep their share and lend time (SPEC 4.2). */
-const QUALIFIED = ['active', 'paused', 'reconsent_required'] as const;
-
-/** Rebalances a node's qualified memberships to equal shares, earliest joined first. */
-async function rebalance(tx: Tx, nodeId: string) {
-  const rows = await tx
-    .select({ id: memberships.id })
-    .from(memberships)
-    .where(and(eq(memberships.nodeId, nodeId), isNull(memberships.leftAt), inArray(memberships.status, [...QUALIFIED])))
-    .orderBy(asc(memberships.joinedAt), asc(memberships.id));
-  const shares = equalShares(rows.length);
-  for (const [i, r] of rows.entries()) await tx.update(memberships).set({ shareBp: shares[i]! }).where(eq(memberships.id, r.id));
-  // Anything not qualified holds no share, so it never leases automatically.
-  await tx
-    .update(memberships)
-    .set({ shareBp: 0 })
-    .where(and(eq(memberships.nodeId, nodeId), inArray(memberships.status, ['joining', 'qualifying', 'left'])));
 }
 
 async function ownedMembership(tx: Tx, accountId: string, membershipId: string): Promise<Membership> {
@@ -297,9 +278,11 @@ export async function leaveMembership(o: { accountId: string; membershipId: stri
     const swarmTasks = tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.swarmId, m.swarmId));
     const abandoned = await tx
       .update(leases)
-      .set({ status: 'abandoned', abandonedAt: now })
+      .set({ status: 'abandoned', abandonedAt: now, requeuedAt: now })
       .where(and(eq(leases.nodeId, m.nodeId), inArray(leases.status, ['leased', 'running']), inArray(leases.taskId, swarmTasks)))
-      .returning({ id: leases.id });
+      .returning({ id: leases.id, taskId: leases.taskId });
+    // Abandoned work is unpaid and goes straight back to the queue (SPEC 7.3).
+    if (abandoned.length) await tx.update(tasks).set({ status: 'queued' }).where(and(inArray(tasks.id, abandoned.map((a) => a.taskId)), eq(tasks.status, 'leased')));
     await rebalance(tx, m.nodeId);
     return { leftAt: now, abandonedLeases: abandoned.length };
   });

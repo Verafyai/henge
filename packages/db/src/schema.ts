@@ -158,6 +158,8 @@ export const nodes = pgTable(
     diskBudgetBytes: bigint('disk_budget_bytes', { mode: 'number' }),
     concurrencyLocal: smallint('concurrency_local').notNull().default(1),
     concurrencyApi: smallint('concurrency_api').notNull().default(0),
+    /** Set once the user moves a share slider. New joins then ask before rebalancing (SPEC 7.1). */
+    sharesCustomized: boolean('shares_customized').notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [
@@ -513,6 +515,8 @@ export const tasks = pgTable(
     coordinatorTaskId: text('coordinator_task_id').notNull(),
     inputRef: text('input_ref').notNull(),
     inputHash: text('input_hash').notNull(),
+    /** Task input held by the hosted coordinator. Stands in for object storage behind `input_ref` (M5). */
+    inputJson: jsonb('input_json'),
     modelRequirementJson: jsonb('model_requirement_json').notNull(),
     urgent: boolean('urgent').notNull().default(false),
     /** Null for volunteer swarms, which pay impact only. */
@@ -522,10 +526,16 @@ export const tasks = pgTable(
   },
   (t) => [
     uniqueIndex('tasks_coordinator_idx').on(t.swarmId, t.coordinatorTaskId),
+    index('tasks_queue_idx').on(t.swarmId, t.status),
     check('tasks_reward_check', sql`${t.rewardCredits} is null or ${t.rewardCredits} > 0`),
   ],
 );
 
+/**
+ * One node's hold on one task (SPEC 7.3). The coordinator sets `deadline_at`; renewals move it only
+ * when granted before the deadline. Abandoned and expired leases are never paid; their task goes
+ * back to the queue and `requeued_at` records when.
+ */
 export const leases = pgTable(
   'leases',
   {
@@ -533,28 +543,78 @@ export const leases = pgTable(
     taskId: uuid('task_id').notNull().references(() => tasks.id),
     nodeId: uuid('node_id').notNull().references(() => nodes.id),
     accountId: uuid('account_id').notNull().references(() => accounts.id),
+    membershipId: uuid('membership_id').references(() => memberships.id),
     status: leaseStatus('status').notNull().default('leased'),
+    urgent: boolean('urgent').notNull().default(false),
     leasedAt: createdAt(),
     deadlineAt: ts('deadline_at').notNull(),
+    startedAt: ts('started_at'),
+    renewals: smallint('renewals').notNull().default(0),
+    submittedAt: ts('submitted_at'),
     abandonedAt: ts('abandoned_at'),
+    expiredAt: ts('expired_at'),
+    requeuedAt: ts('requeued_at'),
     idempotencyKey: text('idempotency_key').notNull(),
   },
-  (t) => [uniqueIndex('leases_idempotency_idx').on(t.nodeId, t.idempotencyKey), index('leases_task_idx').on(t.taskId)],
+  (t) => [
+    uniqueIndex('leases_idempotency_idx').on(t.nodeId, t.idempotencyKey),
+    index('leases_task_idx').on(t.taskId),
+    index('leases_open_idx').on(t.status, t.deadlineAt),
+  ],
 );
 
-export const runRecords = pgTable('run_records', {
-  id: id(),
-  leaseId: uuid('lease_id').notNull().references(() => leases.id),
-  modelIdClaim: text('model_id_claim').notNull(),
-  modelArtifactHash: text('model_artifact_hash'),
-  provider: text('provider'),
-  harnessHash: text('harness_hash').notNull(),
-  tokensIn: integer('tokens_in'),
-  tokensOut: integer('tokens_out'),
-  elapsedMs: integer('elapsed_ms').notNull(),
-  costUsdMicrosReported: micros('cost_usd_micros_reported'),
-  runRecordSignature: text('run_record_signature').notNull(),
-});
+/**
+ * Coordinator lease rules per swarm, versioned (SPEC 7.3). Neither value has an approved number:
+ * a null threshold means misses are counted but never lower reputation, and null renewals means the
+ * coordinator refuses renewals. Changing either is a new version.
+ */
+export const leaseRules = pgTable(
+  'lease_rules',
+  {
+    id: id(),
+    swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
+    version: integer('version').notNull(),
+    repeatedMissThreshold: integer('repeated_miss_threshold'),
+    maxRenewals: integer('max_renewals'),
+    status: configStatus('status').notNull().default('proposal'),
+    notes: text('notes').notNull().default(''),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('lease_rules_version_idx').on(t.swarmId, t.version)],
+);
+
+/** Missed deadlines per node, swarm and lease rule version (SPEC 7.3). Counting only; no penalty here. */
+export const deadlineMisses = pgTable(
+  'deadline_misses',
+  {
+    nodeId: uuid('node_id').notNull().references(() => nodes.id),
+    swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
+    ruleVersion: integer('rule_version').notNull(),
+    misses: integer('misses').notNull().default(0),
+    lastMissedAt: ts('last_missed_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.nodeId, t.swarmId, t.ruleVersion] })],
+);
+
+export const runRecords = pgTable(
+  'run_records',
+  {
+    id: id(),
+    leaseId: uuid('lease_id').notNull().references(() => leases.id),
+    modelIdClaim: text('model_id_claim').notNull(),
+    modelArtifactHash: text('model_artifact_hash'),
+    provider: text('provider'),
+    harnessHash: text('harness_hash').notNull(),
+    tokensIn: integer('tokens_in'),
+    tokensOut: integer('tokens_out'),
+    elapsedMs: integer('elapsed_ms').notNull(),
+    costUsdMicrosReported: micros('cost_usd_micros_reported'),
+    runRecordSignature: text('run_record_signature').notNull(),
+    /** The signed run record exactly as sent (SPEC 13.3), for the verifier (M6). */
+    recordJson: jsonb('record_json'),
+  },
+  (t) => [uniqueIndex('run_records_lease_idx').on(t.leaseId)],
+);
 
 export const results = pgTable(
   'results',
@@ -563,7 +623,12 @@ export const results = pgTable(
     leaseId: uuid('lease_id').notNull().references(() => leases.id),
     outputRef: text('output_ref').notNull(),
     outputHash: text('output_hash').notNull(),
-    schemaValid: boolean('schema_valid').notNull(),
+    /** Null until checked against the harness output schema. */
+    schemaValid: boolean('schema_valid'),
+    /** Output held by the hosted coordinator for the verifier; stands in for object storage (M5). */
+    outputJson: jsonb('output_json'),
+    /** Late and after-abandon results are recorded and never paid (SPEC 7.3). */
+    disposition: text('disposition', { enum: ['on_time', 'late', 'after_abandon'] }).notNull().default('on_time'),
     submittedAt: createdAt(),
   },
   // Duplicate submissions are idempotent by lease and result hash (SPEC 7.3).
