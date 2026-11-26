@@ -1,9 +1,25 @@
+import { notFound as copy } from '@/lib/henge-landing-copy';
+import { HengeFooter, HengeNav } from './(henge)/chrome';
+import { chakra } from './(henge)/fonts';
+import './(henge)/henge.css';
+
+/** Unmatched URLs on henge.verafy.ai. Henge web pages that call notFound() use app/(web)/not-found.tsx. */
 export default function NotFound() {
   return (
-    <div className="mx-auto max-w-md px-4 py-24 text-center">
-      <h1 className="text-3xl font-bold text-ink">Page not found</h1>
-      <p className="mt-3 text-ink-2">That swarm or page does not exist.</p>
-      <a href="/" className="mt-6 inline-flex min-h-10 items-center font-semibold text-brand">Back to swarms</a>
+    <div className={`hg ${chakra.variable}`}>
+      <HengeNav />
+      <main id="main" className="hg-wrap hg-404">
+        <h1 className="hg-h1-page">{copy.h1}</h1>
+        <p className="hg-p" style={{ margin: '14px auto 0' }}>
+          {copy.p}
+        </p>
+        <div style={{ marginTop: 28 }}>
+          <a href={copy.back.href} className="hg-btn hg-btn-ghost">
+            {copy.back.label}
+          </a>
+        </div>
+      </main>
+      <HengeFooter />
     </div>
   );
 }

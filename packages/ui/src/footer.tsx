@@ -1,7 +1,7 @@
 import { VerafyMark } from './logo';
 
 const cols = [
-  { title: 'Explore', links: [['Swarms', '/'], ['Models', '/models']] },
+  { title: 'Explore', links: [['Swarms', '/swarms'], ['Models', '/models']] },
   { title: 'Node', links: [['Download', '/download'], ['Sign in', '/login']] },
 ] as const;
 

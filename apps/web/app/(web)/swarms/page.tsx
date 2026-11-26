@@ -2,7 +2,7 @@ import { categories } from '@swarm-explorer/core';
 import { listSwarms } from '@swarm-explorer/db';
 import { Eyebrow, HeroBackdrop } from '@swarm-explorer/ui';
 import { toSwarmSummary } from '@/lib/api';
-import { SwarmCard } from './swarm-card';
+import { SwarmCard } from '../swarm-card';
 
 export const dynamic = 'force-dynamic';
 

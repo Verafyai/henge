@@ -4,6 +4,45 @@ Implementation decisions made while building from `docs/SWARM-EXPLORER-SPEC.md`.
 business or hosting choices that the spec leaves unapproved; the code keeps them as configuration or placeholders.
 SwarmStarter decisions are archived in `docs/history/swarmstarter/DECISIONS.md`.
 
+## henge.verafy.ai landing (2026-11-26)
+
+Workstream B2 of the "Henge spin-out v2" spec (section 5.2), branch `web/henge-landing`.
+
+- **Hosting: option B.** Rex chose that henge.verafy.ai is served by this repo's `apps/web` (the spec's option B), not
+  by testnet-demo. Nothing is deployed and no domain or DNS changed.
+- **Routes.** `/` is the 5.2 landing page (sections 0 to 8). The Henge web store that used to be `/` moved to
+  `/swarms` (search is `/swarms?q=`); the shared Header, Footer and Logo now link there. `/login`, `/models`,
+  `/swarms/<slug>`, `/authorize` and every `/v1` route are unchanged. New: `/download`, `/spec`, `/glyphs`, `/s`.
+  The app is split into route groups: `app/(henge)` (dark, Henge nav and footer) and `app/(web)` (light Henge web
+  pages with the shared Header and Footer). The root layout only loads fonts.
+- **Platform note:** Rex changed the hero note to "macOS first. Windows and Linux later. Not released yet."
+  (the spec table said "Windows, macOS and Linux."). Everything else is the spec copy, exactly, in
+  `apps/web/lib/henge-landing-copy.ts`; its test fails on U+2014, U+2013 and on any digit except 01 to 04 and the
+  example snippet's `"1.0"` and `@^1`.
+- **Hero and community images:** the client is not built, so both images are the spec mockups
+  (`01-client-main.png`, `13-community-chat.png`, in `apps/web/public/henge/`), each with a visible
+  "Design preview" label and a caption that the client is not built and that names and values are examples. They
+  are hidden below 720px, as in the mobile mockup. Replace them with real screenshots once the client ships.
+- **Fonts:** Chakra Petch 600/700 is added through `next/font/google` (self-hosted at build, like Inter and
+  JetBrains Mono already were). No font CDN at runtime.
+- **/download:** three disabled buttons (macOS "Not released yet", Windows and Linux "Later"), no links, no version
+  or size. It links to GitHub Releases only once a release exists.
+- **/spec:** spec sections 6 and 7 copied verbatim into `apps/web/content/henge-spec.md` and rendered by a small
+  parser (`apps/web/lib/mini-markdown.ts`) into React elements, with no HTML injection and no new dependency.
+- **/glyphs:** read-only list of the six built-in Glyphs from 7.1, with Runes labeled "Example Runes".
+- **/s:** a disabled ".henge link" field and a "Coming soon" button; the resolver ships in its own PR.
+- **Links:** "Start your own Henge" and "Read the .henge spec" go to `/spec`; nav "Docs" goes to `/spec`; the
+  four other nav links are in-page anchors.
+- **Needs Rex:**
+  - Privacy and Terms: verafy-website has no Privacy or Terms route in code (they are CMS fields, and its
+    `isPolicyUrl` rejects verafy.ai links), so the footer shows them as plain text, not links. Give the URLs.
+  - `Verafyai/henge` is private, so the footer "GitHub" link and the /spec "Source on GitHub" button 404 for the
+    public. Make it public, or say where those should point.
+  - "See the henge-bench plan" points at `github.com/Verafyai/henge-bench`, which may not exist yet (not checked,
+    no outside calls). Confirm the URL or pick another target.
+  - The /spec page shows the spec's own headings ("6. Workstream C: ..."), which read as internal. Approve or
+    supply public wording.
+
 ## Rex's finish-up brief (2026-11-25, later the same day)
 
 Rex's "Henge: finish-up brief" orders the remaining work: Part A (verafy.ai copy), Part B (M5 to M7, stop at G1),
