@@ -1,7 +1,7 @@
-# Henge and Swarm Explorer
+# Henge and Henge web
 
 Verafy's app store for swarms. **Henge by Verafy** is the desktop app: install one node, connect a local model, and
-give its time to the causes you choose. **Swarm Explorer** is the web view of the swarms.
+give its time to the causes you choose. **Henge web** is the web view of the swarms (henge.verafy.ai once staging exists).
 Nodes earn credits for verified work in funded swarms; volunteer swarms earn impact only.
 
 Source of truth: `docs/SWARM-EXPLORER-SPEC.md`. Decisions: `docs/DECISIONS.md`. The SwarmStarter documents in

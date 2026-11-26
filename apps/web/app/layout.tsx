@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: { default: 'Swarm Explorer by Verafy', template: '%s | Swarm Explorer' },
+  title: { default: 'Henge web by Verafy', template: '%s | Henge web' },
   description: 'An app store for swarms. Install one node, connect a local model, and give its time to the causes you choose.',
 };
 

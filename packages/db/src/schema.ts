@@ -1,5 +1,5 @@
 /**
- * Swarm Explorer data model (SPEC 12). IDs are UUIDv7 unless content-addressed;
+ * Henge data model (SPEC 12). IDs are UUIDv7 unless content-addressed;
  * timestamps are UTC; credit amounts are integers. Provider keys and anything that
  * could identify a key across users never reach this database (SPEC 12.1).
  *

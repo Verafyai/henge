@@ -17,7 +17,7 @@ const decisionSchema = authorizeQuerySchema.extend({ decision: z.enum(['allow', 
 
 /** POST is the consent form. Issues a single-use code and returns the browser to the client. */
 export async function POST(req: Request) {
-  if (!sameOrigin(req)) return apiError(403, 'cross_origin', 'This form must be submitted from Swarm Explorer.');
+  if (!sameOrigin(req)) return apiError(403, 'cross_origin', 'This form must be submitted from Henge web.');
   const body = await formBody(req);
   const parsed = decisionSchema.safeParse(body);
   if (!parsed.success) return apiError(400, 'invalid_request', 'The sign in request is incomplete.');
