@@ -6,4 +6,5 @@ export * from './proxy';
 export * from './sources';
 export * from './bundle';
 export * from './broker';
+export * from './meter';
 export * from './checks';

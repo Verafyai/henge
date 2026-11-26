@@ -510,7 +510,7 @@ test('sandbox checks pass on this computer, through the real proxy (M3 acceptanc
   await page.getByRole('button', { name: 'Settings' }).click();
   const box = page.getByRole('group', { name: 'Sandbox' });
   await box.getByRole('button', { name: 'Run sandbox checks' }).click();
-  await expect(box.getByRole('status', { name: 'Sandbox result' })).toHaveText('All 15 checks passed.', { timeout: 30_000 });
+  await expect(box.getByRole('status', { name: 'Sandbox result' })).toHaveText('All 17 checks passed.', { timeout: 30_000 });
   const list = box.getByRole('list', { name: 'Sandbox checks' });
   for (const t of [
     'Cannot ask for keys or the keychain',
@@ -518,6 +518,8 @@ test('sandbox checks pass on this computer, through the real proxy (M3 acceptanc
     'Cannot read outside its scratch folder',
     'Cannot reach an unlisted domain',
     'A runaway loop is ended by the time limit',
+    'A runaway loop runs out of fuel and ends with no result',
+    'Work is metered the same way on every machine',
     'Memory growth stops at the cap and ends the task',
     'A hijacked answer that changes the result schema is rejected',
     'The model proxy refuses a forged capability',

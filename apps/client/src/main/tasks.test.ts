@@ -1,4 +1,4 @@
-import { runRecordMessage, type MembershipView, type StoreHome } from '@swarm-explorer/api-client';
+import { runRecordMessage, runRecordSchema, type MembershipView, type StoreHome } from '@swarm-explorer/api-client';
 import { DEFAULT_RUN_RULES, enforcementSupport, type Sensors } from '@swarm-explorer/node-core';
 import { canonicalJson } from '@swarm-explorer/schema';
 import { sha256Digest } from '@swarm-explorer/schema/node';
@@ -118,6 +118,28 @@ describe('task runner (SPEC 7.3, 13.3)', () => {
     expect(rec).toMatchObject({ lease_id: lease(1).lease_id, node_id: NODE, harness_hash: H('d'), tokens: { input: 40, output: 12 }, model: { source: 'local', artifact_hash: model.contentHash }, api_cost: { reported_usd_micros: null } });
     expect(signature).toBe(`sig:${sha256Digest(runRecordMessage(canonicalJson(rec)))}`.padEnd(86, 'x').slice(0, 86));
     expect(t.runner.overview().shares[0]).toMatchObject({ id: MEM, runs: 1 });
+  });
+
+  it('a metered run submits record version 2 with its fuel, signed with the rest of the record', async () => {
+    const fuel = { meter: 'meter/1' as const, budget: null, used: 10_039 };
+    const t = setup({ leases: [lease(1)], run: async () => ({ status: 'ok', output: { reproduced: false }, detail: 'finished', screen: null, modelCalls: 1, fuel }) });
+    await t.runner.tick();
+    await expect.poll(() => t.runner.overview().history.length).toBe(1);
+    const submit = t.calls.find((c) => c.path.endsWith('/results'))!.body as { run_record: Record<string, unknown> & { signature: string } };
+    const { signature, ...rec } = submit.run_record;
+    expect(rec).toMatchObject({ record_version: 2, metering: { meter: 'meter/1', fuel_used: 10_039, fuel_budget: null } });
+    // The stand-in device signature is not base64url; the rest must match the contract.
+    expect(runRecordSchema.safeParse({ ...submit.run_record, signature: 'A'.repeat(86) }).error?.issues ?? []).toEqual([]);
+    expect(signature).toBe(`sig:${sha256Digest(runRecordMessage(canonicalJson(rec)))}`.padEnd(86, 'x').slice(0, 86));
+  });
+
+  it('a run that runs out of fuel is abandoned unpaid and submits nothing', async () => {
+    const t = setup({ leases: [lease(1)], run: async () => ({ status: 'fuel_exhausted', output: null, detail: 'Stopped when its fuel budget ran out.', screen: null, modelCalls: 0, fuel: { meter: 'meter/1', budget: 1000, used: 1000 } }) });
+    await t.runner.tick();
+    await expect.poll(() => t.runner.overview().history.length).toBe(1);
+    expect(t.runner.overview().history[0]).toMatchObject({ outcome: 'failed' });
+    expect(t.calls.some((c) => c.path.endsWith('/results'))).toBe(false);
+    expect(t.calls.find((c) => c.path.endsWith('/abandon'))?.body).toEqual({ reason: 'local_failure' });
   });
 
   it('Pause stops the run, abandons the lease unpaid and leases nothing until resume', async () => {
