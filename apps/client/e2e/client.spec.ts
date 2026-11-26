@@ -199,6 +199,18 @@ test.afterAll(async () => {
   rmSync(BIN, { recursive: true, force: true });
 });
 
+/**
+ * Opens the account menu and waits until it says it is open. A click that lands while the header is still settling
+ * after sign in is retried; a menu that never opens still fails the test.
+ */
+async function openAccountMenu() {
+  const button = page.getByRole('button', { name: 'Account menu' });
+  await expect(async () => {
+    if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+    await expect(button).toHaveAttribute('aria-expanded', 'true', { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+}
+
 test('every window uses the hardened webPreferences (SPEC 11.1)', async () => {
   const prefs = await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows().map((w) => {
@@ -390,7 +402,7 @@ test('sign in through the system browser with PKCE; tokens only in the keychain'
 });
 
 test('settings lists this install and verifies a signed update manifest', async () => {
-  await page.getByRole('button', { name: 'Account menu' }).click();
+  await openAccountMenu();
   await page.getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByText('This computer', { exact: true })).toBeVisible();
   // Signed in, the node registered itself and shared its minimized hardware summary (SPEC 13.1).
@@ -466,7 +478,7 @@ test('a GGUF download that fails the hash check leaves nothing in the models fol
 });
 
 test('the active model is never evicted to make room (M2 acceptance)', async () => {
-  await page.getByRole('button', { name: 'Account menu' }).click();
+  await openAccountMenu();
   await page.getByRole('button', { name: 'Settings' }).click();
   const storage = page.getByRole('group', { name: 'Storage' });
   await expect(storage).toContainText('Disk budget 20 GB');
@@ -494,7 +506,7 @@ test('the active model is never evicted to make room (M2 acceptance)', async () 
 });
 
 test('sandbox checks pass on this computer, through the real proxy (M3 acceptance)', async () => {
-  await page.getByRole('button', { name: 'Account menu' }).click();
+  await openAccountMenu();
   await page.getByRole('button', { name: 'Settings' }).click();
   const box = page.getByRole('group', { name: 'Sandbox' });
   await box.getByRole('button', { name: 'Run sandbox checks' }).click();
@@ -709,7 +721,7 @@ test('leave cancels at once: the running task stops and its working space is del
 });
 
 test('sign out revokes the install and clears the keychain', async () => {
-  await page.getByRole('button', { name: 'Account menu' }).click();
+  await openAccountMenu();
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('region', { name: 'Account' }).getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('button', { name: 'Sign in' }).first()).toBeVisible();
