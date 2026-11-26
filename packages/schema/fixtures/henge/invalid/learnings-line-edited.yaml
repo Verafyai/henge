@@ -1,0 +1,13 @@
+# 6.4: learnings are append-only. An update that edits an existing line is rejected.
+check: update
+expect: learnings_not_append_only
+previous:
+  files:
+    learnings/2026-11.jsonl: |
+      {"id":"l1","statement":"example one"}
+      {"id":"l2","statement":"example two"}
+files:
+  learnings/2026-11.jsonl: |
+    {"id":"l1","statement":"example one"}
+    {"id":"l2","statement":"example two, edited"}
+    {"id":"l3","statement":"example three"}

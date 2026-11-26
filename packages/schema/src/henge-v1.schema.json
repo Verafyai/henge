@@ -1,0 +1,660 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://henge.verafy.ai/schema/henge-v1.json",
+  "title": "Henge file v1",
+  "description": "A .henge file: one Henge (swarm), its landing page, admission, governance, participation, task, benchmarks, Glyphs and community structure. Single file (<name>.henge or <name>.henge.yaml) or the henge.yaml at the root of a <slug>.henge/ bundle. Cross-field rules live in henge-validate.ts.",
+  "type": "object",
+  "required": ["henge", "kind", "id", "version", "name", "summary", "description", "publisher", "source", "landing", "admission", "governance", "participation", "task", "benchmarks", "runtime", "data_policy"],
+  "patternProperties": { "^x-": {} },
+  "additionalProperties": false,
+  "properties": {
+    "henge": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$", "description": "Spec version major.minor. The client refuses an unknown major." },
+    "kind": { "enum": ["swarm", "template"], "description": "template is reserved and refused by the validator." },
+    "id": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?/[a-z0-9]([a-z0-9-]*[a-z0-9])?$", "description": "<publisher-slug>/<swarm-slug>, lowercase, stable forever." },
+    "version": { "$ref": "#/$defs/semver" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "publisher": {
+      "type": "object",
+      "required": ["name", "url", "contact"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "$ref": "#/$defs/https" },
+        "contact": { "type": "string", "minLength": 1 }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "license": {
+      "type": "object",
+      "properties": {
+        "bundle": { "type": "string", "minLength": 1, "description": "SPDX identifier for the bundle content." },
+        "code": { "type": "string", "minLength": 1, "description": "SPDX identifier for any code (the scorer)." }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["canonical_url", "repo", "commit", "bundle_digest"],
+      "properties": {
+        "canonical_url": { "$ref": "#/$defs/https" },
+        "repo": { "$ref": "#/$defs/https" },
+        "commit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" },
+        "bundle_digest": { "$ref": "#/$defs/nullableDigest" }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "landing": {
+      "type": "object",
+      "required": ["title", "tagline", "body"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "tagline": { "type": "string", "minLength": 1 },
+        "hero_image": { "$ref": "#/$defs/relpath" },
+        "icon": { "$ref": "#/$defs/relpath" },
+        "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "body": { "$ref": "#/$defs/relpath" },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title", "body"],
+            "properties": { "title": { "type": "string", "minLength": 1 }, "body": { "type": "string", "minLength": 1 } },
+            "patternProperties": { "^x-": {} },
+            "additionalProperties": false
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "href"],
+            "properties": { "label": { "type": "string", "minLength": 1 }, "href": { "$ref": "#/$defs/pathOrHttps" } },
+            "patternProperties": { "^x-": {} },
+            "additionalProperties": false
+          }
+        }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "admission": {
+      "type": "object",
+      "required": ["mode", "identity", "requirements"],
+      "properties": {
+        "mode": { "enum": ["open", "request", "invite", "allowlist"] },
+        "identity": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["github", "email", "key"] } },
+        "requirements": {
+          "type": "object",
+          "required": ["min_client_version"],
+          "properties": {
+            "min_client_version": { "$ref": "#/$defs/semver" },
+            "qualification": {
+              "type": "object",
+              "required": ["tasks", "pass"],
+              "properties": { "tasks": { "type": "integer", "minimum": 1 }, "pass": { "type": "integer", "minimum": 1 } },
+              "patternProperties": { "^x-": {} },
+              "additionalProperties": false
+            },
+            "attest": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "review": {
+          "type": "object",
+          "properties": {
+            "by": { "$ref": "#/$defs/roleList" },
+            "sla_hours": { "type": ["integer", "null"], "minimum": 0 }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "capacity": {
+          "type": "object",
+          "properties": { "max_members": { "type": ["integer", "null"], "minimum": 1 } },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "leave": {
+          "type": "object",
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "data_on_leave": { "enum": ["keep_contributions", "delete_my_contributions"] }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "governance": {
+      "type": "object",
+      "required": ["roles", "holders", "voting", "rule_updates", "constitution"],
+      "properties": {
+        "roles": {
+          "type": "object",
+          "required": ["owner", "maintainer", "mod", "member", "agent", "observer"],
+          "properties": {
+            "owner": { "$ref": "#/$defs/role" },
+            "maintainer": { "$ref": "#/$defs/role" },
+            "mod": { "$ref": "#/$defs/role" },
+            "member": { "$ref": "#/$defs/role" },
+            "agent": { "$ref": "#/$defs/role" },
+            "observer": { "$ref": "#/$defs/role" }
+          },
+          "propertyNames": { "$ref": "#/$defs/roleName" },
+          "additionalProperties": { "$ref": "#/$defs/role" }
+        },
+        "holders": {
+          "type": "object",
+          "required": ["owner"],
+          "properties": { "owner": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } } },
+          "propertyNames": { "$ref": "#/$defs/roleName" },
+          "additionalProperties": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        },
+        "voting": {
+          "type": "object",
+          "required": ["glyph"],
+          "properties": { "glyph": { "$ref": "#/$defs/slug" } },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "rule_updates": {
+          "type": "object",
+          "required": ["file_updates_by", "vote_required_for", "member_reconsent_on"],
+          "properties": {
+            "file_updates_by": { "$ref": "#/$defs/roleList" },
+            "vote_required_for": { "$ref": "#/$defs/fieldList" },
+            "no_vote_needed_for": { "$ref": "#/$defs/fieldList" },
+            "changelog": { "$ref": "#/$defs/relpath" },
+            "signed_releases": { "type": "boolean" },
+            "member_reconsent_on": { "$ref": "#/$defs/fieldList" }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "constitution": {
+          "type": "object",
+          "required": ["immutable"],
+          "properties": { "immutable": { "type": "array", "items": { "type": "string", "minLength": 1 } } },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "forks": {
+          "type": "object",
+          "properties": { "allowed": { "type": "boolean" }, "must_change_id": { "type": "boolean" } },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "participation": {
+      "type": "object",
+      "required": ["roles_offered", "compute", "models", "budget", "schedule"],
+      "properties": {
+        "roles_offered": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": { "id": { "$ref": "#/$defs/slug" }, "description": { "type": "string" } },
+            "patternProperties": { "^x-": {} },
+            "additionalProperties": false
+          }
+        },
+        "compute": {
+          "type": "object",
+          "required": ["cpu_cores", "ram_gb", "gpu", "scratch_disk_gb"],
+          "properties": {
+            "cpu_cores": { "$ref": "#/$defs/range" },
+            "ram_gb": { "$ref": "#/$defs/range" },
+            "gpu": {
+              "type": "object",
+              "required": ["allowed"],
+              "properties": { "allowed": { "type": "boolean" } },
+              "patternProperties": { "^x-": {} },
+              "additionalProperties": false
+            },
+            "scratch_disk_gb": { "$ref": "#/$defs/range" }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "models": {
+          "type": "object",
+          "required": ["policy", "byo_api_key", "local_models"],
+          "properties": {
+            "policy": { "enum": ["any", "class", "diverse"] },
+            "class": { "type": "string", "minLength": 1 },
+            "allowed_classes": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "byo_api_key": { "type": "boolean" },
+            "local_models": { "type": "boolean" },
+            "allowed_providers": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/word" } },
+            "diversity": {
+              "type": "object",
+              "required": ["min_families", "min_accounts"],
+              "properties": { "min_families": { "type": "integer", "minimum": 2 }, "min_accounts": { "type": "integer", "minimum": 2 } },
+              "patternProperties": { "^x-": {} },
+              "additionalProperties": false
+            }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "budget": {
+          "type": "object",
+          "required": ["currency", "daily_cap", "hard_stop"],
+          "properties": {
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "daily_cap": { "$ref": "#/$defs/cap" },
+            "monthly_cap": { "$ref": "#/$defs/cap" },
+            "hard_stop": { "type": "boolean" }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "schedule": {
+          "type": "object",
+          "required": ["default"],
+          "properties": {
+            "default": { "enum": ["always", "idle_only", "windows"] },
+            "windows": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "windows_example": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "pause_on_battery": { "type": "boolean" }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "task": {
+      "type": "object",
+      "required": ["type", "description", "input_schema", "output_schema", "timeout_s", "max_parallel_per_node", "permissions", "verification", "verification_config"],
+      "properties": {
+        "type": { "$ref": "#/$defs/dotted" },
+        "description": { "type": "string", "minLength": 1 },
+        "input_schema": { "$ref": "#/$defs/pathOrHttps" },
+        "output_schema": { "$ref": "#/$defs/pathOrHttps" },
+        "timeout_s": { "type": "integer", "minimum": 1 },
+        "max_parallel_per_node": { "type": "integer", "minimum": 1 },
+        "permissions": {
+          "type": "object",
+          "required": ["network"],
+          "properties": {
+            "network": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/domain" } },
+            "tools": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/dotted" } }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "verification": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["machine-check", "known-answers", "redundancy", "jury", "publisher-review"] } },
+        "verification_config": {
+          "type": "object",
+          "required": ["pending_window_s"],
+          "properties": {
+            "known_answer_rate": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 1 },
+            "redundancy_count": { "type": ["integer", "null"], "minimum": 2 },
+            "jury_panel_size": { "type": ["integer", "null"], "minimum": 2 },
+            "pending_window_s": { "type": "integer", "minimum": 0 }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "benchmarks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "dataset", "contamination", "scorer", "metrics"],
+        "properties": {
+          "id": { "$ref": "#/$defs/slug" },
+          "name": { "type": "string", "minLength": 1 },
+          "dataset": {
+            "type": "object",
+            "required": ["uri", "digest", "frozen_at", "splits"],
+            "properties": {
+              "uri": { "$ref": "#/$defs/pathOrHttps" },
+              "digest": { "$ref": "#/$defs/nullableDigest" },
+              "frozen_at": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+              "splits": {
+                "type": "object",
+                "required": ["dev", "test", "heldout"],
+                "properties": {
+                  "dev": { "$ref": "#/$defs/relpath" },
+                  "test": { "$ref": "#/$defs/relpath" },
+                  "heldout": { "type": "string", "minLength": 1, "description": "private, or a digest-only reference sha256-<hex>. Checked in henge-validate.ts." }
+                },
+                "patternProperties": { "^x-": {} },
+                "additionalProperties": false
+              }
+            },
+            "patternProperties": { "^x-": {} },
+            "additionalProperties": false
+          },
+          "contamination": {
+            "type": "object",
+            "properties": {
+              "exclude_domains": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/domain" } },
+              "cutoff_rule": { "type": "string", "minLength": 1 },
+              "log_blocked_hits": { "type": "boolean" }
+            },
+            "patternProperties": { "^x-": {} },
+            "additionalProperties": false
+          },
+          "scorer": {
+            "type": "object",
+            "required": ["path", "digest"],
+            "properties": { "path": { "$ref": "#/$defs/relpath" }, "digest": { "$ref": "#/$defs/nullableDigest" } },
+            "patternProperties": { "^x-": {} },
+            "additionalProperties": false
+          },
+          "metrics": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["id", "direction"],
+              "properties": { "id": { "$ref": "#/$defs/word" }, "direction": { "enum": ["lower_is_better", "higher_is_better"] }, "description": { "type": "string" } },
+              "patternProperties": { "^x-": {} },
+              "additionalProperties": false
+            }
+          },
+          "conditions": { "$ref": "#/$defs/idList" },
+          "baselines": { "$ref": "#/$defs/idList" },
+          "runs_per_condition": { "type": "integer", "minimum": 1 },
+          "leaderboard": { "$ref": "#/$defs/relpath" },
+          "results": { "type": "array", "items": { "type": "object" }, "description": "Appended by tooling only, never hand-edited." }
+        },
+        "patternProperties": { "^x-": {} },
+        "additionalProperties": false
+      }
+    },
+    "strategies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "status"],
+        "properties": {
+          "id": { "$ref": "#/$defs/slug" },
+          "path": { "$ref": "#/$defs/relpath" },
+          "applies_to": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+          "status": { "enum": ["draft", "active", "retired"] },
+          "introduced_in": { "$ref": "#/$defs/semver" },
+          "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        },
+        "patternProperties": { "^x-": {} },
+        "additionalProperties": false
+      }
+    },
+    "learnings": {
+      "type": "object",
+      "required": ["path", "format", "append_only"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relpath" },
+        "format": { "const": "jsonl" },
+        "append_only": { "const": true },
+        "entry_schema": { "$ref": "#/$defs/relpath" },
+        "required_fields": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/word" } },
+        "kinds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/word" } },
+        "promotion": {
+          "type": "object",
+          "properties": {
+            "requires_heldout_gain": { "type": "boolean" },
+            "min_runs": { "type": "integer", "minimum": 1 },
+            "reviewed_by": { "$ref": "#/$defs/roleList" }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "forbidden": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "max_context_tokens": { "type": "integer", "minimum": 1 }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "glyphs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["use", "source", "digest", "added_by", "granted"],
+        "properties": {
+          "use": { "type": "string", "pattern": "^[a-z0-9-]+/[a-z0-9-]+@[\\^~]?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$", "description": "<publisher>/<glyph>@<range>; range is an exact version, ^x.y.z or ~x.y.z." },
+          "source": { "$ref": "#/$defs/https" },
+          "digest": { "$ref": "#/$defs/nullableDigest" },
+          "added_by": { "type": "string", "minLength": 1 },
+          "granted": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 }, "description": "Scopes; checked against the Glyph manifest and the 7.3 rules in glyph-validate.ts." },
+          "runes": { "type": "object", "propertyNames": { "type": "string", "pattern": "^[a-z0-9_.]+$" } }
+        },
+        "patternProperties": { "^x-": {} },
+        "additionalProperties": false
+      }
+    },
+    "community": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "channels"],
+            "properties": {
+              "id": { "$ref": "#/$defs/slug" },
+              "name": { "type": "string", "minLength": 1 },
+              "channels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "type"],
+                  "properties": {
+                    "id": { "$ref": "#/$defs/slug" },
+                    "name": { "type": "string", "minLength": 1 },
+                    "type": { "enum": ["text", "announcement", "agent_run"] },
+                    "post": { "$ref": "#/$defs/roleList" },
+                    "read": { "$ref": "#/$defs/roleList" },
+                    "slow_mode_s": { "type": "integer", "minimum": 0 },
+                    "glyph_posts": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+                    "agents": { "$ref": "#/$defs/word", "description": "Agent posting mode for this channel, for example reply_in_threads_only." }
+                  },
+                  "patternProperties": { "^x-": {} },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "patternProperties": { "^x-": {} },
+            "additionalProperties": false
+          }
+        },
+        "defaults": {
+          "type": "object",
+          "properties": {
+            "new_member_role": { "$ref": "#/$defs/roleName" },
+            "agents_role": { "$ref": "#/$defs/roleName" },
+            "agent_messages_labeled": { "type": "boolean" },
+            "mentions_everyone": { "$ref": "#/$defs/roleList" },
+            "rate_limits": {
+              "type": "object",
+              "propertyNames": { "$ref": "#/$defs/word" },
+              "additionalProperties": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "moderation": {
+          "type": "object",
+          "properties": {
+            "report_reasons": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/word" } },
+            "audit_log": { "const": "append_only" },
+            "ban_appeals": { "type": "boolean" }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["engine", "mode", "temporal", "harness", "coordinator"],
+      "properties": {
+        "engine": { "const": "temporal" },
+        "mode": { "enum": ["local_single_node", "coordinated"] },
+        "temporal": {
+          "type": "object",
+          "required": ["namespace", "task_queue", "workflow"],
+          "properties": {
+            "address": { "type": "string", "minLength": 1 },
+            "ui": { "type": "string", "minLength": 1 },
+            "namespace": { "type": "string", "minLength": 1 },
+            "task_queue": { "type": "string", "minLength": 1 },
+            "workflow": { "type": "string", "minLength": 1 },
+            "continue_as_new_after_events": { "type": "integer", "minimum": 1 },
+            "activity": {
+              "type": "object",
+              "properties": {
+                "start_to_close_s": { "type": "integer", "minimum": 1 },
+                "heartbeat_s": { "type": "integer", "minimum": 1 },
+                "retry": {
+                  "type": "object",
+                  "properties": {
+                    "initial_interval_s": { "type": "number", "minimum": 0 },
+                    "backoff": { "type": "number", "minimum": 1 },
+                    "max_attempts": { "type": "integer", "minimum": 1 }
+                  },
+                  "patternProperties": { "^x-": {} },
+                  "additionalProperties": false
+                }
+              },
+              "patternProperties": { "^x-": {} },
+              "additionalProperties": false
+            }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "harness": {
+          "type": "object",
+          "required": ["name", "version", "runtime"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+            "version": { "$ref": "#/$defs/semver" },
+            "runtime": { "enum": ["wasm", "container"] },
+            "image": { "type": "string", "minLength": 1, "description": "Container image by digest, for container harnesses." },
+            "hash": { "$ref": "#/$defs/digest", "description": "Harness bundle digest (maps to ManifestV1.harness.hash)." }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        },
+        "coordinator": {
+          "type": "object",
+          "required": ["mode", "url", "public_key"],
+          "properties": {
+            "mode": { "enum": ["hosted", "self_hosted"] },
+            "url": { "type": ["string", "null"], "pattern": "^https://[^\\s]+$" },
+            "public_key": { "type": ["string", "null"] }
+          },
+          "patternProperties": { "^x-": {} },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "data_policy": {
+      "type": "object",
+      "required": ["public_inputs", "retention_days", "sensitive_data_prohibited"],
+      "properties": {
+        "public_inputs": { "type": "boolean" },
+        "retention_days": { "type": "integer", "minimum": 0 },
+        "sensitive_data_prohibited": { "type": "boolean" }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "signatures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key_id", "algorithm", "signature"],
+        "properties": {
+          "key_id": { "type": "string", "minLength": 1 },
+          "algorithm": { "const": "ed25519" },
+          "signature": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$" },
+    "domain": { "type": "string", "pattern": "^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$" },
+    "https": { "type": "string", "pattern": "^https://[^\\s]+$" },
+    "digest": { "type": "string", "pattern": "^sha256-[a-f0-9]{64}$" },
+    "nullableDigest": { "type": ["string", "null"], "pattern": "^sha256-[a-f0-9]{64}$" },
+    "relpath": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._/-]+$", "description": "Bundle-relative path: no leading slash, no .. segment." },
+    "pathOrHttps": {
+      "anyOf": [
+        { "$ref": "#/$defs/relpath" },
+        { "$ref": "#/$defs/https" }
+      ]
+    },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" },
+    "word": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "dotted": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" },
+    "roleName": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "role": {
+      "type": "object",
+      "required": ["can"],
+      "properties": { "can": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/word" } } },
+      "additionalProperties": false
+    },
+    "roleList": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/roleName" } },
+    "fieldList": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/dotted" } },
+    "idList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": { "id": { "$ref": "#/$defs/word" }, "description": { "type": "string" } },
+        "patternProperties": { "^x-": {} },
+        "additionalProperties": false
+      }
+    },
+    "range": {
+      "type": "object",
+      "properties": {
+        "default": { "type": ["number", "null"], "minimum": 0 },
+        "min": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    },
+    "cap": {
+      "type": "object",
+      "required": ["default", "required"],
+      "properties": {
+        "default": { "type": ["number", "null"], "minimum": 0 },
+        "required": { "type": "boolean" }
+      },
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    }
+  }
+}

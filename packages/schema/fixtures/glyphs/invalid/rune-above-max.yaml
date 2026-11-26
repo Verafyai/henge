@@ -1,0 +1,5 @@
+# 7.2: a Rune value must fit the Rune's max.
+check: henge
+expect: rune_above_max
+set:
+  /glyphs/0/runes/voting.period_hours: 1000

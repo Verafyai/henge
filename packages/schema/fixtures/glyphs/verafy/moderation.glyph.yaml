@@ -1,0 +1,23 @@
+# EXAMPLE built-in Glyph manifest (spin-out spec v2, 7.1). Not a released Glyph. See README.md for where each value comes from.
+glyph: "1.0"
+id: verafy/moderation
+name: Moderation Glyph
+version: 1.0.0
+kind: moderation
+summary: Automated moderation. Auto-timeout on report bursts, link filters, and every action written to the audit log.
+publisher: { name: Verafy, url: https://verafy.ai }
+source: { repo: https://github.com/verafy/glyphs, commit: null, bundle_digest: null }
+runtime:
+  type: declarative
+  runs_on: coordinator
+permissions:
+  requests: [read:messages, moderate:delete, moderate:timeout, post:audit_log]
+  never: [Ban or kick a member, Act without writing to the audit log, See member API keys]
+runes:
+  - { id: auto_timeout.reports, name: Reports that trigger a timeout, type: integer, min: 1, unit: reports, default: 3 }
+  - { id: auto_timeout.window_minutes, name: Report window, type: integer, min: 1, unit: minutes, default: 10 }
+  - { id: auto_timeout.duration_minutes, name: Timeout length, type: integer, min: 1, unit: minutes, default: 60 }
+  - { id: link_filter, name: Link filter, type: string, default: new_members_only }
+events: [message.reported]
+compat: { henge: ">=1.0 <2", min_client_version: 0.2.0 }
+signatures: []

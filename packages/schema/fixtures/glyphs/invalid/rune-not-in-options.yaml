@@ -1,0 +1,5 @@
+# 7.2: an enum Rune value must be one of its options.
+check: henge
+expect: rune_not_in_options
+set:
+  /glyphs/0/runes/voting.method: plurality

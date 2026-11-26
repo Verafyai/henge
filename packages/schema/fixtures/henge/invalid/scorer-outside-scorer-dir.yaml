@@ -1,0 +1,5 @@
+# 6.4: the scorer is the only code a bundle may hold, and it must live under benchmarks/scorer/.
+check: validate
+expect: scorer_outside_scorer_dir
+set:
+  /benchmarks/0/scorer/path: strategies/score.py

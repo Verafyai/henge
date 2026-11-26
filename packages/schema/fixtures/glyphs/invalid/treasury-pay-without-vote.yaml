@@ -1,0 +1,5 @@
+# 7.3: treasury:pay needs a member vote to grant unless the Henge owner is the only member.
+check: grant
+base: treasury
+expect: scope_requires_vote
+grant: { granted: [treasury:hold, treasury:pay], memberCount: 2, votePassed: false }

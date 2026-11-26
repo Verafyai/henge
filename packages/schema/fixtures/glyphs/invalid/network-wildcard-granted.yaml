@@ -1,0 +1,5 @@
+# 7.3: network wildcards are refused in what a Henge grants, too.
+check: henge
+expect: scope_network_wildcard
+set:
+  /glyphs/0/granted/6: "network:*.example.org"

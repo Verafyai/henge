@@ -1,0 +1,5 @@
+# 7.2: a Rune value must have the Rune's type.
+check: henge
+expect: rune_type_mismatch
+set:
+  /glyphs/0/runes/voting.period_hours: "72"

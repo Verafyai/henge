@@ -1,0 +1,5 @@
+# 7.2: a roles Rune may name only roles the Henge defines.
+check: henge
+expect: rune_unknown_role
+set:
+  /glyphs/0/runes/voting.eligible: [maintainer, citizen]

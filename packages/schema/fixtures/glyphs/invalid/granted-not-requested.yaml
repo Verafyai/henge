@@ -1,0 +1,5 @@
+# 7.3 and 7.7: granted must be a subset of the manifest's permissions.requests.
+check: grant
+base: governance
+expect: granted_exceeds_requests
+grant: { granted: [read:members, treasury:pay], memberCount: 1, votePassed: false }

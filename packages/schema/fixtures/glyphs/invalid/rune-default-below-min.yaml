@@ -1,0 +1,6 @@
+# 7.2: a Rune's own default must fit its min and max.
+check: manifest
+base: governance
+expect: rune_below_min
+set:
+  /runes/1/default: 0.4

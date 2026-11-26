@@ -1,0 +1,4 @@
+# 6.4: participation.budget.daily_cap.required is true, so the member cannot finish joining without a cap.
+check: join
+member: { daily_cap: null }
+expect: budget_daily_cap_required

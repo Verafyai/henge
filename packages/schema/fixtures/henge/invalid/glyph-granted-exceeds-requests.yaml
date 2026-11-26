@@ -1,0 +1,5 @@
+# 6.4 and 7.4: every glyphs[].granted scope must appear in that Glyph manifest's permissions.requests.
+check: validate
+expect: granted_exceeds_requests
+set:
+  /glyphs/0/granted/6: treasury:pay

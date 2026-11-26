@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://henge.verafy.ai/schema/glyph-v1.json",
+  "title": "Henge Glyph manifest v1",
+  "description": "A Glyph is a plugin you add to a Henge. Runes are its small configurable rules. Lives at <glyph>.glyph/glyph.yaml or as a single glyph.yaml file.",
+  "type": "object",
+  "required": ["glyph", "id", "name", "version", "kind", "summary", "publisher", "runtime", "permissions", "compat"],
+  "additionalProperties": false,
+  "patternProperties": { "^x-": {} },
+  "properties": {
+    "glyph": { "const": "1.0", "description": "Glyph spec version." },
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+/[a-z0-9-]+$", "description": "<publisher>/<glyph>" },
+    "name": { "type": "string", "maxLength": 40, "description": "Display name, ends in 'Glyph', e.g. 'Governance Glyph'." },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
+    "kind": { "enum": ["governance", "treasury", "benchmark", "strategy", "learnings", "moderation", "community", "custom"] },
+    "summary": { "type": "string", "maxLength": 160 },
+    "description": { "type": "string", "maxLength": 4000 },
+    "icon": { "type": "string", "description": "Bundle-relative path to a square SVG or PNG, max 256 KB." },
+    "publisher": {
+      "type": "object", "required": ["name", "url"],
+      "properties": { "name": { "type": "string" }, "url": { "type": "string", "format": "uri" }, "contact": { "type": "string" } }
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "repo": { "type": "string", "format": "uri" },
+        "commit": { "type": ["string", "null"] },
+        "bundle_digest": { "type": ["string", "null"], "pattern": "^sha256-[0-9a-f]{64}$" }
+      }
+    },
+    "runtime": {
+      "type": "object", "required": ["type"],
+      "properties": {
+        "type": { "enum": ["declarative", "wasm", "container"], "description": "declarative = rules only, no code. wasm/container run sandboxed in the coordinator or local node, never with member keys." },
+        "entry": { "type": "string" },
+        "digest": { "type": ["string", "null"] },
+        "runs_on": { "enum": ["coordinator", "local_node", "both"] },
+        "temporal": {
+          "type": "object",
+          "properties": {
+            "workflows": { "type": "array", "items": { "type": "string" } },
+            "task_queue_suffix": { "type": "string" }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "object", "required": ["requests"],
+      "properties": {
+        "requests": {
+          "type": "array", "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(read:(members|messages|benchmarks|learnings|strategies|henge_file)|post:(channel:[a-z0-9-]+|audit_log)|propose:henge_file|tally:votes|run:benchmark|append:learnings|inject:agent_context|treasury:(hold|pay)|moderate:(delete|timeout|kick|ban|pause_member)|network:[a-z0-9.-]+)$"
+          },
+          "description": "Scopes shown on the 'This Glyph will be able to' consent screen. The Henge grants a subset in its .henge file."
+        },
+        "never": { "type": "array", "items": { "type": "string" }, "description": "Plain-language list for the 'It cannot' column." }
+      }
+    },
+    "runes": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "name", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_.]+$" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "type": { "enum": ["boolean", "number", "integer", "percent", "duration", "enum", "string", "list", "roles", "channel"] },
+          "default": {},
+          "min": { "type": "number" }, "max": { "type": "number" },
+          "options": { "type": "array" },
+          "unit": { "type": "string" },
+          "change_requires": { "enum": ["vote", "maintainer", "owner"], "default": "vote" },
+          "cosmetic": { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "channels": {
+      "type": "array", "description": "Channels this Glyph creates when added.",
+      "items": { "type": "object", "required": ["id", "type"], "properties": { "id": { "type": "string" }, "type": { "enum": ["text", "announcement", "agent_run"] }, "category": { "type": "string" } } }
+    },
+    "commands": {
+      "type": "array", "description": "Slash commands, e.g. /propose.",
+      "items": { "type": "object", "required": ["name", "description"], "properties": { "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "description": { "type": "string" }, "roles": { "type": "array", "items": { "type": "string" } } } }
+    },
+    "events": {
+      "type": "array", "items": { "enum": ["member.joined", "member.left", "message.created", "message.reported", "proposal.created", "proposal.closed", "task.completed", "benchmark.finished", "henge_file.updated"] }
+    },
+    "compat": {
+      "type": "object", "required": ["henge"],
+      "properties": { "henge": { "type": "string", "description": "semver range of .henge spec, e.g. '>=1.0 <2'" }, "min_client_version": { "type": "string" } }
+    },
+    "signatures": {
+      "type": "array",
+      "items": { "type": "object", "required": ["key_id", "algorithm", "signature"], "properties": { "key_id": { "type": "string" }, "algorithm": { "const": "ed25519" }, "signature": { "type": "string" } } }
+    }
+  }
+}

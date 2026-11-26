@@ -1,0 +1,5 @@
+# 6.4: task.permissions.network must not list a model provider domain. Model calls go through the local proxy.
+check: validate
+expect: network_lists_model_provider
+set:
+  /task/permissions/network: [en.wikipedia.org, api.openai.com]

@@ -1,0 +1,5 @@
+# 6.4: every glyphs[].runes key must exist in the Glyph manifest's runes.
+check: validate
+expect: rune_unknown
+set:
+  /glyphs/0/runes/voting.quorom: 0.25

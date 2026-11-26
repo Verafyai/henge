@@ -1,0 +1,24 @@
+# EXAMPLE built-in Glyph manifest (spin-out spec v2, 7.1). Not a released Glyph. See README.md for where each value comes from.
+glyph: "1.0"
+id: verafy/benchmark
+name: Benchmark Glyph
+version: 1.0.0
+kind: benchmark
+summary: Runs the frozen eval on a schedule with the henge-bench scorer and posts measured results to results.
+publisher: { name: Verafy, url: https://verafy.ai }
+source: { repo: https://github.com/verafy/glyphs, commit: null, bundle_digest: null }
+runtime:
+  type: declarative
+  runs_on: coordinator
+permissions:
+  requests: [read:benchmarks, run:benchmark, post:channel:results]
+  never: [Run the scorer on member machines, See held-out items, See member API keys]
+runes:
+  - { id: schedule, name: Schedule, type: string, default: nightly }
+  - { id: benchmark_id, name: Benchmark, type: string, default: null }
+  - { id: post_to, name: Post results to, type: channel, default: results }
+channels:
+  - { id: results, type: agent_run, category: work }
+events: [benchmark.finished]
+compat: { henge: ">=1.0 <2", min_client_version: 0.2.0 }
+signatures: []
