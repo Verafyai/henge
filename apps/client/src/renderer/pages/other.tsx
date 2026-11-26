@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import type { UpdateStatus } from '../../shared/bridge';
 import { useAppInfo, useAuth, useMe, useNode, useNodeActions } from '../api';
 import { HardwareSummary, RunRulesSummary } from './setup';
+import { RunRulesEditor } from './run-rules';
 import type { NodeOverview, SandboxCheck } from '../../shared/node';
 import { useNav } from '../router';
 import { Btn } from '../ui/bits';
@@ -147,6 +148,7 @@ function NodeSettings() {
         <HardwareSummary o={o} />
         <RunRulesSummary o={o} />
       </div>
+      <RunRulesEditor o={o} />
     </section>
   );
 }
@@ -248,6 +250,20 @@ export function SettingsPage() {
           >
             {checking ? 'Checking' : 'Check for updates'}
           </Btn>
+          {update?.kind === 'available' && (
+            <Btn
+              variant="quiet"
+              className="px-3 py-1.5 text-sm"
+              disabled={checking}
+              onClick={async () => {
+                setChecking(true);
+                setUpdate(await window.swarm.updates.download());
+                setChecking(false);
+              }}
+            >
+              Download and verify
+            </Btn>
+          )}
           {update && (
             <p role="status" data-testid="update-status" className={update.kind === 'rejected' || update.kind === 'error' ? 'text-sm text-red-700' : 'text-sm text-ink'}>
               {update.message}
@@ -270,8 +286,6 @@ export function SettingsPage() {
 
 /** Pages reserved by SPEC 4.1 that later milestones fill in (SPEC 16.4). */
 export const PLANNED_PAGES = {
-  activity: { title: 'Activity', body: 'Your node timeshare, queue and run history. Task leasing arrives in milestone M5; until then nothing runs.' },
   community: { title: 'Community', body: 'Profiles, teams and result discussions arrive in milestone M10.' },
-  wallet: { title: 'Wallet', body: 'Credits earned for verified work in funded swarms, and impact from volunteer swarms. The ledger view arrives in milestone M6.' },
   publisher: { title: 'Publisher Studio', body: 'Publisher identity, pools and the release dashboard arrive in milestone M9.' },
 } as const;

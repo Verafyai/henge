@@ -15,13 +15,14 @@ import {
   submitQualificationResult,
 } from './membership';
 import { getSwarm } from './queries';
-import { accounts, installs, leases, ledgerEntries, memberships, modelArtifacts, models, nodeModels, nodes, permissionGrants, qualificationTasks, swarmReleases, tasks } from './schema';
+import { accounts, installs, leases, ledgerEntries, memberships, modelArtifacts, models, nodeModels, nodes, permissionGrants, qualifications, qualificationTasks, swarmReleases, tasks } from './schema';
+import { settleMachineChecks } from './test-support';
 import { runMigrations, seed } from './testing';
 
 let demo = '';
 let reviewer = '';
 
-async function newNode(withModel: string | null = 'qwen2.5-coder-7b') {
+async function newNode(withModel: string | null = 'phi4-14b') {
   const db = await getDb();
   const [inst] = await db
     .insert(installs)
@@ -58,6 +59,12 @@ async function qualify(nodeId: string, slug: string, right: number) {
     const output = i < right ? want : Object.fromEntries(Object.entries(want).map(([k, v]) => [k, typeof v === 'boolean' ? !v : `wrong-${String(v)}`]));
     last = await submitQualificationResult({ accountId: demo, membershipId: membership.id, taskId: lease.task.id, output, outputHash: sha256Digest(canonicalJson(output)) });
     if (last.qualification.outcome !== 'in_progress') break;
+  }
+  // Challenge Vaults answers wait for the coordinator's Lean check; a test worker accepts them.
+  if (last!.qualification.outcome === 'in_progress' && (await settleMachineChecks()) > 0) {
+    const db = await getDb();
+    const [q] = await db.select().from(qualifications).where(eq(qualifications.id, last!.qualification.id));
+    last = { ...last!, qualification: { ...last!.qualification, outcome: q!.outcome, passed: q!.passed, attempts: q!.attempts } };
   }
   return { membershipId: membership.id, result: last! };
 }

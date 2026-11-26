@@ -6,3 +6,5 @@ export * from './capabilities';
 export * from './fixtures';
 export * from './fit';
 export * from './disk';
+export * from './scheduler';
+export * from './run-gate';

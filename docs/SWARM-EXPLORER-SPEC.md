@@ -799,7 +799,9 @@ No provider key, raw key fingerprint that can be linked across users, or decrypt
 | swarm_releases | id, swarm_id, manifest_version, manifest_json, manifest_hash, harness_release_id, coordinator_config, signature, review_status, published_at, revoked_at |
 | reviews | id, target_type, target_id, reviewer_id, checklist_json, outcome, rationale, created_at |
 | reports | id, swarm_id, reporter_account_id, category, details_redacted, status, created_at |
-| revocations | id, target_type, target_id, reason, severity, signed_payload, effective_at |
+| revocations | id, target_type, target_id, reason, severity, signed_payload, effective_at, action, signature, actor_account_id, idempotency_key (M7) |
+| platform_keys | id, key_id, public_key, purpose (revocation, receipt), status (M7) |
+| receipts | result_id, account_id, receipt_json, key_id, created_at (M7) |
 
 ### 12.3 Membership and work
 
@@ -858,7 +860,8 @@ All APIs are versioned under `/v1`, use JSON, require `Idempotency-Key` for writ
 | POST | `/v1/nodes/{node_id}/models/{artifact}/benchmark` | Submit measured local benchmark |
 | POST | `/v1/me/license-acceptances` | Record the user's acceptance of a model license for one artifact version (approved 2026-11-25) |
 | GET | `/v1/harnesses/{id}/releases/{version}` | Signed release metadata and download location |
-| GET | `/v1/revocations?since=` | Signed revocation feed |
+| GET | `/v1/revocations?since=` | Signed revocation feed. Each entry carries `action` (`revoke` or `restore`, newest per target wins) and an Ed25519 `signature`; the response lists the signing `keys`. Polled by every node at least every 15 seconds for the kill switch (updated M7, 2026-11-25). |
+| GET | `/v1/swarms/{id}/results` | Public, no sign in: settled results only (hashes, pins, accepting methods, impact) and aggregate counts. No inputs, outputs, nodes or accounts (added M7, 2026-11-25). |
 
 ### 13.2 Join and qualification
 
@@ -876,12 +879,15 @@ All APIs are versioned under `/v1`, use JSON, require `Idempotency-Key` for writ
 | Method | Path | Contract |
 |---|---|---|
 | POST | `/v1/coordinators/{swarm}/leases` | Node sends capabilities, mode, eligible model class, reputation token and spend reservation proof. Returns zero or one lease. Paid lease reserves pool credits. |
+| POST | `/v1/leases/{lease_id}/start` | Leased to Running once the node verified harness, permissions and model pins; returns the input (added M5, 2026-11-25). |
+| GET | `/v1/leases/{lease_id}/input` | The task input again, only while the lease is running; device-signed, so the input URI is lease scoped (added M5, 2026-11-25). |
 | POST | `/v1/leases/{lease_id}/renew` | Optional before deadline; coordinator can refuse. |
 | POST | `/v1/leases/{lease_id}/abandon` | Immediate unpaid return from Pause, leave or rule stop. |
 | POST | `/v1/leases/{lease_id}/results` | Output reference/hash and signed run record. Idempotent by lease/result hash. |
 | GET | `/v1/leases/{lease_id}` | Status for recovery. |
 | POST | `/v1/verifications` | Signed verifier submission. Platform validates assignment and reservation before pending credit. |
-| GET | `/v1/results/{id}` | Public or authorized result view. |
+| GET | `/v1/verifier/work` | Verifier-signed: results and qualification answers waiting for a machine check (added M6, 2026-11-25). |
+| GET | `/v1/results/{id}` | Public view of one settled result; anything not settled answers 404. Contributors see their own work through `/v1/me/results` (built M7, 2026-11-25). |
 
 Lease response example structure:
 
@@ -923,6 +929,9 @@ Run record structure:
 |---|---|---|
 | GET | `/v1/wallet` | Settled, pending, reserved, impact summary |
 | GET | `/v1/ledger` | User-scoped ledger rows |
+| GET | `/v1/me/results` | The caller's results with their real state, state timeline, impact and credits (added M6, 2026-11-25) |
+| GET | `/v1/me/results/{id}/receipt` | The signed contribution receipt for one of the caller's settled results, issued once and then unchanged. Volunteer receipts carry impact, never credits (added M7, 2026-11-25). |
+| GET | `/v1/receipts/keys` | Public keys that sign receipts, for offline checks with `swarm receipt verify` (added M7, 2026-11-25). |
 | POST | `/v1/pools/{id}/donations` | Donate credits to volunteer pool |
 | POST | `/v1/jobs` | Reserve credits and submit own tasks/swarm |
 | POST | `/v1/publishers` | Create publisher |
@@ -933,7 +942,8 @@ Run record structure:
 | POST | `/v1/swarms/{id}/tasks:batch` | Hosted coordinator task upload |
 | GET | `/v1/publishers/{id}/dashboard` | Publisher metrics and results |
 | POST | `/v1/admin/reviews/{id}` | Approve/reject release |
-| POST | `/v1/admin/revocations` | Signed kill-switch/revocation event |
+| POST | `/v1/admin/results/{id}/clawback` | Reviewer records fraud found while pending; pending credit returns to the pool (added M6, 2026-11-25) |
+| POST | `/v1/admin/revocations` | Signed kill switch: platform or one swarm, `revoke` or `restore`. Platform admins only, `Idempotency-Key` required. A stop refuses new leases and qualification and cancels open leases at once (built M7, 2026-11-25). |
 
 ### 13.5 Events
 

@@ -2,7 +2,7 @@
  * Node shell types shared by the main process, the supervisor process and the renderer.
  * Messages between main and the supervisor are validated with these schemas on receipt.
  */
-import { fitStatusSchema, hardwareReportSchema, runtimeSchema, type Enforcement, type HardwareReport, type Mode, type Recommendation, type RuntimeInfo } from '@swarm-explorer/node-core';
+import { fitStatusSchema, hardwareReportSchema, runtimeSchema, type Enforcement, type EnforcementSupport, type GateDecision, type HardwareReport, type Mode, type Recommendation, type RunRules, type RuntimeInfo, type ShareReport } from '@swarm-explorer/node-core';
 import type { JoinStarted, StoreHome } from '@swarm-explorer/api-client';
 import { z } from 'zod';
 
@@ -83,11 +83,15 @@ export type HarnessRunSpec = {
 };
 
 export const harnessRunResultSchema = z.object({
-  status: z.enum(['ok', 'refused', 'limit_exceeded', 'failed', 'invalid_output', 'bundle_rejected', 'cancelled']),
+  status: z.enum(['ok', 'refused', 'fuel_exhausted', 'limit_exceeded', 'failed', 'invalid_output', 'bundle_rejected', 'cancelled']),
   output: z.record(z.string(), z.unknown()).nullable(),
   detail: z.string().max(400),
   screen: z.object({ verdict: z.enum(['allow', 'flag']), reasons: z.array(z.string().max(60)).max(20), screener: z.string().max(60) }).nullable(),
   modelCalls: z.number().int().nonnegative(),
+  /** Token counts the proxy reported across the run's model calls, when it reported them. */
+  tokens: z.object({ input: z.number().int().nonnegative(), output: z.number().int().nonnegative() }).optional(),
+  /** Deterministic instruction metering of the run (meter/1); `used` is null when the run was ended from outside. */
+  fuel: z.object({ meter: z.literal('meter/1'), budget: z.number().int().positive().nullable(), used: z.number().int().nonnegative().nullable() }).optional(),
 });
 export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
 
@@ -151,7 +155,7 @@ export type ModelsOverview = {
   job: ModelJob | null;
   storage: Storage;
   usedBytes: number;
-  /** Hashes that may never be offered for removal: the active model (and, from M5, leased ones). */
+  /** Hashes that may never be offered for removal: the active model and the model of a running lease. */
   protected: string[];
   acceptedLicenses: string[];
 };
@@ -165,13 +169,49 @@ export const nodeSetupSchema = z.object({
 export type NodeSetup = z.infer<typeof nodeSetupSchema>;
 export const nodeSetupInputSchema = nodeSetupSchema.omit({ completedAt: true });
 
-export type RunRuleLine = { rule: string; value: string; enforcement: Enforcement };
+export type RunRuleLine = { rule: string; value: string; enforcement: Enforcement; note: string };
+
+/** A leased task on this node (SPEC 7.3), as the status bar and Library show it. */
+export type TaskRunView = {
+  leaseId: string;
+  taskId: string;
+  swarm: string;
+  urgent: boolean;
+  phase: 'starting' | 'running' | 'submitting';
+  model: string;
+  startedAt: number;
+  deadlineAt: string;
+};
+
+export type TaskHistoryItem = {
+  leaseId: string;
+  swarm: string;
+  /** submitted: on time, waiting for verification (M6). abandoned: unpaid, back in the queue. */
+  outcome: 'submitted' | 'late' | 'abandoned' | 'failed';
+  detail: string;
+  elapsedMs: number;
+  at: number;
+};
+
+export type TasksOverview = {
+  /** off: signed out or no qualified swarm. waiting: rules allow, no work. blocked: a run rule holds work back. */
+  phase: 'off' | 'paused' | 'blocked' | 'waiting' | 'leasing' | 'running';
+  detail: string;
+  current: TaskRunView | null;
+  history: TaskHistoryItem[];
+  gate: GateDecision | null;
+  /** Per-swarm time this session, including urgent time charged ahead of a share (SPEC 7.1). */
+  shares: ShareReport[];
+};
 
 /** Everything the first run and Settings > Node show. Contains no secrets. */
 export type NodeOverview = {
   detection: Detection | null;
   recommendation: Recommendation | null;
   runRules: RunRuleLine[];
+  /** The rules as set, and what this computer can enforce (SPEC 7.2 capability map). */
+  rules: RunRules;
+  support: EnforcementSupport;
   setup: NodeSetup | null;
   paused: boolean;
   /** Server-side registration (SPEC 13.1), when signed in. */
@@ -180,6 +220,17 @@ export type NodeOverview = {
   catalogMinBytes: number | null;
   models: ModelsOverview;
   memberships: MembershipsOverview;
+  tasks: TasksOverview;
+  /** The signed kill switch (M7): whether Verafy has stopped work, and why. */
+  kill: KillView;
+};
+
+export type KillView = {
+  /** stopped: the platform or a joined swarm is stopped. unchecked: the signed feed was not read in the last 60 seconds. */
+  status: 'ok' | 'stopped' | 'unchecked';
+  global: { reason: string; at: string } | null;
+  swarms: Array<{ swarm: string; reason: string; at: string }>;
+  checkedAt: number | null;
 };
 
 /** A local join or qualification in progress, for the Library and join screens. */
@@ -199,6 +250,8 @@ export type MembershipsOverview = {
   jobs: MembershipJob[];
   /** Permissions last approved per membership, for showing what a new release changes. */
   granted: Record<string, Permissions>;
+  /** Swarms that joined at 0% beside customized shares; the Library asks whether to equalize (SPEC 7.1). */
+  askEqualize: string[];
   error: string | null;
 };
 

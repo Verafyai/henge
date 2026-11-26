@@ -3,10 +3,13 @@
  * change runs in one transaction. Qualification is known-answer only and never creates ledger
  * entries: it is not credited work.
  */
-import { equalShares } from '@swarm-explorer/core';
 import { canonicalJson, type ManifestV1 } from '@swarm-explorer/schema';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb, type Db } from './client';
+import { rebalanceShares as rebalance } from './coordinator';
+import { rescoreQualification } from './verification';
+import { MembershipError } from './errors';
+import { assertWorkAllowed } from './kill-switch';
 import { getSwarm, policyAccepts, type SwarmRow } from './queries';
 import {
   harnessReleases,
@@ -28,35 +31,7 @@ import {
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type Membership = typeof memberships.$inferSelect;
 
-export class MembershipError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-    readonly details?: Record<string, unknown>,
-  ) {
-    super(message);
-  }
-}
-
-/** Statuses that hold a timeshare. Paused and reconsent-required swarms keep their share and lend time (SPEC 4.2). */
-const QUALIFIED = ['active', 'paused', 'reconsent_required'] as const;
-
-/** Rebalances a node's qualified memberships to equal shares, earliest joined first. */
-async function rebalance(tx: Tx, nodeId: string) {
-  const rows = await tx
-    .select({ id: memberships.id })
-    .from(memberships)
-    .where(and(eq(memberships.nodeId, nodeId), isNull(memberships.leftAt), inArray(memberships.status, [...QUALIFIED])))
-    .orderBy(asc(memberships.joinedAt), asc(memberships.id));
-  const shares = equalShares(rows.length);
-  for (const [i, r] of rows.entries()) await tx.update(memberships).set({ shareBp: shares[i]! }).where(eq(memberships.id, r.id));
-  // Anything not qualified holds no share, so it never leases automatically.
-  await tx
-    .update(memberships)
-    .set({ shareBp: 0 })
-    .where(and(eq(memberships.nodeId, nodeId), inArray(memberships.status, ['joining', 'qualifying', 'left'])));
-}
+export { MembershipError } from './errors';
 
 async function ownedMembership(tx: Tx, accountId: string, membershipId: string): Promise<Membership> {
   const [m] = await tx.select().from(memberships).where(eq(memberships.id, membershipId)).limit(1);
@@ -205,6 +180,8 @@ export async function leaseQualificationTask(o: { accountId: string; membershipI
   const db = await getDb();
   return db.transaction(async (tx) => {
     const m = await ownedMembership(tx, o.accountId, o.membershipId);
+    // Qualification runs real code on the node, so the kill switch stops it too (SPEC 11.6).
+    await assertWorkAllowed(tx, { swarmId: m.swarmId }, now);
     if (m.status !== 'qualifying') throw new MembershipError(409, 'not_qualifying', m.status === 'joining' ? 'Approve this swarm’s permissions first.' : 'This membership is not qualifying.');
     const rel = await requireGrant(tx, m);
     const rule = rel.manifest.qualification;
@@ -222,6 +199,8 @@ export async function leaseQualificationTask(o: { accountId: string; membershipI
     let attempt = open;
     if (!attempt) {
       const next = all.find((t) => !attempts.some((a) => a.taskId === t.id));
+      if (!next && attempts.some((a) => a.checkStatus === 'awaiting'))
+        throw new MembershipError(409, 'qualification_checking', 'Your answers are with the swarm’s checker. Qualification finishes when it reports.', { qualification: progress(q!, rule) });
       if (!next) throw new MembershipError(409, 'no_qualification_tasks', 'This swarm has no qualification tasks available right now.');
       [attempt] = await tx
         .insert(qualificationAttempts)
@@ -246,6 +225,7 @@ export async function submitQualificationResult(o: { accountId: string; membersh
   const db = await getDb();
   return db.transaction(async (tx) => {
     const m = await ownedMembership(tx, o.accountId, o.membershipId);
+    await assertWorkAllowed(tx, { swarmId: m.swarmId }, now);
     if (m.status !== 'qualifying') throw new MembershipError(409, 'not_qualifying', 'This membership is not qualifying.');
     const rel = await requireGrant(tx, m);
     const rule = rel.manifest.qualification;
@@ -264,21 +244,16 @@ export async function submitQualificationResult(o: { accountId: string; membersh
     if (a.submittedAt) throw new MembershipError(409, 'already_submitted', 'That task already has a result.');
     const [task] = await tx.select().from(qualificationTasks).where(eq(qualificationTasks.id, o.taskId)).limit(1);
     // A late answer counts as wrong.
-    const correct = now <= a.deadlineAt && matchesKnownAnswer(task!.expectedJson as Record<string, unknown>, o.output);
-    await tx.update(qualificationAttempts).set({ submittedAt: now, outputHash: o.outputHash, correct }).where(eq(qualificationAttempts.id, a.id));
-
-    const attempts = q.attempts + 1;
-    const passed = q.passed + (correct ? 1 : 0);
-    const outcome = passed >= rule.pass ? 'passed' : attempts - passed > rule.tasks - rule.pass ? 'failed' : 'in_progress';
-    const [updated] = await tx
-      .update(qualifications)
-      .set({ attempts, passed, outcome, completedAt: outcome === 'in_progress' ? null : now })
-      .where(eq(qualifications.id, q.id))
-      .returning();
-    if (outcome === 'passed') {
-      await tx.update(memberships).set({ status: 'active' }).where(eq(memberships.id, m.id));
-      await rebalance(tx, m.nodeId);
-    }
+    const matches = now <= a.deadlineAt && matchesKnownAnswer(task!.expectedJson as Record<string, unknown>, o.output);
+    // A matching answer on a machine-checked task (for example a Lean proof) counts only once the
+    // swarm's verifier worker accepts it; until then it is neither right nor wrong (M6).
+    const awaiting = matches && task!.machineCheck;
+    const correct = awaiting ? null : matches;
+    await tx
+      .update(qualificationAttempts)
+      .set({ submittedAt: now, outputHash: o.outputHash, correct, ...(awaiting ? { outputJson: o.output as object, checkStatus: 'awaiting' as const } : {}) })
+      .where(eq(qualificationAttempts.id, a.id));
+    const updated = await rescoreQualification(tx, q.id, now);
     return { correct, qualification: progress(updated!, rule) };
   });
 }
@@ -297,9 +272,11 @@ export async function leaveMembership(o: { accountId: string; membershipId: stri
     const swarmTasks = tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.swarmId, m.swarmId));
     const abandoned = await tx
       .update(leases)
-      .set({ status: 'abandoned', abandonedAt: now })
+      .set({ status: 'abandoned', abandonedAt: now, requeuedAt: now })
       .where(and(eq(leases.nodeId, m.nodeId), inArray(leases.status, ['leased', 'running']), inArray(leases.taskId, swarmTasks)))
-      .returning({ id: leases.id });
+      .returning({ id: leases.id, taskId: leases.taskId });
+    // Abandoned work is unpaid and goes straight back to the queue (SPEC 7.3).
+    if (abandoned.length) await tx.update(tasks).set({ status: 'queued' }).where(and(inArray(tasks.id, abandoned.map((a) => a.taskId)), eq(tasks.status, 'leased')));
     await rebalance(tx, m.nodeId);
     return { leftAt: now, abandonedLeases: abandoned.length };
   });

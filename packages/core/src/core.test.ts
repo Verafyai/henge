@@ -118,4 +118,21 @@ describe('equal timeshares (SPEC 7.1)', () => {
     expect(formatShare(3334)).toBe('33.3%');
     expect(formatShare(5000)).toBe('50%');
   });
+
+  it('normalizes slider weights to exactly 10,000 basis points (SPEC 7.1)', async () => {
+    const { normalizeShares, sharesCustomized, TOTAL_SHARE_BP } = await import('./shares');
+    expect(normalizeShares([])).toEqual([]);
+    expect(normalizeShares([1, 1, 1])).toEqual([3334, 3333, 3333]);
+    expect(normalizeShares([3, 1])).toEqual([7500, 2500]);
+    expect(normalizeShares([0, 0])).toEqual([5000, 5000]);
+    expect(normalizeShares([70, 20, 0])).toEqual([7778, 2222, 0]);
+    for (const w of [[1, 2, 3, 4, 5, 6, 7], [0.1, 0.2, 0.7], [99, 1, 1, 1], [1e-9, 1]]) {
+      const s = normalizeShares(w);
+      expect(s.reduce((a, b) => a + b, 0)).toBe(TOTAL_SHARE_BP);
+      expect(s.every((x) => Number.isInteger(x) && x >= 0)).toBe(true);
+    }
+    expect(() => normalizeShares([-1, 2])).toThrow(RangeError);
+    expect(sharesCustomized([5000, 5000])).toBe(false);
+    expect(sharesCustomized([7000, 3000])).toBe(true);
+  });
 });

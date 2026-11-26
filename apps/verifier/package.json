@@ -1,0 +1,22 @@
+{
+  "name": "@swarm-explorer/verifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Verifier worker (SPEC 8.1): polls Verifying results, runs the Lean and Prompt Guard machine checks with no network, and posts signed verification records. Hosting is not decided.",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@swarm-explorer/api-client": "workspace:*",
+    "@swarm-explorer/verify": "workspace:*"
+  },
+  "devDependencies": {
+    "@swarm-explorer/config": "workspace:*",
+    "@types/node": "26.6.7",
+    "tsx": "4.23.15"
+  }
+}

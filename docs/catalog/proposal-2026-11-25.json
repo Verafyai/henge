@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-11-25",
+  "generatedBy": "packages/node-core/scripts/registry-digests.mjs",
+  "status": "approved by Rex 2026-11-25 (five models, no moving tags); replaces the fixture catalog in the seed",
+  "models": [
+    {
+      "sourceRef": "phi4-mini:3.8b-q4_K_M",
+      "contentHash": "sha256-78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753",
+      "sizeBytes": 2491876774,
+      "maker": "Microsoft",
+      "family": "phi",
+      "license": "MIT",
+      "tier": "8 GB",
+      "pinnedTag": true,
+      "licenseFirstLine": "Microsoft."
+    },
+    {
+      "sourceRef": "qwen2.5:7b-instruct-q4_K_M",
+      "contentHash": "sha256-845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "sizeBytes": 4683087332,
+      "maker": "Alibaba (Qwen)",
+      "family": "qwen",
+      "license": "Apache-2.0",
+      "tier": "8 GB",
+      "pinnedTag": true,
+      "licenseFirstLine": "Apache License"
+    },
+    {
+      "sourceRef": "mistral-nemo:12b-instruct-2407-q4_K_M",
+      "contentHash": "sha256-daf6737417121831e572a9c482e92a221ee0c33537f35f1f857c7b4f7191df55",
+      "sizeBytes": 7477217229,
+      "maker": "Mistral AI",
+      "family": "mistral",
+      "license": "Apache-2.0",
+      "tier": "16 GB",
+      "pinnedTag": true,
+      "licenseFirstLine": "Apache License"
+    },
+    {
+      "sourceRef": "phi4:14b-q4_K_M",
+      "contentHash": "sha256-ac896e5b8b34a1f4efa7b14d7520725140d5512484457fab45d2a4ea14c69dba",
+      "sizeBytes": 9053116391,
+      "maker": "Microsoft",
+      "family": "phi",
+      "license": "MIT",
+      "tier": "16 GB",
+      "pinnedTag": true,
+      "licenseFirstLine": "Microsoft."
+    },
+    {
+      "sourceRef": "mistral-small:24b-instruct-2501-q4_K_M",
+      "contentHash": "sha256-8039dd90c1138d772437a0779a33b7349efd5d9cca71edcd26e4dd463f90439d",
+      "sizeBytes": 14333921662,
+      "maker": "Mistral AI",
+      "family": "mistral",
+      "license": "Apache-2.0",
+      "tier": "24 GB",
+      "pinnedTag": true,
+      "licenseFirstLine": "Apache License"
+    }
+  ]
+}

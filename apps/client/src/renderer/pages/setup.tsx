@@ -67,7 +67,10 @@ export function RunRulesSummary({ o }: { o: NodeOverview }) {
         {o.runRules.map((r) => (
           <tr key={r.rule} className="border-b border-zinc-100 last:border-0">
             <th scope="row" className="py-1 pr-3 text-left font-normal text-zinc-500">{r.rule}</th>
-            <td className="py-1">{r.value}</td>
+            <td className="py-1">
+              {r.value}
+              <span className="block text-xs text-zinc-500">{r.note}</span>
+            </td>
             <td className={`py-1 text-right text-xs ${r.enforcement === 'enforced' ? 'text-brand' : 'text-zinc-500'}`}>{enforcementLabel[r.enforcement]}</td>
           </tr>
         ))}

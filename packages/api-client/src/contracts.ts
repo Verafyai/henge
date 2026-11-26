@@ -103,7 +103,8 @@ export const modelArtifactSchema = z.object({
   versionLabel: z.string(),
   contentHash: digestSchema,
   sizeBytes: z.number().int().positive(),
-  contextLength: z.number().int().positive(),
+  /** Null when the pinned catalog source does not record it. */
+  contextLength: z.number().int().positive().nullable(),
   quantization: z.string(),
   runtimeFormats: z.array(z.string()),
   catalogVersion: z.number().int().nonnegative(),
@@ -187,27 +188,48 @@ export type HarnessReleaseInfo = z.infer<typeof harnessReleaseSchema>;
 
 export const revocationSchema = z.object({
   id: z.uuid(),
-  targetType: z.enum(['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version']),
+  targetType: z.enum(['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version', 'platform']),
   targetId: z.string(),
   reason: z.string(),
   severity: z.enum(['low', 'high', 'critical']),
   signedPayload: z.string(),
   effectiveAt: isoDate,
+  /** `revoke` stops the target; `restore` lifts an earlier revoke (kill switch, M7). Newest per target wins. */
+  action: z.enum(['revoke', 'restore']),
+  /** `keyId:base64url` over `swarm-explorer-revocation-v1\n` + signedPayload; null for unsigned legacy rows. */
+  signature: z.string().nullable(),
 });
-export const revocationFeedSchema = z.object({ items: z.array(revocationSchema), next: isoDate.nullable() });
+export type RevocationEntry = z.infer<typeof revocationSchema>;
+/** A platform public key (revocation feed or receipts): Ed25519 SPKI DER, base64url. */
+export const platformKeySchema = z.object({ key_id: z.string().min(1).max(120), public_key: z.string().min(40).max(200), status: z.enum(['active', 'revoked']) });
+export const revocationFeedSchema = z.object({
+  items: z.array(revocationSchema),
+  next: isoDate.nullable(),
+  /** Keys that sign the feed. Production clients pin these at build time; test builds may trust this list (M7). */
+  keys: z.array(platformKeySchema),
+});
 export const revocationsQuerySchema = z.object({ since: isoDate.optional() });
 
 /* ----------------------------------------------------------------------------
- * Task protocol (SPEC 13.3). Contracts only in M0; endpoints arrive in M5.
+ * Task protocol (SPEC 13.3), served by the hosted coordinator from M5. Device-signed. Nodes always
+ * pull; the coordinator never opens a connection to a node.
  * ------------------------------------------------------------------------- */
+
+/** Lease states, exactly SPEC 7.3. M5 moves leases up to `submitted`; verification (M6) does the rest. */
+export const leaseStatusSchema = z.enum(['leased', 'running', 'submitted', 'verifying', 'pending', 'settled', 'rejected', 'abandoned', 'expired', 'clawed_back']);
+export type LeaseStatus = z.infer<typeof leaseStatusSchema>;
 
 export const leaseSchema = z.object({
   lease_id: z.uuid(),
   task_id: z.uuid(),
+  swarm: slugSchema,
   swarm_release_id: z.uuid(),
+  status: leaseStatusSchema,
+  urgent: z.boolean(),
   deadline_at: isoDate,
   harness: z.object({ version: semverSchema, hash: digestSchema }),
   model_requirement: z.object({ policy: z.enum(['any', 'class', 'diverse']), allowed_classes: z.array(z.string()) }),
+  /** A device-signed, lease-scoped URL; it answers only while the lease is running. */
   input: z.object({ uri: z.url(), sha256: digestSchema }),
   output_schema_hash: digestSchema,
   reward: z.discriminatedUnion('funded', [
@@ -216,23 +238,117 @@ export const leaseSchema = z.object({
   ]),
   permissions_hash: digestSchema,
 });
-/** A lease request returns zero or one lease. */
-export const leaseResponseSchema = z.object({ lease: leaseSchema.nullable() });
 export type Lease = z.infer<typeof leaseSchema>;
 
-export const runRecordSchema = z.object({
-  lease_id: z.uuid(),
-  node_id: z.uuid(),
-  model: z.object({ source: z.enum(['local', 'provider']), claimed_id: z.string().min(1), artifact_hash: digestSchema.nullable() }),
-  harness_hash: digestSchema,
-  tokens: z.object({ input: z.number().int().nonnegative().nullable(), output: z.number().int().nonnegative().nullable() }),
-  elapsed_ms: z.number().int().nonnegative(),
-  api_cost: z.object({ reported_usd_micros: z.number().int().nonnegative().nullable(), provider_request_ids: z.array(z.string()) }),
-  output_sha256: digestSchema,
-  client_version: semverSchema,
-  signature: z.string().min(1),
+/**
+ * POST /v1/coordinators/{swarm}/leases. API mode is off (decision 2026-11-25), so there is no spend
+ * reservation, and reputation tokens arrive with reputation (M6); both are sent as null.
+ */
+export const leaseRequestSchema = z
+  .object({
+    node_id: z.uuid(),
+    mode: z.literal('local'),
+    model_artifact_hash: digestSchema,
+    reputation_token: z.null(),
+    spend_reservation: z.null(),
+  })
+  .strict();
+
+export const leaseUnavailableSchema = z.enum(['no_tasks', 'pool_empty', 'paid_leasing_unavailable']);
+export type LeaseUnavailable = z.infer<typeof leaseUnavailableSchema>;
+
+/** A lease request returns zero or one lease; with zero, `unavailable` says why. */
+export const leaseResponseSchema = z.object({
+  lease: leaseSchema.nullable(),
+  unavailable: z.object({ code: leaseUnavailableSchema, message: z.string() }).nullable(),
 });
+
+/** POST /v1/leases/{id}/start: Leased to Running once the node verified its pins (SPEC 7.3). */
+export const leaseStartSchema = z.object({ harness_hash: digestSchema, permissions_hash: digestSchema, model_artifact_hash: digestSchema }).strict();
+export const leaseInputSchema = z.object({ lease_id: z.uuid(), input: z.record(z.string(), z.unknown()), input_sha256: digestSchema });
+export const leaseStartedSchema = leaseInputSchema.extend({ status: z.literal('running'), deadline_at: isoDate });
+
+/** POST /v1/leases/{id}/renew. The coordinator may refuse (409 renewal_refused). */
+export const leaseRenewedSchema = z.object({ lease_id: z.uuid(), deadline_at: isoDate, renewals: z.number().int().nonnegative() });
+
+/** POST /v1/leases/{id}/abandon: an immediate, unpaid return. */
+export const abandonReasonSchema = z.enum(['paused', 'left', 'run_rules', 'local_failure', 'signed_out', 'pin_mismatch', 'kill_switch']);
+export type AbandonReason = z.infer<typeof abandonReasonSchema>;
+export const leaseAbandonSchema = z.object({ reason: abandonReasonSchema }).strict();
+export const leaseAbandonedSchema = z.object({ lease_id: z.uuid(), status: leaseStatusSchema, requeued: z.boolean() });
+
+/**
+ * Deterministic instruction metering of the harness run (record version 2). `meter` names the
+ * instrumentation, so verifiers compare fuel only between records with the same meter. A null
+ * budget means the run had no fuel limit (no budget is approved yet); fuel was still counted.
+ */
+export const runMeteringSchema = z
+  .object({ meter: z.literal('meter/1'), fuel_used: z.number().int().nonnegative(), fuel_budget: z.number().int().positive().nullable() })
+  .strict();
+export type RunMetering = z.infer<typeof runMeteringSchema>;
+
+/**
+ * Version 1 records (no `record_version`) stay valid. Version 2 adds `metering` and must carry it.
+ * The signed message format is the same for both.
+ */
+export const runRecordSchema = z
+  .object({
+    record_version: z.literal(2).optional(),
+    lease_id: z.uuid(),
+    node_id: z.uuid(),
+    model: z.object({ source: z.enum(['local', 'provider']), claimed_id: z.string().min(1).max(120), artifact_hash: digestSchema.nullable() }).strict(),
+    harness_hash: digestSchema,
+    tokens: z.object({ input: z.number().int().nonnegative().nullable(), output: z.number().int().nonnegative().nullable() }).strict(),
+    elapsed_ms: z.number().int().nonnegative(),
+    api_cost: z.object({ reported_usd_micros: z.number().int().nonnegative().nullable(), provider_request_ids: z.array(z.string().max(200)).max(64) }).strict(),
+    output_sha256: digestSchema,
+    client_version: semverSchema,
+    metering: runMeteringSchema.optional(),
+    /** Ed25519 device signature, base64url, over `runRecordMessage` of the record without this field. */
+    signature: z.string().regex(/^[A-Za-z0-9_-]{80,90}$/),
+  })
+  .strict()
+  .refine((r) => (r.record_version === 2) === (r.metering !== undefined), { message: 'record_version 2 requires metering, and metering requires record_version 2', path: ['metering'] });
 export type RunRecord = z.infer<typeof runRecordSchema>;
+
+/** The bytes a device signs for a run record: a domain tag and the canonical JSON of the record minus `signature`. */
+export function runRecordMessage(canonicalRecordWithoutSignature: string): string {
+  return `swarm-explorer-run-record-v1\n${canonicalRecordWithoutSignature}`;
+}
+
+/** POST /v1/leases/{id}/results. Idempotent by lease id and output hash. */
+export const resultSubmitSchema = z.object({ output: z.record(z.string(), z.unknown()), output_sha256: digestSchema, run_record: runRecordSchema }).strict();
+export const resultSubmittedSchema = z.object({
+  lease_id: z.uuid(),
+  result_id: z.uuid(),
+  status: leaseStatusSchema,
+  /** Late and after-abandon results are recorded and never paid (SPEC 7.3). */
+  disposition: z.enum(['on_time', 'late', 'after_abandon']),
+  duplicate: z.boolean(),
+  /** True only for an on-time result; it now waits for the swarm's verifier (M6). */
+  awaiting_verification: z.boolean(),
+});
+
+/** GET /v1/leases/{id}: status for recovery. */
+export const leaseViewSchema = z.object({
+  lease: leaseSchema,
+  result: z.object({ id: z.uuid(), output_sha256: digestSchema, disposition: z.enum(['on_time', 'late', 'after_abandon']), submitted_at: isoDate }).nullable(),
+});
+
+/** POST /v1/swarms/{id}/tasks:batch: the publisher uploads tasks to the hosted coordinator. */
+export const taskBatchSchema = z
+  .object({
+    tasks: z
+      .array(z.object({ coordinator_task_id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/), input: z.record(z.string(), z.unknown()), urgent: z.boolean().optional() }).strict())
+      .min(1)
+      .max(500),
+  })
+  .strict();
+export const taskBatchAcceptedSchema = z.object({ accepted: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative() });
+
+/** PATCH /v1/nodes/{id}/shares: every qualified membership, basis points summing to 10,000 (SPEC 7.1). */
+export const sharesUpdateSchema = z.object({ shares: z.array(z.object({ membership_id: z.uuid(), share_bp: z.number().int().min(0).max(10_000) }).strict()).min(1).max(64) }).strict();
+export const sharesUpdatedSchema = z.object({ node_id: z.uuid(), customized: z.boolean(), shares: z.array(z.object({ membership_id: z.uuid(), share_bp: z.number().int() })) });
 
 /* ----------------------------------------------------------------------------
  * Store home, join and qualification (SPEC 13.1, 13.2). Node-signed.
@@ -265,6 +381,8 @@ export const membershipSchema = z.object({
   harness: z.object({ name: z.string(), version: semverSchema, hash: digestSchema }),
   joined_at: isoDate,
   qualification: qualificationProgressSchema.nullable(),
+  /** Tasks waiting at the hosted coordinator, so the node's scheduler knows where work is (M5). */
+  queue: z.object({ queued: z.number().int().nonnegative(), urgent: z.number().int().nonnegative() }).nullable(),
 });
 export type MembershipView = z.infer<typeof membershipSchema>;
 
@@ -273,7 +391,14 @@ export const storeHomeSchema = z.object({
   joined: z.array(membershipSchema),
   featured: z.array(swarmSummarySchema).max(3),
   categories: z.array(z.object({ key: categorySchema, label: z.string(), listed: z.number().int().nonnegative() })),
-  node: z.object({ id: z.uuid(), qualified_swarms: z.number().int().nonnegative(), share_total_bp: z.number().int().min(0).max(10_000) }),
+  node: z.object({
+    id: z.uuid(),
+    qualified_swarms: z.number().int().nonnegative(),
+    share_total_bp: z.number().int().min(0).max(10_000),
+    /** The user moved a slider; a new join then asks before rebalancing (SPEC 7.1). */
+    shares_customized: z.boolean(),
+    open_leases: z.array(z.object({ id: z.uuid(), swarm: slugSchema, status: leaseStatusSchema, deadline_at: isoDate })),
+  }),
 });
 export type StoreHome = z.infer<typeof storeHomeSchema>;
 
@@ -319,7 +444,8 @@ export const qualificationResultSchema = z
       .strict(),
   })
   .strict();
-export const qualificationScoredSchema = z.object({ correct: z.boolean(), qualification: qualificationProgressSchema, membership: membershipSchema });
+/** `correct` is null while a machine-checked answer (a Lean proof) waits for the swarm's verifier. */
+export const qualificationScoredSchema = z.object({ correct: z.boolean().nullable(), qualification: qualificationProgressSchema, membership: membershipSchema });
 
 /** DELETE /v1/memberships/{id} */
 export const membershipLeftSchema = z.object({ id: z.uuid(), left_at: isoDate, abandoned_leases: z.number().int().nonnegative() });
@@ -329,3 +455,156 @@ export const releaseReviewSchema = z
   .object({ outcome: z.enum(['approved', 'rejected', 'changes_requested']), checklist: z.record(z.string(), z.boolean()), rationale: z.string().min(1).max(4000) })
   .strict();
 export const releaseReviewedSchema = z.object({ release_id: z.uuid(), review_status: z.enum(['approved', 'rejected', 'draft']), reconsent_required: z.number().int(), moved: z.number().int() });
+
+/* ----------------------------------------------------------------------------
+ * Verification (SPEC 8, 13.3), M6
+ * ------------------------------------------------------------------------- */
+
+export const verificationSubjectSchema = z.object({ type: z.enum(['result', 'qualification_attempt']), id: z.uuid() }).strict();
+
+/** GET /v1/verifier/work: results and qualification answers waiting for a machine check. Verifier-signed. */
+export const verifierWorkItemSchema = z.object({
+  subject: verificationSubjectSchema,
+  swarm: z.string(),
+  release_id: z.uuid(),
+  harness: z.string(),
+  checker: z.enum(['lean', 'prompt-guard-reproduction']).nullable(),
+  input: z.record(z.string(), z.unknown()),
+  output: z.record(z.string(), z.unknown()),
+  output_sha256: digestSchema,
+});
+export type VerifierWorkItem = z.infer<typeof verifierWorkItemSchema>;
+export const verifierWorkSchema = z.object({ items: z.array(verifierWorkItemSchema) });
+
+/** The signed record payload (SPEC 8.2); the signature covers its canonical JSON. */
+export const verificationPayloadSchema = z
+  .object({
+    subject_type: z.enum(['result', 'qualification_attempt']),
+    subject_id: z.uuid(),
+    method: verificationMethodSchema,
+    verifier_version: z.string().min(1).max(120),
+    evidence_hashes: z.array(digestSchema).max(16),
+    result_hash: digestSchema,
+    outcome: z.enum(['accepted', 'rejected']),
+    rationale_code: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+    panel: z.record(z.string(), z.unknown()).nullable(),
+  })
+  .strict();
+
+/** POST /v1/verifications: a signed verifier submission. `signature` is `keyId:base64url`. */
+export const verificationSubmitSchema = z.object({ payload: verificationPayloadSchema, signature: z.string().min(10).max(300) }).strict();
+export const verificationRecordedSchema = z.object({
+  subject: verificationSubjectSchema,
+  /** The result's lease state after this verdict, or the qualification answer's check status. */
+  status: z.string().nullable(),
+  duplicate: z.boolean(),
+});
+
+/* ----------------------------------------------------------------------------
+ * Wallet, ledger and results (SPEC 9, 13.4), M6
+ * ------------------------------------------------------------------------- */
+
+/** GET /v1/wallet. Credits come only from funded swarms; impact is separate and nonspendable. */
+export const walletSchema = z.object({
+  credits: z.object({ settled: z.number().int().nonnegative(), pending: z.number().int().nonnegative(), reserved: z.number().int().nonnegative() }),
+  impact: z.object({ settled: z.number().int().nonnegative(), pending: z.number().int().nonnegative() }),
+  /** False until the account has a result in a funded swarm; clients then show impact only. */
+  has_funded_work: z.boolean(),
+});
+export type Wallet = z.infer<typeof walletSchema>;
+
+/** GET /v1/ledger: the caller's own ledger rows. */
+export const ledgerListSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.uuid(),
+      txn_id: z.uuid(),
+      movement_type: z.enum(['purchase', 'donation', 'lease_reserve', 'reserve_release', 'accept_pending', 'settle', 'clawback', 'job_reserve', 'refund', 'correction']),
+      bucket: z.enum(['available', 'reserved', 'pending', 'settled', 'issued']),
+      debit: z.number().int().nonnegative(),
+      credit: z.number().int().nonnegative(),
+      reference_type: z.string(),
+      reference_id: z.string(),
+      created_at: isoDate,
+    }),
+  ),
+});
+
+export const resultStateSchema = z.enum(['submitted', 'verifying', 'pending', 'settled', 'rejected', 'clawed_back', 'not_counted']);
+export type ResultState = z.infer<typeof resultStateSchema>;
+
+/** GET /v1/me/results: each submitted result's real state, impact and credits (added M6, 2026-11-25). */
+export const resultItemSchema = z.object({
+  result_id: z.uuid(),
+  lease_id: z.uuid(),
+  swarm: z.string(),
+  swarm_name: z.string(),
+  funded: z.boolean(),
+  state: resultStateSchema,
+  disposition: z.enum(['on_time', 'late', 'after_abandon']),
+  timeline: z.array(z.object({ state: resultStateSchema.exclude(['not_counted']), at: isoDate })),
+  impact: z.object({ units: z.number().int().nonnegative(), status: z.enum(['pending', 'settled', 'revoked']) }).nullable(),
+  credits: z.object({ amount: z.number().int().positive(), status: z.enum(['pending', 'settled', 'clawed_back']) }).nullable(),
+  submitted_at: isoDate,
+});
+export type ResultItem = z.infer<typeof resultItemSchema>;
+export const resultListSchema = z.object({ items: z.array(resultItemSchema) });
+
+/** POST /v1/admin/results/{id}/clawback: fraud found while pending (added M6, 2026-11-25). */
+export const clawbackSchema = z.object({ reason: z.string().min(3).max(500) }).strict();
+export const clawedBackSchema = z.object({ result_id: z.uuid(), status: z.literal('clawed_back'), duplicate: z.boolean() });
+
+
+/* ----------------------------------------------------------------------------
+ * Kill switch, public results and receipts (SPEC 4.2, 11.6, 13.3, 13.4), M7
+ * ------------------------------------------------------------------------- */
+
+/** POST /v1/admin/revocations: a platform admin stops all work or one swarm, or lifts a stop (Idempotency-Key). */
+export const killSwitchRequestSchema = z
+  .object({
+    target: z.enum(['platform', 'swarm']),
+    swarm: slugSchema.optional(),
+    action: z.enum(['revoke', 'restore']),
+    reason: z.string().trim().min(3).max(300),
+  })
+  .strict()
+  .refine((b) => (b.target === 'swarm') === Boolean(b.swarm), { message: 'Name the swarm for a swarm stop, and only then.' });
+export const killSwitchRecordedSchema = z.object({ revocation: revocationSchema, duplicate: z.boolean(), cancelled_leases: z.number().int().nonnegative() });
+
+/** One verified result as the public sees it: hashes, pins and verification, never inputs, outputs, nodes or accounts. */
+export const publicResultSchema = z.object({
+  result_id: z.uuid(),
+  swarm: slugSchema,
+  output_sha256: digestSchema,
+  harness: z.object({ name: z.string(), version: z.string(), hash: digestSchema }),
+  model_artifact_hash: digestSchema.nullable(),
+  verification: z.array(z.object({ method: verificationMethodSchema, outcome: z.literal('accepted'), verifier_version: z.string() })),
+  impact_units: z.number().int().nonnegative(),
+  settled_at: isoDate,
+});
+export type PublicResult = z.infer<typeof publicResultSchema>;
+
+/** GET /v1/swarms/{id}/results: public, unauthenticated. Settled results only, plus aggregate counts. */
+export const publicResultsSchema = z.object({
+  swarm: z.object({ slug: slugSchema, name: z.string(), funded: z.boolean() }),
+  counts: z.object({
+    settled: z.number().int().nonnegative(),
+    pending: z.number().int().nonnegative(),
+    in_verification: z.number().int().nonnegative(),
+    rejected: z.number().int().nonnegative(),
+    impact_settled: z.number().int().nonnegative(),
+  }),
+  items: z.array(publicResultSchema),
+});
+export type PublicResults = z.infer<typeof publicResultsSchema>;
+
+/** GET /v1/receipts/keys: the keys that sign contribution receipts, for offline verification. */
+export const receiptKeysSchema = z.object({ keys: z.array(platformKeySchema) });
+
+/**
+ * GET /v1/me/results/{id}/receipt: the signed receipt for one of the caller's settled results. The
+ * shape is checked here loosely; `verifyReceipt` in @swarm-explorer/schema/node checks it exactly.
+ */
+export const receiptEnvelopeSchema = z.object({
+  receipt: z.record(z.string(), z.unknown()).and(z.object({ receipt_version: z.literal(1), signature: z.string() })),
+});

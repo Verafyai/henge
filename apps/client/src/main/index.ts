@@ -6,9 +6,11 @@ import type { Route } from '../shared/routes';
 import { AuthManager } from './auth';
 import { EncryptedCache } from './cache';
 import { API_BASE_URL, CHANNEL, DEV_SERVER, KEYCHAIN_SERVICE, isDev } from './config';
+import { installStagingBypass } from './staging-bypass';
 import { SCHEME, deepLinkFromArgv, parseDeepLink } from './deeplinks';
 import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
+import { revocationKeys } from './config';
 import { NodeController } from './node';
 import { TRAY_ICON_1X, TRAY_ICON_2X } from './tray-icon';
 import { KeyringStore } from './secrets';
@@ -35,6 +37,9 @@ if (!app.requestSingleInstanceLock()) {
 if (app.isPackaged || process.env['SWARM_EXPLORER_REGISTER_PROTOCOL'] === '1') {
   app.setAsDefaultProtocolClient(SCHEME);
 }
+
+// Test nodes only: the staging protection-bypass secret from the environment, never in packaged builds.
+installStagingBypass({ isPackaged: app.isPackaged, apiBaseUrl: API_BASE_URL, env: process.env });
 
 const secrets = new KeyringStore(KEYCHAIN_SERVICE);
 const auth = new AuthManager({
@@ -172,7 +177,10 @@ auth.on('changed', (s) => {
   send(IPC.authChanged, s);
   // Registers the install and node and reports capabilities (SPEC 13.1).
   if (s.status === 'signed_in') void node?.report();
-  else if (s.status === 'signed_out') node?.memberships.stopAll('Signed out. Sign in to continue.');
+  else if (s.status === 'signed_out') {
+    node?.tasks.onSignedOut();
+    node?.memberships.stopAll('Signed out. Sign in to continue.');
+  }
 });
 
 /** Menu bar and tray Pause stay reachable at all times (SPEC 4.1). */
@@ -180,7 +188,8 @@ function refreshPauseControls() {
   const paused = node?.isPaused ?? false;
   Menu.setApplicationMenu(buildMenu({ navigate: (r) => send(IPC.navigate, r), isDev, paused, setPaused: (p) => node?.setPaused(p) }));
   if (!tray) return;
-  tray.setToolTip(paused ? 'Henge: paused' : 'Henge');
+  const running = node?.tasks.overview().current ?? null;
+  tray.setToolTip(paused ? 'Henge: paused' : running ? `Henge: running a task for ${running.swarm}` : 'Henge');
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: paused ? 'Resume node' : 'Pause node', click: () => node?.setPaused(!paused) },
@@ -211,10 +220,11 @@ void app.whenReady().then(async () => {
     userDataDir: app.getPath('userData'),
     appVersion: app.getVersion(),
     channel: CHANNEL,
+    revocationKeys: revocationKeys(),
     // Fixture hardware and a stand-in Ollama are test hooks for unpackaged runs only (SPEC 16.4 M1).
     testHooks: app.isPackaged
       ? null
-      : { hardwareFixture: process.env['SWARM_EXPLORER_HARDWARE_FIXTURE'] || undefined, ollamaHost: process.env['SWARM_EXPLORER_OLLAMA_HOST'] || undefined, hfBase: process.env['SWARM_EXPLORER_HF_BASE'] || undefined },
+      : { hardwareFixture: process.env['SWARM_EXPLORER_HARDWARE_FIXTURE'] || undefined, ollamaHost: process.env['SWARM_EXPLORER_OLLAMA_HOST'] || undefined, hfBase: process.env['SWARM_EXPLORER_HF_BASE'] || undefined, sensorFixture: process.env['SWARM_EXPLORER_SENSOR_FIXTURE'] || undefined },
   });
   node.on('changed', () => {
     send(IPC.nodeChanged, node!.overview());

@@ -20,6 +20,8 @@
     "@swarm-explorer/node-core": "workspace:*",
     "@swarm-explorer/schema": "workspace:*",
     "@swarm-explorer/ui": "workspace:*",
+    "@swarm-explorer/verify": "workspace:*",
+    "ajv": "8.20.0",
     "drizzle-orm": "0.45.4",
     "next": "16.4.6",
     "react": "19.3.1",

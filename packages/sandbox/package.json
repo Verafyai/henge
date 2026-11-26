@@ -15,6 +15,7 @@
     "build:fixtures": "tsx scripts/build-fixture-harnesses.mts"
   },
   "dependencies": {
+    "@swarm-explorer/prompt-guard": "workspace:*",
     "@swarm-explorer/schema": "workspace:*",
     "ajv": "8.20.0",
     "zod": "4.6.7"

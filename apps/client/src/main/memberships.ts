@@ -15,13 +15,16 @@ import {
   membershipLeftSchema,
   permissionGrantedSchema,
   qualificationLeaseSchema,
+  sharesUpdatedSchema,
   qualificationScoredSchema,
   storeHomeSchema,
   type JoinStarted,
   type MembershipView,
+  type RevocationEntry,
   type StoreHome,
   type SwarmDetail,
 } from '@swarm-explorer/api-client';
+import { equalShares } from '@swarm-explorer/core';
 import { canonicalJson } from '@swarm-explorer/schema';
 import { bundleDigest } from '@swarm-explorer/schema/node';
 import type { HarnessRunResult, HarnessRunSpec, MembershipJob, MembershipResult, MembershipsOverview, Permissions } from '../shared/node';
@@ -41,7 +44,37 @@ type Deps = {
   isPaused: () => boolean;
   run: (spec: HarnessRunSpec, signal: AbortSignal) => Promise<HarnessRunResult>;
   changed: () => void;
+  /** Stops this swarm's leased task before leave tells the server (M5). */
+  beforeLeave?: (membershipId: string) => void;
+  /** The signed kill switch (M7): no qualification starts while stopped or unchecked. */
+  kill?: { startBlock: (swarm?: string) => string | null; check: () => Promise<void> };
   fetch?: typeof fetch;
+};
+
+/**
+ * Revoked targets of one type, by the newest entry per target (a later `restore` lifts a revoke).
+ * Harness and key revocations stay in force on the sandbox side, which also checks signatures.
+ */
+function revokedTargets(items: RevocationEntry[], type: RevocationEntry['targetType']): string[] {
+  const latest = new Map<string, RevocationEntry>();
+  for (const r of items) {
+    if (r.targetType !== type) continue;
+    const cur = latest.get(r.targetId);
+    if (!cur || Date.parse(r.effectiveAt) >= Date.parse(cur.effectiveAt)) latest.set(r.targetId, r);
+  }
+  return [...latest.values()].filter((r) => r.action === 'revoke').map((r) => r.targetId);
+}
+
+/** Memberships that hold a share of the node's time (SPEC 7.1). */
+const QUALIFIED = ['active', 'paused', 'reconsent_required'];
+
+/** Everything a sandboxed run needs that comes from the reviewed release, for qualification and tasks. */
+export type PreparedRun = {
+  swarm: SwarmDetail;
+  dir: string;
+  release: Awaited<ReturnType<ReturnType<typeof createApiClient>['harnessRelease']>>;
+  revoked: HarnessRunSpec['revoked'];
+  accepted: string[];
 };
 
 const GB = 1_000_000_000;
@@ -71,7 +104,48 @@ export class MembershipManager {
   }
 
   overview(): MembershipsOverview {
-    return { home: this.home, jobs: [...this.jobs.values()].map(({ ctl: _c, ...j }) => j), granted: this.granted(), error: this.error };
+    return { home: this.home, jobs: [...this.jobs.values()].map(({ ctl: _c, ...j }) => j), granted: this.granted(), error: this.error, askEqualize: this.askEqualize() };
+  }
+
+  /**
+   * After a join beside customized shares the new swarm starts at 0% and only borrows lent time.
+   * The Library asks once whether to share time equally instead; nothing rebalances silently.
+   */
+  private askEqualize(): string[] {
+    const h = this.home;
+    if (!h?.node.shares_customized) return [];
+    const dismissed = new Set(this.d.cache().get<string[]>('equalize-dismissed') ?? []);
+    return h.joined.filter((j) => QUALIFIED.includes(j.status) && j.share_bp === 0 && !dismissed.has(j.id)).map((j) => j.id);
+  }
+
+  /** Sets every qualified swarm's share (basis points summing to 10,000) on the server. */
+  async setShares(shares: Array<{ membershipId: string; shareBp: number }>): Promise<MembershipResult> {
+    const nodeId = this.d.nodeId();
+    if (!nodeId || this.d.auth.getState().status !== 'signed_in') return fail('signed_out', 'Sign in to change shares.');
+    try {
+      const res = await this.d.auth.signedFetch('PATCH', `/v1/nodes/${nodeId}/shares`, { shares: shares.map((x) => ({ membership_id: x.membershipId, share_bp: x.shareBp })) });
+      if (!res.ok) return { ok: false, ...(await errorOf(res)) };
+      if (!sharesUpdatedSchema.safeParse(await res.json()).success) return fail('bad_response', 'The server sent a response Henge does not understand.');
+      await this.refresh();
+      return { ok: true };
+    } catch {
+      return fail('offline', 'Henge could not reach the server.');
+    }
+  }
+
+  /** Equal shares for every qualified swarm. */
+  async equalize(): Promise<MembershipResult> {
+    const q = (this.home?.joined ?? []).filter((j) => QUALIFIED.includes(j.status));
+    if (!q.length) return fail('nothing_to_share', 'No qualified swarm yet.');
+    const eq = equalShares(q.length);
+    return this.setShares(q.map((j, i) => ({ membershipId: j.id, shareBp: eq[i]! })));
+  }
+
+  /** Keeps customized shares; the 0% swarm keeps borrowing lent time only. */
+  keepShares() {
+    const ids = this.askEqualize();
+    this.d.cache().set('equalize-dismissed', [...new Set([...(this.d.cache().get<string[]>('equalize-dismissed') ?? []), ...ids])]);
+    this.d.changed();
   }
 
   private setJob(m: Pick<MembershipJob, 'membershipId' | 'swarm'>, phase: MembershipJob['phase'], detail: string, ctl?: AbortController) {
@@ -228,8 +302,41 @@ export class MembershipManager {
     this.d.cache().set('accepted-models', { ...(this.d.cache().get<Record<string, string[]>>('accepted-models') ?? {}), [membershipId]: hashes });
   }
 
+  /** The signed bundle, release facts, revocations and accepted models for one membership. */
+  async prepareRun(m: MembershipView, signal: AbortSignal): Promise<PreparedRun> {
+    const swarm = await this.api().getSwarm(m.swarm);
+    const { dir, release } = await this.ensureBundle(swarm, signal);
+    if (!release.signingKey) throw new Error('The release has no registered signing key.');
+    const feed = await this.api().revocations();
+    const revoked = {
+      harnessReleases: revokedTargets(feed.items, 'harness_release'),
+      publisherKeys: revokedTargets(feed.items, 'publisher_key'),
+    };
+    // The server decides which installed models the swarm's policy accepts (SPEC 6.2).
+    const accepted = await this.acceptedModels(m, swarm);
+    return { swarm, dir, release, revoked, accepted };
+  }
+
+  /** The run spec for the sandbox, built only from reviewed release facts. */
+  runSpec(m: MembershipView, p: PreparedRun, model: { contentHash: string; slug: string }, lease: string, input: Record<string, unknown>): HarnessRunSpec {
+    const { swarm, dir, release } = p;
+    return {
+      bundleDir: dir,
+      release: { publisher: release.publisher.slug, name: release.name, version: release.version, bundleHash: release.bundleHash, signature: release.signature, reviewed: release.reviewed, revoked: release.revoked },
+      key: { ...release.signingKey!, publisher: release.publisher.slug },
+      revoked: p.revoked,
+      swarm: m.swarm,
+      permissions: { network: swarm.permissions.network, scratchBytes: Math.round(swarm.permissions.scratchDiskGb * GB) },
+      permissionsHash: m.permissions_hash,
+      model: { contentHash: model.contentHash, modelClass: model.slug },
+      lease,
+      timeoutS: swarm.task.timeoutS,
+      input,
+    };
+  }
+
   /** The installed model to use: the active one if the swarm accepts it, else the first accepted. */
-  private pickModel(accepted: string[]) {
+  pickModel(accepted: string[]) {
     const installed = this.d.models.installed();
     const active = this.d.models.storage().activeModel;
     return installed.find((m) => m.contentHash === active && accepted.includes(m.contentHash)) ?? installed.find((m) => accepted.includes(m.contentHash)) ?? null;
@@ -244,44 +351,40 @@ export class MembershipManager {
     const ctl = new AbortController();
     const job = { membershipId: m.id, swarm: m.swarm };
     if (this.d.isPaused()) return this.setJob(job, 'stopped', 'Paused. Qualification continues when you resume.', ctl);
+    const blocked = this.d.kill?.startBlock(m.swarm);
+    if (blocked) return this.setJob(job, 'stopped', blocked, ctl);
     this.setJob(job, 'downloading', 'Downloading the signed harness', ctl);
     try {
-      const swarm = await this.api().getSwarm(m.swarm);
-      const { dir, release } = await this.ensureBundle(swarm, ctl.signal);
-      if (!release.signingKey) throw new Error('The release has no registered signing key.');
-      const feed = await this.api().revocations();
-      const revoked = {
-        harnessReleases: feed.items.filter((r) => r.targetType === 'harness_release').map((r) => r.targetId),
-        publisherKeys: feed.items.filter((r) => r.targetType === 'publisher_key').map((r) => r.targetId),
-      };
-      // The server decides which installed models the swarm's policy accepts (SPEC 6.2).
-      const accepted = await this.acceptedModels(m, swarm);
+      const prepared = await this.prepareRun(m, ctl.signal);
+      const { release, accepted } = prepared;
       for (;;) {
         if (ctl.signal.aborted) return;
         if (this.d.isPaused()) return this.setJob(job, 'stopped', 'Paused. Qualification continues when you resume.');
+        const stop = this.d.kill?.startBlock(m.swarm);
+        if (stop) return this.setJob(job, 'stopped', stop);
         const lres = await this.d.auth.signedFetch('POST', `/v1/memberships/${m.id}/qualification/lease`);
         if (!lres.ok) {
           const e = await errorOf(lres);
-          return this.setJob(job, 'error', e.message);
+          if (e.code === 'killed' || e.code === 'swarm_killed') {
+            void this.d.kill?.check();
+            return this.setJob(job, 'stopped', e.message);
+          }
+          if (e.code !== 'qualification_checking') return this.setJob(job, 'error', e.message);
+          // Every answer is in; a machine check (Lean for Challenge Vaults) decides them. Wait for it.
+          this.setJob(job, 'verifying', 'Waiting for the swarm’s machine check of your answers');
+          await new Promise((r) => setTimeout(r, 3_000));
+          await this.refresh();
+          const now = this.home?.joined.find((j) => j.id === m.id);
+          if (now?.status === 'active') return this.setJob(job, 'done', `Qualified: ${now.qualification?.passed ?? 0} of ${now.qualification?.attempts ?? 0} answers checked correct.`);
+          if (now?.qualification?.outcome === 'failed') return this.setJob(job, 'error', now.qualification.retry_reason ?? 'Qualification did not pass.');
+          continue;
         }
         const lease = qualificationLeaseSchema.parse(await lres.json());
         const q = lease.qualification;
         const model = this.pickModel(accepted);
         if (!model) return this.setJob(job, 'error', 'None of your downloaded models is accepted by this swarm.');
         this.setJob(job, 'running', `Known answer ${q.attempts + 1} of up to ${q.tasks} (needs ${q.pass}), on ${model.displayName}`);
-        const spec: HarnessRunSpec = {
-          bundleDir: dir,
-          release: { publisher: release.publisher.slug, name: release.name, version: release.version, bundleHash: release.bundleHash, signature: release.signature, reviewed: release.reviewed, revoked: release.revoked },
-          key: { ...release.signingKey, publisher: release.publisher.slug },
-          revoked,
-          swarm: m.swarm,
-          permissions: { network: swarm.permissions.network, scratchBytes: Math.round(swarm.permissions.scratchDiskGb * GB) },
-          permissionsHash: m.permissions_hash,
-          model: { contentHash: model.contentHash, modelClass: model.slug },
-          lease: `qualification:${m.id}`,
-          timeoutS: swarm.task.timeoutS,
-          input: lease.task.input,
-        };
+        const spec = this.runSpec(m, prepared, model, `qualification:${m.id}`, lease.task.input);
         const r = await this.d.run(spec, ctl.signal);
         if (ctl.signal.aborted || r.status === 'cancelled') return;
         if (r.status === 'bundle_rejected' || r.status === 'refused') return this.setJob(job, 'error', r.detail);
@@ -312,6 +415,7 @@ export class MembershipManager {
    */
   async leave(membershipId: string): Promise<MembershipResult<{ abandonedLeases: number }>> {
     const m = this.home?.joined.find((j) => j.id === membershipId);
+    this.d.beforeLeave?.(membershipId);
     const job = this.jobs.get(membershipId);
     job?.ctl.abort();
     this.jobs.delete(membershipId);
@@ -351,6 +455,26 @@ export class MembershipManager {
       if (!res || res.status >= 500) left.push(id);
     }
     this.d.cache().set('pending-leaves', left);
+  }
+
+  /**
+   * A swarm was stopped by the kill switch (M7): abort its qualification and delete its cached
+   * harness bundle so a stopped release is never run from cache (SPEC 15.2). The next run downloads
+   * and verifies it again.
+   */
+  stopSwarm(swarm: string, reason: string) {
+    for (const j of this.jobs.values()) {
+      if (j.swarm === swarm && ['downloading', 'verifying', 'running', 'submitting'].includes(j.phase)) {
+        j.ctl.abort();
+        this.jobs.set(j.membershipId, { ...j, phase: 'stopped', detail: reason, ctl: new AbortController() });
+      }
+    }
+    for (const m of this.home?.joined ?? []) {
+      if (m.swarm !== swarm || !/^sha256-[a-f0-9]{64}$/.test(m.harness.hash)) continue;
+      const other = (this.home?.joined ?? []).some((j) => j.swarm !== swarm && j.harness.hash === m.harness.hash);
+      if (!other) void rm(path.join(this.d.userDataDir, 'harnesses', hex(m.harness.hash)), { recursive: true, force: true });
+    }
+    this.d.changed();
   }
 
   /** Stops every local run, for Pause and sign out. */

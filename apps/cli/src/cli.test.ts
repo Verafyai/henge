@@ -1,6 +1,8 @@
+import { createPublicKey, generateKeyPairSync } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createApiClient } from '@swarm-explorer/api-client';
+import { signReceipt } from '@swarm-explorer/schema/node';
 import { describe, expect, it } from 'vitest';
 import { run, type Deps } from './cli';
 
@@ -54,5 +56,49 @@ describe('swarm cli', () => {
     const tmp = { ...deps(200, {}), readFile: async () => 'manifest_version: 1\nid: x\n' };
     expect(await run(['validate', 'x.yaml'], bad.io, tmp)).toBe(1);
     expect(bad.err.length).toBeGreaterThan(0);
+  });
+
+  it('verifies a receipt offline, and checks its key against the platform keys when given', async () => {
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const key = { keyId: 'receipt-cli-test', privateKey, publicKey: createPublicKey(privateKey).export({ type: 'spki', format: 'der' }).toString('base64url') };
+    const receipt = signReceipt(
+      {
+        receipt_version: 1,
+        receipt_id: '00000000-0000-7000-8000-00000000000a',
+        issued_at: '2026-11-25T12:00:00.000Z',
+        result: { id: '00000000-0000-7000-8000-00000000000b', state: 'settled', output_sha256: `sha256-${'a'.repeat(64)}` },
+        swarm: { slug: 'prompt-guard-red-team', funded: false, release_manifest_hash: `sha256-${'b'.repeat(64)}` },
+        pins: { harness: { name: 'prompt-guard-red-team', version: '0.1.0', hash: `sha256-${'c'.repeat(64)}` }, model_artifact_hash: null, permissions_hash: `sha256-${'e'.repeat(64)}` },
+        verification: [{ method: 'machine-check', outcome: 'accepted', verifier_version: 'v1', verifier_key_id: 'w' }],
+        timeline: { submitted_at: '2026-11-25T11:00:00.000Z', pending_at: '2026-11-25T11:01:00.000Z', settled_at: '2026-11-25T11:59:00.000Z' },
+        earned: { impact_units: 1, credits: null },
+        contributor: { account_id: '00000000-0000-7000-8000-00000000000c' },
+        signer: { key_id: key.keyId, public_key: key.publicKey },
+      },
+      key,
+    );
+    const files: Record<string, string> = {
+      'r.json': JSON.stringify({ receipt }),
+      'bad.json': JSON.stringify({ ...receipt, earned: { impact_units: 2, credits: null } }),
+      'keys.json': JSON.stringify({ keys: [{ key_id: key.keyId, public_key: key.publicKey, status: 'active' }] }),
+      'other.json': JSON.stringify({ keys: [] }),
+    };
+    const d = { ...deps(200, {}), readFile: async (p: string) => files[p]! };
+    const plain = capture();
+    expect(await run(['receipt', 'verify', 'r.json'], plain.io, d)).toBe(0);
+    expect(plain.out.join('\n')).toContain('1 impact');
+    expect(plain.out.join('\n')).toContain('was not checked against');
+    const pinned = capture();
+    expect(await run(['receipt', 'verify', 'r.json', '--keys', 'keys.json'], pinned.io, d)).toBe(0);
+    expect(pinned.out.at(-1)).toContain("one of the platform's receipt keys");
+    const fetched = capture();
+    expect(await run(['receipt', 'verify', 'r.json', '--fetch-keys'], fetched.io, { ...d, api: deps(200, JSON.parse(files['keys.json']!)).api })).toBe(0);
+    const untrusted = capture();
+    expect(await run(['receipt', 'verify', 'r.json', '--keys', 'other.json'], untrusted.io, d)).toBe(1);
+    expect(untrusted.err[0]).toContain('untrusted_key');
+    const edited = capture();
+    expect(await run(['receipt', 'verify', 'bad.json'], edited.io, d)).toBe(1);
+    expect(edited.err[0]).toContain('bad_signature');
+    expect(await run(['receipt'], capture().io, d)).toBe(2);
   });
 });

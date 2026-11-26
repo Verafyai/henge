@@ -52,6 +52,17 @@ export function useMe() {
   return useQuery({ queryKey: ['me'], enabled: auth.status === 'signed_in', queryFn: () => window.swarm.account.me() });
 }
 
+/** Results and wallet poll while open, so a verdict or settlement shows without a reload. */
+export function useResults() {
+  const auth = useAuth();
+  return useQuery({ queryKey: ['results'], enabled: auth.status === 'signed_in', queryFn: () => window.swarm.account.results(), refetchInterval: 2_000 });
+}
+
+export function useWallet() {
+  const auth = useAuth();
+  return useQuery({ queryKey: ['wallet'], enabled: auth.status === 'signed_in', queryFn: () => window.swarm.account.wallet(), refetchInterval: 2_000 });
+}
+
 export function useRecent() {
   return useQuery({ queryKey: ['recent'], queryFn: () => window.swarm.recent.list(), staleTime: Infinity });
 }
@@ -80,5 +91,6 @@ export function useNodeActions() {
     saveSetup: async (s: Parameters<typeof window.swarm.node.saveSetup>[0]) => set(await window.swarm.node.saveSetup(s)),
     resetSetup: async () => set(await window.swarm.node.resetSetup()),
     setPaused: async (p: boolean) => set(await window.swarm.node.setPaused(p)),
+    setRunRules: async (r: Parameters<typeof window.swarm.node.setRunRules>[0]) => set(await window.swarm.node.setRunRules(r)),
   };
 }

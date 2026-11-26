@@ -44,7 +44,7 @@ beforeAll(async () => {
   const r = registerInstallResponseSchema.parse(await (await registerInstall(signed(demo, 'POST', '/v1/installs', JSON.stringify({ app_version: '0.2.0', channel: 'dev', platform: 'darwin', arch: 'arm64' })), undefined as never)).json());
   nodeId = r.node_id;
   const db = await getDb();
-  const [art] = await db.select({ id: modelArtifacts.id, hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'qwen2.5-coder-7b'));
+  const [art] = await db.select({ id: modelArtifacts.id, hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'phi4-14b'));
   await db.insert(nodeModels).values({ nodeId, modelArtifactId: art!.id, verifiedHash: art!.hash, fitStatus: 'runs_well' });
 });
 
@@ -60,7 +60,7 @@ describe('join, qualify and leave over the signed API (SPEC 13.2)', () => {
     expect(j.permissions_hash).toBe(s.release.permissionsHash);
     expect(j.permissions).toEqual({ network: [], scratchDiskGb: 0.5, gpuCompute: false, apiSpendDailyUsd: null });
     expect(j.membership).toMatchObject({ status: 'joining', share_bp: 0 });
-    expect(j.models.map((m) => m.license_id)).toEqual(['apache-2.0']);
+    expect(j.models.map((m) => m.license_id)).toEqual(['mit']);
     membershipId = j.membership.id;
 
     // Another account's install cannot see or act on it.

@@ -60,7 +60,7 @@ export const featuredStatus = pgEnum('featured_status', ['none', 'featured', 're
 export const reviewTarget = pgEnum('review_target', ['swarm_release', 'harness_release', 'model', 'publisher']);
 export const reviewOutcome = pgEnum('review_outcome', ['approved', 'rejected', 'changes_requested']);
 export const reportStatus = pgEnum('report_status', ['open', 'reviewing', 'actioned', 'dismissed']);
-export const revocationTarget = pgEnum('revocation_target', ['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version']);
+export const revocationTarget = pgEnum('revocation_target', ['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version', 'platform']);
 export const severity = pgEnum('severity', ['low', 'high', 'critical']);
 export const membershipStatus = pgEnum('membership_status', ['joining', 'qualifying', 'active', 'paused', 'reconsent_required', 'left']);
 export const qualificationOutcome = pgEnum('qualification_outcome', ['in_progress', 'passed', 'failed']);
@@ -80,6 +80,8 @@ export const configStatus = pgEnum('config_status', ['proposal', 'approved', 're
 export const teamVisibility = pgEnum('team_visibility', ['private', 'public']);
 export const teamRole = pgEnum('team_role', ['owner', 'member']);
 export const channel = pgEnum('release_channel', ['stable', 'beta', 'internal']);
+/** Ledger buckets (SPEC 9.5): every credit account is one balance of one owner. */
+export const creditBucket = pgEnum('credit_bucket', ['available', 'reserved', 'pending', 'settled', 'issued']);
 
 /* ----------------------------------------------------------------------------
  * 12.1 Identity and nodes
@@ -158,6 +160,8 @@ export const nodes = pgTable(
     diskBudgetBytes: bigint('disk_budget_bytes', { mode: 'number' }),
     concurrencyLocal: smallint('concurrency_local').notNull().default(1),
     concurrencyApi: smallint('concurrency_api').notNull().default(0),
+    /** Set once the user moves a share slider. New joins then ask before rebalancing (SPEC 7.1). */
+    sharesCustomized: boolean('shares_customized').notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [
@@ -268,7 +272,8 @@ export const modelArtifacts = pgTable(
     /** sha256-<hex>. Nodes verify this before first use and refuse mutable tag drift (SPEC 5.4). */
     contentHash: text('content_hash').notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    contextLength: integer('context_length').notNull(),
+    /** Null when the pinned catalog source does not record it (the approved catalog proposal has none). */
+    contextLength: integer('context_length'),
     quantization: text('quantization').notNull(),
     runtimeFormats: text('runtime_formats').array().notNull(),
     catalogVersion: integer('catalog_version').notNull(),
@@ -422,9 +427,52 @@ export const revocations = pgTable(
     severity: severity('severity').notNull(),
     signedPayload: text('signed_payload').notNull(),
     effectiveAt: ts('effective_at').notNull(),
+    /**
+     * Kill switch (SPEC 11.6, M7): `revoke` stops the target, `restore` lifts an earlier revoke. The
+     * newest entry per target decides. Older rows default to revoke.
+     */
+    action: text('action', { enum: ['revoke', 'restore'] }).notNull().default('revoke'),
+    /** `keyId:base64url` Ed25519 signature over `swarm-explorer-revocation-v1\n` + signed_payload. */
+    signature: text('signature'),
+    actorAccountId: uuid('actor_account_id').references(() => accounts.id),
+    idempotencyKey: text('idempotency_key'),
     createdAt: createdAt(),
   },
-  (t) => [index('revocations_effective_idx').on(t.effectiveAt)],
+  (t) => [index('revocations_effective_idx').on(t.effectiveAt), uniqueIndex('revocations_idempotency_idx').on(t.idempotencyKey)],
+);
+
+/**
+ * Platform signing keys (M7): the revocation feed key and the receipt key. Public halves only; the
+ * private halves come from the deployment's environment, or a per-process key in development.
+ */
+export const platformKeys = pgTable(
+  'platform_keys',
+  {
+    id: id(),
+    keyId: text('key_id').notNull(),
+    /** Ed25519 SPKI DER, base64url. */
+    publicKey: text('public_key').notNull(),
+    purpose: text('purpose', { enum: ['revocation', 'receipt'] }).notNull(),
+    status: keyStatus('status').notNull().default('active'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('platform_keys_key_id_idx').on(t.keyId)],
+);
+
+/**
+ * Signed contribution receipts (SPEC 4.2 Result/receipt, M7): one per settled result, issued once and
+ * kept, so a downloaded receipt never changes. The receipt is the signed JSON document itself.
+ */
+export const receipts = pgTable(
+  'receipts',
+  {
+    resultId: uuid('result_id').primaryKey().references(() => results.id),
+    accountId: uuid('account_id').notNull().references(() => accounts.id),
+    receiptJson: jsonb('receipt_json').notNull(),
+    keyId: text('key_id').notNull(),
+    issuedAt: createdAt(),
+  },
+  (t) => [index('receipts_account_idx').on(t.accountId)],
 );
 
 /* ----------------------------------------------------------------------------
@@ -483,6 +531,8 @@ export const qualificationTasks = pgTable(
     swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
     inputJson: jsonb('input_json').notNull(),
     expectedJson: jsonb('expected_json').notNull(),
+    /** The answer also needs the swarm's machine check (for example Lean) before it counts (M6). */
+    machineCheck: boolean('machine_check').notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index('qualification_tasks_swarm_idx').on(t.swarmId)],
@@ -499,7 +549,13 @@ export const qualificationAttempts = pgTable(
     deadlineAt: ts('deadline_at').notNull(),
     submittedAt: ts('submitted_at'),
     outputHash: text('output_hash'),
+    /** Null while a machine-checked answer waits for the verifier worker. */
     correct: boolean('correct'),
+    /** Kept only for answers that wait for a machine check. */
+    outputJson: jsonb('output_json'),
+    checkStatus: text('check_status', { enum: ['awaiting', 'accepted', 'rejected'] }),
+    /** The signed verifier record for a machine-checked answer. */
+    checkRecordJson: jsonb('check_record_json'),
   },
   (t) => [uniqueIndex('qualification_attempts_task_idx').on(t.qualificationId, t.taskId)],
 );
@@ -513,19 +569,30 @@ export const tasks = pgTable(
     coordinatorTaskId: text('coordinator_task_id').notNull(),
     inputRef: text('input_ref').notNull(),
     inputHash: text('input_hash').notNull(),
+    /** Task input held by the hosted coordinator. Stands in for object storage behind `input_ref` (M5). */
+    inputJson: jsonb('input_json'),
     modelRequirementJson: jsonb('model_requirement_json').notNull(),
     urgent: boolean('urgent').notNull().default(false),
     /** Null for volunteer swarms, which pay impact only. */
     rewardCredits: credits('reward_credits'),
     status: taskStatus('status').notNull().default('queued'),
+    /** Replicas of one task for redundancy verification share this key (SPEC 8.1). */
+    redundancyGroup: text('redundancy_group'),
     createdAt: createdAt(),
   },
   (t) => [
     uniqueIndex('tasks_coordinator_idx').on(t.swarmId, t.coordinatorTaskId),
+    index('tasks_queue_idx').on(t.swarmId, t.status),
+    index('tasks_redundancy_idx').on(t.swarmId, t.redundancyGroup),
     check('tasks_reward_check', sql`${t.rewardCredits} is null or ${t.rewardCredits} > 0`),
   ],
 );
 
+/**
+ * One node's hold on one task (SPEC 7.3). The coordinator sets `deadline_at`; renewals move it only
+ * when granted before the deadline. Abandoned and expired leases are never paid; their task goes
+ * back to the queue and `requeued_at` records when.
+ */
 export const leases = pgTable(
   'leases',
   {
@@ -533,28 +600,87 @@ export const leases = pgTable(
     taskId: uuid('task_id').notNull().references(() => tasks.id),
     nodeId: uuid('node_id').notNull().references(() => nodes.id),
     accountId: uuid('account_id').notNull().references(() => accounts.id),
+    membershipId: uuid('membership_id').references(() => memberships.id),
     status: leaseStatus('status').notNull().default('leased'),
+    urgent: boolean('urgent').notNull().default(false),
     leasedAt: createdAt(),
     deadlineAt: ts('deadline_at').notNull(),
+    startedAt: ts('started_at'),
+    renewals: smallint('renewals').notNull().default(0),
+    submittedAt: ts('submitted_at'),
     abandonedAt: ts('abandoned_at'),
+    expiredAt: ts('expired_at'),
+    requeuedAt: ts('requeued_at'),
+    /** When the result moved through verification (SPEC 7.3), for the node's timeline. */
+    verifyingAt: ts('verifying_at'),
+    pendingAt: ts('pending_at'),
+    settledAt: ts('settled_at'),
+    rejectedAt: ts('rejected_at'),
+    clawedBackAt: ts('clawed_back_at'),
+    /** Why the platform cancelled an open lease, for example `kill_switch` (M7). Null for node abandons. */
+    cancelReason: text('cancel_reason'),
     idempotencyKey: text('idempotency_key').notNull(),
   },
-  (t) => [uniqueIndex('leases_idempotency_idx').on(t.nodeId, t.idempotencyKey), index('leases_task_idx').on(t.taskId)],
+  (t) => [
+    uniqueIndex('leases_idempotency_idx').on(t.nodeId, t.idempotencyKey),
+    index('leases_task_idx').on(t.taskId),
+    index('leases_open_idx').on(t.status, t.deadlineAt),
+  ],
 );
 
-export const runRecords = pgTable('run_records', {
-  id: id(),
-  leaseId: uuid('lease_id').notNull().references(() => leases.id),
-  modelIdClaim: text('model_id_claim').notNull(),
-  modelArtifactHash: text('model_artifact_hash'),
-  provider: text('provider'),
-  harnessHash: text('harness_hash').notNull(),
-  tokensIn: integer('tokens_in'),
-  tokensOut: integer('tokens_out'),
-  elapsedMs: integer('elapsed_ms').notNull(),
-  costUsdMicrosReported: micros('cost_usd_micros_reported'),
-  runRecordSignature: text('run_record_signature').notNull(),
-});
+/**
+ * Coordinator lease rules per swarm, versioned (SPEC 7.3). Neither value has an approved number:
+ * a null threshold means misses are counted but never lower reputation, and null renewals means the
+ * coordinator refuses renewals. Changing either is a new version.
+ */
+export const leaseRules = pgTable(
+  'lease_rules',
+  {
+    id: id(),
+    swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
+    version: integer('version').notNull(),
+    repeatedMissThreshold: integer('repeated_miss_threshold'),
+    maxRenewals: integer('max_renewals'),
+    status: configStatus('status').notNull().default('proposal'),
+    notes: text('notes').notNull().default(''),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('lease_rules_version_idx').on(t.swarmId, t.version)],
+);
+
+/** Missed deadlines per node, swarm and lease rule version (SPEC 7.3). Counting only; no penalty here. */
+export const deadlineMisses = pgTable(
+  'deadline_misses',
+  {
+    nodeId: uuid('node_id').notNull().references(() => nodes.id),
+    swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
+    ruleVersion: integer('rule_version').notNull(),
+    misses: integer('misses').notNull().default(0),
+    lastMissedAt: ts('last_missed_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.nodeId, t.swarmId, t.ruleVersion] })],
+);
+
+export const runRecords = pgTable(
+  'run_records',
+  {
+    id: id(),
+    leaseId: uuid('lease_id').notNull().references(() => leases.id),
+    modelIdClaim: text('model_id_claim').notNull(),
+    modelArtifactHash: text('model_artifact_hash'),
+    provider: text('provider'),
+    harnessHash: text('harness_hash').notNull(),
+    tokensIn: integer('tokens_in'),
+    tokensOut: integer('tokens_out'),
+    elapsedMs: integer('elapsed_ms').notNull(),
+    costUsdMicrosReported: micros('cost_usd_micros_reported'),
+    runRecordSignature: text('run_record_signature').notNull(),
+    /** The signed run record exactly as sent (SPEC 13.3), for the verifier (M6). */
+    recordJson: jsonb('record_json'),
+  },
+  // A device signature is accepted once: a replayed run record is refused (SPEC 8.3).
+  (t) => [uniqueIndex('run_records_lease_idx').on(t.leaseId), uniqueIndex('run_records_signature_idx').on(t.runRecordSignature)],
+);
 
 export const results = pgTable(
   'results',
@@ -563,28 +689,113 @@ export const results = pgTable(
     leaseId: uuid('lease_id').notNull().references(() => leases.id),
     outputRef: text('output_ref').notNull(),
     outputHash: text('output_hash').notNull(),
-    schemaValid: boolean('schema_valid').notNull(),
+    /** Null until checked against the harness output schema. */
+    schemaValid: boolean('schema_valid'),
+    /** Output held by the hosted coordinator for the verifier; stands in for object storage (M5). */
+    outputJson: jsonb('output_json'),
+    /** Late and after-abandon results are recorded and never paid (SPEC 7.3). */
+    disposition: text('disposition', { enum: ['on_time', 'late', 'after_abandon'] }).notNull().default('on_time'),
     submittedAt: createdAt(),
   },
   // Duplicate submissions are idempotent by lease and result hash (SPEC 7.3).
   (t) => [uniqueIndex('results_lease_hash_idx').on(t.leaseId, t.outputHash)],
 );
 
-export const verificationRecords = pgTable('verification_records', {
-  id: id(),
-  resultId: uuid('result_id').notNull().references(() => results.id),
-  method: verificationMethod('method').notNull(),
-  verifierVersion: text('verifier_version').notNull(),
-  evidenceHashes: text('evidence_hashes').array().notNull(),
-  outcome: verificationOutcome('outcome').notNull(),
-  rationaleCode: text('rationale_code').notNull(),
-  panelJson: jsonb('panel_json'),
-  signature: text('signature').notNull(),
-  pendingWindowEndsAt: ts('pending_window_ends_at'),
+/**
+ * Signed verification records (SPEC 8.2). One per result and method. `signature` is
+ * `keyId:base64url` by a key in `verifier_keys`, over the canonical record (see verification.ts).
+ */
+export const verificationRecords = pgTable(
+  'verification_records',
+  {
+    id: id(),
+    resultId: uuid('result_id').notNull().references(() => results.id),
+    leaseId: uuid('lease_id').references(() => leases.id),
+    releaseId: uuid('release_id').references(() => swarmReleases.id),
+    method: verificationMethod('method').notNull(),
+    verifierVersion: text('verifier_version').notNull(),
+    verifierKeyId: text('verifier_key_id'),
+    evidenceHashes: text('evidence_hashes').array().notNull(),
+    resultHash: text('result_hash'),
+    outcome: verificationOutcome('outcome').notNull(),
+    rationaleCode: text('rationale_code').notNull(),
+    panelJson: jsonb('panel_json'),
+    signature: text('signature').notNull(),
+    pendingWindowEndsAt: ts('pending_window_ends_at'),
+    /** Fraud found while pending moves this to `fraud_found` (SPEC 8.2). */
+    disputeStatus: text('dispute_status', { enum: ['none', 'fraud_found'] }).notNull().default('none'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('verification_records_result_method_idx').on(t.resultId, t.method)],
+);
+
+/**
+ * Coordinator verification rules per swarm, versioned like lease rules (SPEC 8.1, 9.2). No value
+ * here is approved: a null review window means accepted work stays pending and never settles, a
+ * null redundancy count or jury panel size means those methods cannot decide yet.
+ */
+export const verificationRules = pgTable(
+  'verification_rules',
+  {
+    id: id(),
+    swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
+    version: integer('version').notNull(),
+    reviewWindowS: integer('review_window_s'),
+    knownAnswerRate: real('known_answer_rate'),
+    redundancyCount: integer('redundancy_count'),
+    juryPanelSize: integer('jury_panel_size'),
+    status: configStatus('status').notNull().default('proposal'),
+    notes: text('notes').notNull().default(''),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('verification_rules_version_idx').on(t.swarmId, t.version),
+    check('verification_rules_positive', sql`(${t.reviewWindowS} is null or ${t.reviewWindowS} >= 0) and (${t.redundancyCount} is null or ${t.redundancyCount} >= 2) and (${t.juryPanelSize} is null or ${t.juryPanelSize} >= 1)`),
+  ],
+);
+
+/** Keys that sign verification records: the coordinator's own and each verifier worker's. */
+export const verifierKeys = pgTable(
+  'verifier_keys',
+  {
+    id: id(),
+    keyId: text('key_id').notNull(),
+    /** Ed25519 SPKI DER, base64url. */
+    publicKey: text('public_key').notNull(),
+    kind: text('kind', { enum: ['coordinator', 'worker'] }).notNull(),
+    methods: text('methods').array().notNull(),
+    status: keyStatus('status').notNull().default('active'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('verifier_keys_key_id_idx').on(t.keyId)],
+);
+
+/** Replay protection for signed verifier requests: each nonce is accepted once per key. */
+export const verifierNonces = pgTable(
+  'verifier_nonces',
+  {
+    keyId: text('key_id').notNull(),
+    nonce: text('nonce').notNull(),
+    seenAt: ts('seen_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.keyId, t.nonce] })],
+);
+
+/**
+ * Hidden known answers for tasks mixed into the queue (SPEC 8.1). Kept apart from `tasks` so no
+ * task view can include them; nodes are never told which tasks are known.
+ */
+export const taskKnownAnswers = pgTable('task_known_answers', {
+  taskId: uuid('task_id')
+    .primaryKey()
+    .references(() => tasks.id),
+  expectedJson: jsonb('expected_json').notNull(),
   createdAt: createdAt(),
 });
 
-export const reputationEvents = pgTable('reputation_events', {
+export const reputationEvents = pgTable(
+  'reputation_events',
+  {
   id: id(),
   accountId: uuid('account_id').notNull().references(() => accounts.id),
   nodeId: uuid('node_id').references(() => nodes.id),
@@ -594,7 +805,10 @@ export const reputationEvents = pgTable('reputation_events', {
   scoreVersion: text('score_version').notNull(),
   evidenceRef: text('evidence_ref').notNull(),
   createdAt: createdAt(),
-});
+},
+  // One event per kind and evidence, so a retried verification never scores twice.
+  (t) => [uniqueIndex('reputation_events_evidence_idx').on(t.eventType, t.evidenceRef)],
+);
 
 export const impactEvents = pgTable(
   'impact_events',
@@ -607,6 +821,8 @@ export const impactEvents = pgTable(
     units: integer('units').notNull(),
     resultId: uuid('result_id').notNull().references(() => results.id),
     createdAt: createdAt(),
+    /** Set when the result is clawed back; revoked impact no longer counts. */
+    revokedAt: ts('revoked_at'),
   },
   (t) => [uniqueIndex('impact_events_result_idx').on(t.resultId), check('impact_units_check', sql`${t.units} >= 0`)],
 );
@@ -621,10 +837,12 @@ export const creditAccounts = pgTable(
     id: id(),
     ownerType: creditOwnerType('owner_type').notNull(),
     ownerId: uuid('owner_id'),
+    /** Which balance this account holds. Only the platform's `issued` mirror may go negative. */
+    bucket: creditBucket('bucket').notNull().default('available'),
     currency: text('currency', { enum: ['credit'] }).notNull().default('credit'),
     status: accountStatus('status').notNull().default('active'),
   },
-  (t) => [uniqueIndex('credit_accounts_owner_idx').on(t.ownerType, t.ownerId)],
+  (t) => [uniqueIndex('credit_accounts_owner_idx').on(t.ownerType, t.ownerId, t.bucket)],
 );
 
 export const pools = pgTable(

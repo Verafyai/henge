@@ -1,0 +1,21 @@
+{
+  "name": "@swarm-explorer/prompt-guard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prompt Guard from Verafyai/prompt-guard, vendored at a pinned commit (see VENDOR.md). Zero dependencies.",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./vendor/src/index.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test vendor/test/ && node scripts/check-pin.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@swarm-explorer/config": "workspace:*",
+    "@types/node": "26.6.7"
+  }
+}

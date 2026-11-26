@@ -86,6 +86,44 @@ call a plugin; a Rune is one of its settings. `ManifestV1` and its validator are
   pins the socket is still to be written with the client.
 - `runtime.harness.runtime: container` in the example, while decision 2026-11-25 says nodes run no containers.
 
+## henge.verafy.ai landing (2026-11-26)
+
+Workstream B2 of the "Henge spin-out v2" spec (section 5.2), branch `web/henge-landing`.
+
+- **Hosting: option B.** Rex chose that henge.verafy.ai is served by this repo's `apps/web` (the spec's option B), not
+  by testnet-demo. Nothing is deployed and no domain or DNS changed.
+- **Routes.** `/` is the 5.2 landing page (sections 0 to 8). The Henge web store that used to be `/` moved to
+  `/swarms` (search is `/swarms?q=`); the shared Header, Footer and Logo now link there. `/login`, `/models`,
+  `/swarms/<slug>`, `/authorize` and every `/v1` route are unchanged. New: `/download`, `/spec`, `/glyphs`, `/s`.
+  The app is split into route groups: `app/(henge)` (dark, Henge nav and footer) and `app/(web)` (light Henge web
+  pages with the shared Header and Footer). The root layout only loads fonts.
+- **Platform note:** Rex changed the hero note to "macOS first. Windows and Linux later. Not released yet."
+  (the spec table said "Windows, macOS and Linux."). Everything else is the spec copy, exactly, in
+  `apps/web/lib/henge-landing-copy.ts`; its test fails on U+2014, U+2013 and on any digit except 01 to 04 and the
+  example snippet's `"1.0"` and `@^1`.
+- **Hero and community images:** the client is not built, so both images are the spec mockups
+  (`01-client-main.png`, `13-community-chat.png`, in `apps/web/public/henge/`), each with a visible
+  "Design preview" label and a caption that the client is not built and that names and values are examples. They
+  are hidden below 720px, as in the mobile mockup. Replace them with real screenshots once the client ships.
+- **Fonts:** Chakra Petch 600/700 is added through `next/font/google` (self-hosted at build, like Inter and
+  JetBrains Mono already were). No font CDN at runtime.
+- **/download:** three disabled buttons (macOS "Not released yet", Windows and Linux "Later"), no links, no version
+  or size. It links to GitHub Releases only once a release exists.
+- **/spec:** spec sections 6 and 7 copied verbatim into `apps/web/content/henge-spec.md` and rendered by a small
+  parser (`apps/web/lib/mini-markdown.ts`) into React elements, with no HTML injection and no new dependency.
+- **/glyphs:** read-only list of the six built-in Glyphs from 7.1, with Runes labeled "Example Runes".
+- **/s:** a disabled ".henge link" field and a "Coming soon" button; the resolver ships in its own PR.
+- **Links:** "Start your own Henge" and "Read the .henge spec" go to `/spec`; nav "Docs" goes to `/spec`; the
+  four other nav links are in-page anchors.
+- **Needs Rex:**
+  - Privacy and Terms: verafy-website has no Privacy or Terms route in code (they are CMS fields, and its
+    `isPolicyUrl` rejects verafy.ai links), so the footer shows them as plain text, not links. Give the URLs.
+  - "See the henge-bench plan": `Verafyai/henge-bench` does not exist yet (checked 2026-11-26), so the button shows
+    "(Not published yet)" and links nowhere. Set `HENGE_BENCH_URL` once the repo exists. (`Verafyai/henge` is public,
+    so the GitHub links work.)
+  - The /spec page shows the spec's own headings ("6. Workstream C: ..."), which read as internal. Approve or
+    supply public wording.
+
 ## Rex's finish-up brief (2026-11-25, later the same day)
 
 Rex's "Henge: finish-up brief" orders the remaining work: Part A (verafy.ai copy), Part B (M5 to M7, stop at G1),
@@ -192,7 +230,7 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - The funded pool exists but is **empty**: no purchase is possible without approved pricing (SPEC 9.6A).
 - Economic values (credit price, take rate) are stored only as an `economic_configs` row with status `proposal`.
   **Needs Rex**: approve or replace them before M9.
-- Model artifact hashes are fixture digests, not real downloads, so the M2 hash check will block them by design.
+- Model artifact hashes are fixture digests, not real downloads, so the M2 hash check will block them by design. Superseded in M7: the seed now carries the five approved real pins.
 - Each seed run makes a throwaway `verafy-local-test-*` publisher key and discards the private half.
 
 ### API (SPEC 13)
@@ -237,6 +275,19 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 ### CLI
 - The binary is `swarm`. M0 has `swarms`, `show` and `validate <manifest.yaml>`. `init`, `dev`, `verify`,
   `package` and `publish` exit 3 naming M11; `login` names M1 and `node` names M5.
+
+## M7 Prompt Guard (2026-11-25)
+
+- Prompt Guard from `Verafyai/prompt-guard` is vendored in `packages/prompt-guard` at commit `caae11c` (upstream
+  0.1.0, MIT, no release tags, so the pin is the commit). Files are byte-identical to upstream; `vendor/PIN.json`
+  holds their SHA-256 and the package test fails on any change. Updating is a documented copy and re-pin (VENDOR.md).
+- `promptGuardScreener` (`packages/sandbox/src/prompt-guard.ts`) replaces `heuristic-v1` in the node supervisor and
+  the sandbox self-checks. It scans every string in the task input and records each flagged rule with its JSON path.
+  The screener name in every run record is `prompt-guard/1@caae11c`, so a verdict always says which guard made it.
+- Flagged input still runs, as before: the sandbox's structural protections do not depend on the screen, and the
+  verdict travels to verifiers and juries. Juries will use the guard's `compile` and `renderGuarded` on evidence
+  (communities spec 5.7); that lands with the jury work, not here.
+- `heuristic-v1` stays in `broker.ts` only for its existing unit tests.
 
 ## M1 Node shell and first run (2026-11-24)
 
@@ -304,6 +355,61 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 ### CLI
 - `swarm login` (device code, SPEC 4.4) belongs with the headless node, so its placeholder now names M5.
 
+## WebAssembly metering (2026-11-25)
+
+Closes the "Before G3" item in Rex's decisions: the sandbox now counts work done, not only wall time.
+
+- **Approach:** a load-time instrumentation pass, `packages/sandbox/src/meter.ts`, named `meter/1`. V8's
+  WebAssembly in Node has no fuel or metering hook, so the broker rewrites every harness module before it runs.
+  No new dependency.
+- **Why instrumentation:** the count is a function of the module bytes and the path the code takes. Machine
+  speed, V8 tiering, the clock and timer jitter play no part, so the same harness, input and host replies give
+  the same fuel on every machine. Time or interrupt based limits cannot promise that.
+- **Cost rules (`meter/1`):**
+  - A charge is inserted at function entry and right after every `block`, `loop`, `if`, `else` and inner `end`.
+  - Each charge is the number of original instructions up to and including the next of those instructions.
+  - Every loop pass and every call therefore costs at least 1, so a module cannot spin or recurse for free.
+  - A region is charged in full when it starts, even if a branch leaves it early.
+- **Counter:** one added mutable i64 global, exported as `__swarm_meter_fuel`, which the host sets before
+  `run`. The original function, global and memory indices do not change. A module that already exports that
+  name is refused.
+- **Supported code:** WebAssembly 1.0 plus sign extension, saturating truncation, multi-value blocks, reference
+  types and bulk memory. Anything else (SIMD, threads, exceptions, tail calls, GC) is refused before it runs
+  ("module cannot be metered"), so nothing runs unmetered.
+- **Out of fuel:** the run ends with status `fuel_exhausted` and no output leaves the worker. The client
+  abandons the lease unpaid (`local_failure`) and submits nothing.
+- **Other limits stay:** wall time, the memory cap, the heap cap and the model-call limit work as before.
+  Metering is in addition. When one of those ends a run from outside, fuel used is not known and is null.
+- **Run record:**
+  - Record version 2 adds `record_version: 2` and `metering: { meter, fuel_used, fuel_budget }`.
+  - Records without `record_version` are version 1 and stay valid. Version 2 must carry `metering`, and
+    `metering` needs version 2.
+  - The signed message format is unchanged.
+  - The record is kept whole in `run_records.record_json`, so there is no migration.
+  - Verifiers can compare `fuel_used` between records with the same `meter`. It matches exactly only when the
+    input and host replies match (for example a replay with recorded model replies).
+  - A server from before this change rejects version 2 records (strict schema), so the server ships first.
+- **Budget:** neither the harness limits (SPEC 6.1) nor the manifest (SPEC 6.4) has a fuel field, and no number
+  is approved.
+  - The config value `APPROVED_FUEL_BUDGET` is null.
+  - With null, fuel is counted and recorded but limits nothing.
+  - Tests and self-checks use explicit test budgets only.
+- **Self-checks:** two new checks, so Settings shows 17.
+  - `fuel-exhausted`: a runaway loop stops with `fuel_exhausted`.
+  - `fuel-counted`: a counting module uses exactly 10039 fuel, worked out by hand from the cost rules.
+- **Fixtures:** unchanged. Metering happens at load, so `harness.wasm` and the pinned hashes did not move.
+- **Known limits of `meter/1`:**
+  - A host function call counts as one instruction.
+  - `memory.copy` and `memory.fill` count as one whatever their length; they are bounded by the memory cap.
+  - Fuel is a count of instructions, not CPU time.
+  - The instrumentation overhead has not been measured.
+  - The engine is still V8, not Wasmtime; that deviation stands.
+- **Needs Rex:**
+  - The fuel budget value, and whether it is per harness or per swarm.
+  - Whether it becomes a `harness.json` limit or a manifest field (either is a schema change), and how it
+    relates to the existing `cpu_ms` limit.
+  - Whether verifiers act on fuel differences (for example in redundancy groups). Today fuel is only recorded.
+
 ## M2 Local sources and model catalog (2026-11-25)
 
 ### Hash pinning (SPEC 5.4)
@@ -321,6 +427,7 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - The server refuses a benchmark whose verified hash differs from the pin (409 `hash_mismatch`).
 - Seeded hashes are fixture digests, so real downloads of the seed catalog are blocked by design until a real
   catalog is approved. The e2e stand-in Ollama returns the seeded digest for one model to show the success path.
+  Superseded in M7: the seed carries the approved real pins, so real downloads of them verify.
 
 ### Fit (SPEC 5.4)
 - **Before download**, fit is a memory-size comparison and nothing more:
@@ -393,6 +500,8 @@ These settle the open items from M0 to M3. Where an earlier section below says *
   - **Gap:** fuel and epoch interruption are replaced by a wall-time limit that terminates the worker (this works
     even in a tight loop). `cpu_ms` is therefore enforced only as a wall-time bound. Swapping in Wasmtime (for
     example as a small sidecar binary) would restore true fuel metering.
+  - Deterministic fuel counting now exists through load-time instrumentation; see "WebAssembly metering
+    (2026-11-25)".
 - **Static checks before running:**
   - imports come only from `swarm`, and each host function needs its capability;
   - the module may not define its own memory or carry a start function;
@@ -448,6 +557,18 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - **GGUF re-hash:** the proxy re-hashes GGUF files before first use and refuses a changed file.
 - **Stubbed:** serving GGUF through llama.cpp (starting `llama-server` under the proxy) arrives with task leasing
   (M5). Ollama models are served now.
+
+## Staging sign in (2026-11-25)
+
+- Rex: no example-account sign in on any reachable URL. `devSignInEnabled()` now returns false on every Vercel
+  deployment (`VERCEL` or `VERCEL_ENV` set), even with `DEV_SIGN_IN=1`. Example accounts remain for local runs and e2e.
+- Staging signs in with one real provider: a GitHub OAuth app (`/v1/auth/github`, `/v1/auth/github/callback`). It is
+  off unless `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET` are set. Only two GitHub accounts get in,
+  pinned by numeric id: rexsaurus (77756242) and Verafyai (197112695). Anyone else gets 403 and no account is created.
+- The GitHub access token is used once to read the user and never stored. State is a random value in an httpOnly,
+  SameSite=Lax cookie scoped to `/v1/auth/github`, compared in constant time. `allow_signup=false`, scope `read:user`.
+- The Vercel protection-bypass secret for test nodes (approved) lives only in the test node's environment, never in
+  git.
 
 ## M4 Store, swarm pages, join, qualification and leave (2026-11-25)
 
@@ -512,6 +633,276 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - No real tasks yet: the coordinator and task leasing are M5.
 - Per-swarm pause, pins and priority are shown as status only; editing them arrives with the scheduler (M5).
 
+## M5 Task protocol and scheduler (2026-11-25)
+
+### Coordinator (SPEC 7.3, 13.3)
+- **Pull only:** nodes ask for work with device-signed requests (same `withNodeAuth` as the other node routes).
+  The coordinator never connects to a node.
+- **Tables:** migration 0005 adds `lease_rules`, `deadline_misses`, lease timestamps and renewal count,
+  `tasks.input_json`, `results.output_json` and `results.disposition`, and one run record per lease. Inputs and
+  outputs live in Postgres until object storage arrives with hosting.
+- **Eligibility:** a lease needs an active, qualified membership on this node, a current permission grant, no kill
+  switch or revocation, a wasm release, an installed model the swarm accepts and no other open local lease (local
+  concurrency is 1). Tasks lease only to a membership whose release has the same harness and permissions hash.
+- **Funding stub:** volunteer swarms lease with `reward.funded: false`. A funded swarm answers `pool_empty` or
+  `paid_leasing_unavailable` until pool reservations land (TODO M9).
+- **New endpoints:** `POST /v1/leases/{id}/start` (pins checked, Leased to Running, returns the input) and
+  `GET /v1/leases/{id}/input` (running leases only). Both are added to the SPEC 13.3 table. The input URI in a lease
+  is this lease-scoped, device-signed route.
+- **Deadlines:** set by the server from the release's `task.timeout_s`. Expired leases requeue on the next
+  coordinator call (`sweepExpiredLeases`). There is no background job yet.
+- **Renewal:** allowed only when the swarm's `lease_rules.max_renewals` says so. It is null (no approved value),
+  so every renewal is refused with `renewal_refused`. The node tries once when a fifth of the lease is left.
+- **Missed deadlines:** counted per node, swarm and lease rule version in `deadline_misses`. The repeated-miss
+  threshold is `lease_rules.repeated_miss_threshold`, null with no default (SPEC 7.3), so misses lower nothing yet.
+- **Submit:** idempotent by lease id and output hash. The same hash returns the first result (`duplicate: true`).
+  A different hash is `already_submitted`. A result after expiry or abandon is stored with disposition `late` or
+  `after_abandon` and is never paid. The run record must be signed by the device key of the install holding the
+  lease, over `swarm-explorer-run-record-v1\n` plus the canonical record.
+- **Schema check:** the output is checked against the release's output schema when the server holds that bundle,
+  and `schema_valid` is stored. Rejection for an invalid schema is part of verification (M6).
+- **Abandon:** immediate, unpaid, requeued, idempotent. Abandoning a lease that never started is recorded as
+  Running then Abandoned, since SPEC 7.3 has no Leased to Abandoned edge.
+- **States:** M5 moves leases up to Submitted. Verifying, Pending, Settled, Rejected and Clawed back are M6.
+- **Task upload:** `POST /v1/swarms/{slug}/tasks:batch` (bearer, the publisher's owner only, Idempotency-Key),
+  idempotent by `coordinator_task_id`. Urgent tasks are refused unless the swarm allows them.
+- **Seed:** 3 queued volunteer tasks for Prompt Guard red team and a v1 lease rule per swarm with null values.
+
+### Timeshare (SPEC 7.1)
+- **Shares:** basis points summing to 10,000 across qualified swarms. `normalizeShares` uses largest remainder.
+  Joining gives equal shares unless the user customized them, in which case the new swarm starts at 0 and the
+  Library asks "Share equally" or "Keep my shares". Leaving spreads the freed share in proportion.
+  `PATCH /v1/nodes/{id}/shares` must name every qualified swarm.
+- **Scheduler:** `FairShareScheduler` in node-core is start-time fair queueing. Each swarm's virtual time advances
+  by time used divided by its share, and the eligible swarm furthest below its share goes next.
+- **Lending:** a swarm with no tasks is skipped and keeps its share. When it has work again it re-enters at the
+  current virtual time, so it does not burst to "repay" lent time. A 0 share swarm only borrows lent time.
+- **Urgent:** urgent work goes first but is charged to its swarm. The time it ran ahead of its share shows as a
+  deficit in Activity until the other swarms win it back.
+- Scheduler state is per session and in memory.
+
+### Run rules (SPEC 7.2)
+- **Gate:** `evaluateRunRules` decides whether a lease may start and whether running work must stop. A stop
+  abandons the task like Pause. CPU load only holds back new tasks, because the task adds load itself.
+- **Idle:** `powerMonitor.getSystemIdleTime`, default 5 minutes. If idle time cannot be read, nothing runs.
+- **Power:** `isOnBatteryPower` on macOS and Windows, enforced.
+- **Temperature:** best effort on macOS only. It uses `getCurrentThermalState` and stops on serious or critical.
+  It never claims degrees.
+- **Load:** CPU load average, best effort, not available on Windows. GPU load cannot be read.
+- **Not available:** metered networks and heavy app detection are not available on any platform. The rule shows
+  as "Not available on this computer" and is never applied silently.
+- **Notes:** every rule line carries a plain note saying what it really does on this computer.
+- **Editing:** rules are edited in Settings and kept in the encrypted cache.
+- **Test hook:** unpackaged runs may set `SWARM_EXPLORER_SENSOR_FIXTURE` to a JSON file read on every check.
+  Packaged builds ignore it.
+
+### Pause and the runner
+- **Pause** (tray, app menu, status bar, Settings, Activity) stops the sandbox through the supervisor. The proxy
+  sees the broker hang up and aborts the runtime call. Henge then sends a best-effort abandon and starts no new
+  lease until Resume.
+- **Other stops:** leave, sign out and run rule stops do the same. Sign out waits for the abandon before tokens
+  are cleared.
+- **Recovery:** leases left open by a previous session are abandoned on the next sign in.
+- **Pin checks:** before running, the node checks the lease's swarm, harness and permissions hash, then the input
+  hash after start.
+- **Protected model:** the model of a running lease cannot be removed.
+- **Intervals:** the runner checks rules every 2 seconds, skips a swarm with nothing to lease for 30 seconds and
+  refreshes queue counts every 30 seconds. These are engineering intervals, not business values.
+
+### Models
+- **Ollama:** a task runs end to end through the proxy.
+- **llama.cpp:** `llama-server` is the second source behind the same `CompletionSource` interface.
+  - The proxy starts it for one GGUF file at a time, on 127.0.0.1 and a free port.
+  - Its random API key goes in its environment, not on the command line.
+  - Main resolves its absolute path from PATH, because the proxy runs with an empty PATH.
+- Tests use fakes and download nothing.
+
+### Stubbed in M5
+- **Verification and rewards (M6):** results wait for verification. There is no reputation and no pending or
+  settled credit, and volunteer work earns impact only.
+- **Funded leasing (M9):** this waits for pool reservations.
+- **Renewal and miss threshold:** these wait for Rex's values.
+- **Expiry:** expired leases are swept when the coordinator is called, with no timer yet.
+
+## M6 Verification, ledger and reputation (2026-11-25)
+
+### States (SPEC 7.3, 8)
+- **Pipeline:** Submitted, then Verifying once intake passes (output schema valid and the run record signature
+  verifies against the install's device key), then Pending or Rejected, then Settled when the review window closes
+  with no fraud found, or Clawed back if fraud is found while Pending. Settled is final.
+- **Intake failures:** an invalid schema or a bad run record signature is Rejected at intake with a record. A
+  result whose schema cannot be checked yet stays Submitted until it can.
+- **Records:** every decision writes a `verification_records` row (method, verifier version, result hash,
+  evidence hashes, outcome, rationale code, panel, signature), one per result and method. Coordinator decisions are
+  signed with the coordinator key; worker decisions carry the worker's own signature over
+  `swarm-explorer-verification-v1\n` plus the canonical payload.
+- **Where it runs:** the results endpoint runs intake and the coordinator side methods right after submit. Wallet,
+  results and verifier work reads run a lazy pass (intake, methods, settlement). There is no background job yet.
+- **Migration 0006** adds verification rules, verifier keys and nonces, hidden known answers, ledger buckets, lease
+  state timestamps, redundancy groups, a unique run record signature and impact revocation.
+
+### Verifiers (SPEC 8.1), package `@swarm-explorer/verify`
+- **One interface:** `Verifier<Input>` with `method`, `version` and `verify()`, keyed by the manifest's method.
+  `verify` returns null when it cannot decide yet, and the subject stays in Verifying.
+- **Machine check** runs in a separate verifier worker (`apps/verifier`). It polls `GET /v1/verifier/work` and
+  posts signed records to `POST /v1/verifications`. Requests are signed with the worker's Ed25519 key over method,
+  path, body hash, time and nonce, and each nonce is accepted once. The platform re-checks the key, the record
+  signature, that the subject waits for this method and that the record names the stored output hash.
+- **Lean:** the worker writes the pinned statement plus the candidate proof to a temp folder and runs `lean` or
+  `lake env lean` with a wall-clock limit, a minimal environment and its own process group. Network is denied with
+  `sandbox-exec` on macOS or `unshare --net` on Linux; with neither it does not check and leaves the result
+  waiting. Before Lean runs it refuses sorry, admit, new axioms, other declarations, options, metaprograms,
+  native_decide and any change to the statement. After, `#print axioms` must list only propext, Classical.choice
+  and Quot.sound. Tests use a fake Lean; the real Lean test skips when Lean is not installed.
+- **Challenge Vaults qualification** now waits for this check too. A matching status is not enough; the attempt
+  waits (`check_status: awaiting`) until the worker accepts or rejects the proof, then the round is scored. The
+  qualification lease answers 409 `qualification_checking` while answers wait.
+- **Prompt Guard reproduction:** the worker re-runs the claimed attack against a pinned fixture target (a keyword
+  guarded model in the Prompt Guard wasm harness, bundle hash checked on load). It is deterministic, has no
+  network and does not use the PR #6 screener. Accepted only when the target's reply leaks its word.
+- **Known answers:** publishers upload hidden expected outputs with tasks (`known_answer`), only for swarms that
+  list the method. Leases look the same for known and ordinary tasks, and node-facing views never show rationale.
+  A wrong known answer is Rejected, and that node's ordinary results then wait in Verifying for review.
+- **Redundancy:** each task is uploaded as N replicas in one redundancy group. One account never leases two
+  replicas of a group, so same-account nodes are never independent. Agreement is a strict majority of distinct
+  accounts by canonical output hash; no majority rejects all. N is `verification_rules.redundancy_count`, null,
+  and uploads are refused with `redundancy_unconfigured` until it is set.
+- **Jury:** a `JuryAdapter` interface plus a fixture adapter. The submitter's account and node are excluded, one
+  seat per account, and the panel needs `jury_panel_size` seats and the manifest's model family diversity. The
+  panel size is null, so no jury rules yet. Real juries are later.
+- **Publisher review:** results wait in Verifying; there is no review queue yet.
+
+### Ledger (SPEC 9)
+- **Double entry:** every movement is one transaction whose debits equal its credits, with an idempotency key.
+  Buckets are pool available and reserved, account pending and settled, and platform issued (the only bucket
+  allowed below zero). Other balances may never go negative.
+- **Movements:** lease reserve and release, accept to pending, settle, and clawback (pending back to the pool).
+  Accept, settle and clawback are idempotent per result, so a result is never paid twice.
+- **Volunteer swarms create no credits.** Funding, reserving and accepting all refuse a volunteer swarm with
+  `volunteer_swarm`, and tests prove the whole pipeline writes no ledger rows for volunteer work.
+- **Funded path:** tested with a test-funded pool fixture (`fundPool`, test only) and leases made directly,
+  because funded leasing stays off until M9. Without a reservation, an accepted funded result earns impact only.
+- **Reconciliation:** `reconcileLedger` checks every transaction balances, the ledger sums to zero, no bucket is
+  negative, pool caches match the entries and pending equals unsettled acceptances.
+- **Impact** is recorded per accepted result in `impact_events` (units from the manifest's impact weight). It is
+  pending until settled and revoked on clawback. It is never spendable and never becomes credits.
+- No purchases, transfers or cash out were added.
+
+### Reputation and anti-cheat
+- **Events:** accepted, rejected, clawed back and repeated deadline miss, one per evidence reference. Scoring
+  version `unit-v0` adds 1 or subtracts 1. It is a placeholder that nothing uses yet.
+- **Deadline misses** count toward reputation only when `lease_rules.repeated_miss_threshold` is set. It stays
+  null, so misses are counted but lower nothing.
+- **Replays:** a run record signature can be used for one lease only (`run_record_replayed`). Worker request
+  nonces are single use, and a second different verdict for the same subject is `already_verified`.
+- **No self grading:** jurors never include the submitter's account or node.
+
+### Review window and settlement
+- `verification_rules.review_window_s` is null with no approved value. Pending work never settles while it is
+  null. Tests and e2e set a short test window through the dev only `POST /v1/dev/verification-rules`.
+- Every new rule is a new version row; the current version applies.
+
+### New endpoints
+- `GET /v1/verifier/work` and `POST /v1/verifications` (verifier signed), `GET /v1/wallet`, `GET /v1/ledger` and
+  `GET /v1/me/results` (bearer), `POST /v1/admin/results/{id}/clawback` (reviewer or admin, Idempotency-Key), and
+  dev only `POST /v1/dev/verification-rules`. Added to SPEC 13.3 and 13.4 and the api-client contracts.
+
+### Client
+- **Activity** lists recent results with the server's state (Submitted, Verifying, Pending, Settled, Rejected,
+  Clawed back) and when each state was reached. **Wallet** shows impact always and credits only once the account
+  has funded work. Volunteer work says it earns impact, not credits.
+- The client e2e runs the verifier worker: the M5 demo task goes Submitted, Verifying, Pending, then Settled with
+  a test window, and shows impact and no credits.
+
+### Needs Rex
+- **Worker hosting:** where the verifier worker runs and who holds its key. Nothing is provisioned.
+- **Values:** review window, redundancy count N, jury panel size, known-answer rate and the repeated-miss
+  threshold. All are null.
+- **Reputation weights** and what reputation gates.
+- **Coordinator key custody:** `COORDINATOR_VERIFIER_KEY` in production; dev uses an ephemeral key.
+- **Real Prompt Guard target:** the pinned target is a fixture.
+- **Real juries** and a publisher review queue.
+- **IP range evidence** for independence is not implemented; independence is by account only.
+- **Funded leasing and reservations** arrive with pools in M9.
+
+## M7 Release readiness (2026-11-25)
+
+### Catalog
+- The seed catalog is the five pins from the approved 2026-11-25 proposal: Phi-4 Mini 3.8B, Qwen2.5 7B Instruct,
+  Mistral NeMo 12B, Phi-4 14B and Mistral Small 24B, each an exact Ollama `q4_K_M` tag with its registry digest and
+  size. No moving tags, no Granite.
+- Context lengths are not in the proposal, so they are null and shown as "not recorded".
+- The two test-only models (a GGUF stand-in and a too-large entry) are seeded only with `SEED_TEST_MODELS=1` on the
+  embedded database, for the client e2e. They are labelled "Test only".
+
+### Kill switch (SPEC 11.6)
+- One signed feed: `revocations` rows gain `action` (`revoke` or `restore`), `signature`, actor and Idempotency-Key.
+  Targets `platform` (`*`) and `swarm` (slug). The newest entry per target wins; `effective_at` only moves forward.
+- Each entry is Ed25519 signed over `swarm-explorer-revocation-v1\n` plus RFC 8785 canonical JSON. The feed lists
+  its signing keys (`platform_keys`). Old keys stay listed so old entries still verify.
+- `POST /v1/admin/revocations`: platform admins only, Idempotency-Key per admin, refuses a second stop of the same
+  target (`already_stopped`) or a restore with nothing stopped (`not_stopped`).
+- A stop refuses new leases (`killed`, `swarm_killed`) and qualification, and cancels every open lease at once:
+  abandoned with `cancel_reason = kill_switch`, the task requeued unpaid, the reservation released. A late start
+  on a cancelled lease answers `lease_cancelled`.
+- The node polls the feed every 15 s with a 10 s timeout, so a stop reaches an idle node within 60 s. A lease
+  answer of `killed`, `swarm_killed` or `lease_cancelled` checks the feed at once.
+- Entries count only if their signature verifies. Builds pin keys with `MAIN_VITE_REVOCATION_PUBKEYS`; without it
+  the client trusts the keys the feed lists (signatures checked, trust root is the API host).
+- Fail closed for new work: if the feed was not read in the last 60 s, no new lease or qualification starts. A
+  running task is stopped by a verified stop, not by a missed poll.
+- A stop aborts the running task and qualification, deletes the stopped swarm's cached harness (SPEC 15.2), and
+  shows why in the status bar ("Stopped by Verafy") and on Activity, with the signed reason.
+- Dev only `POST /v1/dev/kill-switch` (behind `devSignInEnabled()` and `x-dev-tool`) uses the same function as the
+  seeded example admin, for the client e2e.
+
+### Public results and receipts
+- `GET /v1/swarms/{id}/results` and the page `/swarms/{id}/results` (linked from "What has it produced?") list
+  only Settled, on time results: output hash, harness and model pins, the methods that accepted it, impact and
+  settled time, plus counts (settled, pending, being verified, not accepted, impact settled). No inputs, outputs,
+  nodes, accounts or credit amounts.
+- `GET /v1/results/{id}` is built: public for settled results, 404 otherwise.
+- Receipts (`packages/schema` `receipt.ts`): JSON Schema plus `signReceipt` and `verifyReceipt`. Signed over
+  `swarm-explorer-receipt-v1\n` plus canonical JSON with a separate receipt key. The receipt names its signer
+  key, so it verifies offline; `--keys` or `--fetch-keys` also checks that key is one of the platform's.
+- A receipt holds result id and output hash, swarm, funded flag, release manifest hash, pins, accepting methods
+  with verifier versions and key ids, the Submitted, Pending and Settled times, earned impact, and the
+  contributor's account id. No node id.
+- Volunteer receipts always have `credits: null` (enforced by the schema). Funded receipts show credits only from a
+  real `settle` ledger entry.
+- Issued once on first request and stored in `receipts`, so a downloaded receipt never changes.
+- `GET /v1/me/results/{id}/receipt` (bearer, own results only) and `GET /v1/receipts/keys` (public).
+- Client: settled results have "View receipt", checked in the main process against the published keys, and "Save
+  receipt" to a file. CLI: `swarm receipt verify <file> [--keys <file> | --fetch-keys]`.
+
+### Installer and test updates
+- Identifiers stay `ai.verafy.henge` and `henge://`. Packages are ad-hoc or unsigned; nothing is notarized.
+- `release:test` also writes the payload to `.data/release-test/files/<url path>`.
+- The client can now download a verified update: bytes must match the signed size and sha256 before the file is
+  staged in `userData/updates/<version>/`. Installing (OS signature check and swap) is not built, because it
+  needs signed packages.
+- The only pinned release host is still the reserved `releases.swarm-explorer.test`. Unpackaged runs may set
+  `SWARM_EXPLORER_RELEASE_MIRROR` (local http only) to serve that host's files; the host pin and hash check are
+  unchanged. No release host is approved.
+
+### New endpoints and migration
+- `POST /v1/admin/revocations`, `GET /v1/swarms/{id}/results`, `GET /v1/results/{id}`,
+  `GET /v1/me/results/{id}/receipt`, `GET /v1/receipts/keys`, dev only `POST /v1/dev/kill-switch`. The feed adds
+  `action`, `signature` and `keys`. Added to SPEC 13.1, 13.3 and 13.4 and the api-client contracts.
+- Migration 0007: `platform_keys`, `receipts`, revocation columns, `leases.cancel_reason`, the `platform`
+  revocation target, nullable `model_artifacts.context_length`.
+
+### Needs Rex
+- **Model classes:** Phi-4 14B is `code-7b-plus` and the other four are `jury-panel-member`. My assignment, not in
+  the proposal.
+- **Context lengths** for the five pins.
+- **Platform key custody:** production revocation and receipt keys (`PLATFORM_REVOCATION_KEY`,
+  `PLATFORM_RECEIPT_KEY`) and the pinned client keys (`MAIN_VITE_REVOCATION_PUBKEYS`). Dev uses throwaway keys.
+- **Who may use the kill switch:** today any platform admin. A second approver or a break-glass process is open.
+- **Receipt contents:** whether the contributor's account id belongs in a receipt that may be shared.
+- **Release host** and production signing (Apple, Windows) before any real installer or update install.
+- **Kill switch bound:** 60 s with 15 s polling is my choice. Shorter means more feed traffic.
+
 ## Desktop app is dark only (Rex, 2026-11-25)
 - Henge SPEC 9.1: the app is dark only and matches the Henge pages on www.verafy.ai. There is no light mode.
 - **How:** `apps/client/src/renderer/styles.css` overrides the shared Verafy preset for the desktop app alone.
@@ -528,6 +919,15 @@ These settle the open items from M0 to M3. Where an earlier section below says *
   - `danger`;
   - `live`.
 - The app header shows the Henge mark with "HENGE // by Verafy".
-- **E2E prerequisite (unchanged):** the client suite needs a fresh local database each run:
-  `pnpm db:reset && pnpm --filter @swarm-explorer/client release:test`, then `pnpm e2e`. A later test publishes
-  a permission-changing release, so a second run against the same database fails.
+- **E2E databases (Rex, 2026-11-25):** each Playwright suite owns its database and resets it on every run.
+  - The client suite uses `.data/pglite-e2e-client`. Its webServer step wipes, migrates and seeds it, publishes
+    the test-signed update manifest (`release:test`), then starts the website.
+  - The web suite does the same with `.data/pglite-e2e-web`.
+  - Neither touches the dev database in `.data/pglite`, and neither reuses a running server. If port 3000 is
+    busy, stop the dev server first.
+
+## Staging test nodes (2026-11-25)
+
+- The protection-bypass secret (approved by Rex) is read from `HENGE_VERCEL_BYPASS` in unpackaged runs only and sent
+  as `x-vercel-protection-bypass` only to the API's own origin (`apps/client/src/main/staging-bypass.ts`). Packaged
+  builds never read it, it is never in git or a build, and a plain-http API URL disables it.

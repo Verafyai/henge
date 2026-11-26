@@ -290,7 +290,7 @@ export class AuthManager extends EventEmitter<{ changed: [AuthState] }> {
    * timestamp and nonce. Each attempt is signed afresh, so the 401 retry never reuses a nonce.
    * Writes carry one Idempotency-Key across attempts.
    */
-  async signedFetch(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<Response> {
+  async signedFetch(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Response> {
     const url = new URL(path, this.opts.apiBaseUrl);
     const text = body === undefined ? '' : JSON.stringify(body);
     const idem = method === 'GET' ? null : randomBytes(18).toString('base64url');
@@ -317,6 +317,15 @@ export class AuthManager extends EventEmitter<{ changed: [AuthState] }> {
     const again = await this.getAccessToken(token);
     if (!again) throw new AuthError('Signed out.');
     return attempt(again);
+  }
+
+  /**
+   * Signs a message with this install's device key, for example a run record (SPEC 13.3). Callers
+   * pass a domain-separated message so the signature cannot be replayed as a request signature.
+   */
+  async signWithDevice(message: string): Promise<string> {
+    const { priv } = await this.deviceKey();
+    return b64u(sign(null, Buffer.from(message), priv));
   }
 
   async signOut(): Promise<void> {

@@ -1,6 +1,9 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.PORT ?? 3000);
+/** The web suite owns its database too: wiped, migrated and seeded on every run (see the client config). */
+const E2E_DB = fileURLToPath(new URL('../../.data/pglite-e2e-web', import.meta.url));
 
 export default defineConfig({
   testDir: './e2e',
@@ -9,9 +12,10 @@ export default defineConfig({
   use: { baseURL: `http://localhost:${PORT}`, viewport: { width: 1440, height: 900 } },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],
   webServer: {
-    command: `pnpm start --port ${PORT}`,
+    command: `pnpm --filter @swarm-explorer/db reset && pnpm start --port ${PORT}`,
+    env: { PGLITE_DIR: E2E_DB, DATABASE_URL: '' },
     url: `http://localhost:${PORT}/login`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    reuseExistingServer: false,
+    timeout: 120_000,
   },
 });

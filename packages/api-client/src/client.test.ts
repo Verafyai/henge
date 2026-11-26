@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError, createApiClient } from './client';
-import { leaseResponseSchema, runRecordSchema, type SwarmDetail } from './contracts';
+import { leaseResponseSchema, runRecordMessage, runRecordSchema, type SwarmDetail } from './contracts';
 
 const D = (c: string) => `sha256-${c.repeat(64)}`;
 
@@ -83,7 +83,10 @@ describe('task protocol contracts (SPEC 13.3)', () => {
   const lease = {
     lease_id: '01936f3e-0000-7000-8000-000000000001',
     task_id: '01936f3e-0000-7000-8000-000000000002',
+    swarm: 'challenge-vaults',
     swarm_release_id: '01936f3e-0000-7000-8000-000000000003',
+    status: 'leased',
+    urgent: false,
     deadline_at: '2026-11-24T12:15:00.000Z',
     harness: { version: '1.4.0', hash: D('a') },
     model_requirement: { policy: 'class', allowed_classes: ['code-7b-plus'] },
@@ -93,18 +96,38 @@ describe('task protocol contracts (SPEC 13.3)', () => {
     permissions_hash: D('d'),
   };
   it('accepts zero or one lease', () => {
-    expect(leaseResponseSchema.parse({ lease: null })).toEqual({ lease: null });
-    expect(leaseResponseSchema.parse({ lease }).lease?.reward).toEqual({ funded: false, credits: null });
+    const none = { lease: null, unavailable: { code: 'no_tasks', message: 'No tasks waiting.' } };
+    expect(leaseResponseSchema.parse(none)).toEqual(none);
+    expect(leaseResponseSchema.parse({ lease, unavailable: null }).lease?.reward).toEqual({ funded: false, credits: null });
+    expect(leaseResponseSchema.safeParse({ lease: null }).success).toBe(false);
   });
   it('volunteer leases carry no credits and funded leases carry whole credits', () => {
-    expect(leaseResponseSchema.safeParse({ lease: { ...lease, reward: { funded: false, credits: 5 } } }).success).toBe(false);
-    expect(leaseResponseSchema.safeParse({ lease: { ...lease, reward: { funded: true, credits: null } } }).success).toBe(false);
-    expect(leaseResponseSchema.safeParse({ lease: { ...lease, reward: { funded: true, credits: 12 } } }).success).toBe(true);
+    expect(leaseResponseSchema.safeParse({ unavailable: null, lease: { ...lease, reward: { funded: false, credits: 5 } } }).success).toBe(false);
+    expect(leaseResponseSchema.safeParse({ unavailable: null, lease: { ...lease, reward: { funded: true, credits: null } } }).success).toBe(false);
+    expect(leaseResponseSchema.safeParse({ unavailable: null, lease: { ...lease, reward: { funded: true, credits: 12 } } }).success).toBe(true);
   });
   it('digests must use the sha256-<hex> form, not the colon form', () => {
-    expect(leaseResponseSchema.safeParse({ lease: { ...lease, output_schema_hash: `sha256:${'c'.repeat(64)}` } }).success).toBe(false);
+    expect(leaseResponseSchema.safeParse({ unavailable: null, lease: { ...lease, output_schema_hash: `sha256:${'c'.repeat(64)}` } }).success).toBe(false);
   });
   it('run records require integer micros and nullable token counts', () => {
+    const rec = {
+      lease_id: lease.lease_id,
+      node_id: lease.task_id,
+      model: { source: 'local', claimed_id: 'phi4-14b', artifact_hash: D('e') },
+      harness_hash: D('a'),
+      tokens: { input: null, output: 120 },
+      elapsed_ms: 5400,
+      api_cost: { reported_usd_micros: null, provider_request_ids: [] },
+      output_sha256: D('f'),
+      client_version: '0.1.0',
+      signature: 'A'.repeat(86),
+    };
+    expect(runRecordSchema.safeParse(rec).success).toBe(true);
+    expect(runRecordSchema.safeParse({ ...rec, api_cost: { reported_usd_micros: 1.5, provider_request_ids: [] } }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, extra: 1 }).success).toBe(false);
+    expect(runRecordMessage('{"a":1}')).toBe('swarm-explorer-run-record-v1\n{"a":1}');
+  });
+  it('run record version 2 carries meter/1 fuel; version 1 records stay valid', () => {
     const rec = {
       lease_id: lease.lease_id,
       node_id: lease.task_id,
@@ -115,9 +138,17 @@ describe('task protocol contracts (SPEC 13.3)', () => {
       api_cost: { reported_usd_micros: null, provider_request_ids: [] },
       output_sha256: D('f'),
       client_version: '0.1.0',
-      signature: 'sig',
+      signature: 'A'.repeat(86),
     };
+    const metering = { meter: 'meter/1', fuel_used: 10_039, fuel_budget: null };
     expect(runRecordSchema.safeParse(rec).success).toBe(true);
-    expect(runRecordSchema.safeParse({ ...rec, api_cost: { reported_usd_micros: 1.5, provider_request_ids: [] } }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering }).success).toBe(true);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering: { ...metering, fuel_budget: 50_000 } }).success).toBe(true);
+    // Version and metering travel together; unknown meters and fractional fuel are refused.
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2 }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, metering }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering: { ...metering, meter: 'meter/2' } }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering: { ...metering, fuel_used: 1.5 } }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering: { ...metering, fuel_budget: 0 } }).success).toBe(false);
   });
 });

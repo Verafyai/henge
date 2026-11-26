@@ -27,9 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm db:reset
-      # Test-key signed internal-channel manifest for the update check tests. Never a production key.
-      - run: pnpm --filter @swarm-explorer/client release:test
+      # Each e2e suite resets its own database in its Playwright webServer step (see playwright.config.ts).
       - run: pnpm --filter @swarm-explorer/web build
       - run: pnpm --filter @swarm-explorer/client build
       - run: pnpm --filter @swarm-explorer/web exec playwright install chromium
