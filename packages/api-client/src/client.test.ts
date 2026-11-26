@@ -127,4 +127,28 @@ describe('task protocol contracts (SPEC 13.3)', () => {
     expect(runRecordSchema.safeParse({ ...rec, extra: 1 }).success).toBe(false);
     expect(runRecordMessage('{"a":1}')).toBe('swarm-explorer-run-record-v1\n{"a":1}');
   });
+  it('run record version 2 carries meter/1 fuel; version 1 records stay valid', () => {
+    const rec = {
+      lease_id: lease.lease_id,
+      node_id: lease.task_id,
+      model: { source: 'local', claimed_id: 'qwen2.5-coder-7b', artifact_hash: D('e') },
+      harness_hash: D('a'),
+      tokens: { input: null, output: 120 },
+      elapsed_ms: 5400,
+      api_cost: { reported_usd_micros: null, provider_request_ids: [] },
+      output_sha256: D('f'),
+      client_version: '0.1.0',
+      signature: 'A'.repeat(86),
+    };
+    const metering = { meter: 'meter/1', fuel_used: 10_039, fuel_budget: null };
+    expect(runRecordSchema.safeParse(rec).success).toBe(true);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering }).success).toBe(true);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering: { ...metering, fuel_budget: 50_000 } }).success).toBe(true);
+    // Version and metering travel together; unknown meters and fractional fuel are refused.
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2 }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, metering }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering: { ...metering, meter: 'meter/2' } }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering: { ...metering, fuel_used: 1.5 } }).success).toBe(false);
+    expect(runRecordSchema.safeParse({ ...rec, record_version: 2, metering: { ...metering, fuel_budget: 0 } }).success).toBe(false);
+  });
 });

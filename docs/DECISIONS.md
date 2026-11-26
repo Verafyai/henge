@@ -273,6 +273,61 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 ### CLI
 - `swarm login` (device code, SPEC 4.4) belongs with the headless node, so its placeholder now names M5.
 
+## WebAssembly metering (2026-11-25)
+
+Closes the "Before G3" item in Rex's decisions: the sandbox now counts work done, not only wall time.
+
+- **Approach:** a load-time instrumentation pass, `packages/sandbox/src/meter.ts`, named `meter/1`. V8's
+  WebAssembly in Node has no fuel or metering hook, so the broker rewrites every harness module before it runs.
+  No new dependency.
+- **Why instrumentation:** the count is a function of the module bytes and the path the code takes. Machine
+  speed, V8 tiering, the clock and timer jitter play no part, so the same harness, input and host replies give
+  the same fuel on every machine. Time or interrupt based limits cannot promise that.
+- **Cost rules (`meter/1`):**
+  - A charge is inserted at function entry and right after every `block`, `loop`, `if`, `else` and inner `end`.
+  - Each charge is the number of original instructions up to and including the next of those instructions.
+  - Every loop pass and every call therefore costs at least 1, so a module cannot spin or recurse for free.
+  - A region is charged in full when it starts, even if a branch leaves it early.
+- **Counter:** one added mutable i64 global, exported as `__swarm_meter_fuel`, which the host sets before
+  `run`. The original function, global and memory indices do not change. A module that already exports that
+  name is refused.
+- **Supported code:** WebAssembly 1.0 plus sign extension, saturating truncation, multi-value blocks, reference
+  types and bulk memory. Anything else (SIMD, threads, exceptions, tail calls, GC) is refused before it runs
+  ("module cannot be metered"), so nothing runs unmetered.
+- **Out of fuel:** the run ends with status `fuel_exhausted` and no output leaves the worker. The client
+  abandons the lease unpaid (`local_failure`) and submits nothing.
+- **Other limits stay:** wall time, the memory cap, the heap cap and the model-call limit work as before.
+  Metering is in addition. When one of those ends a run from outside, fuel used is not known and is null.
+- **Run record:**
+  - Record version 2 adds `record_version: 2` and `metering: { meter, fuel_used, fuel_budget }`.
+  - Records without `record_version` are version 1 and stay valid. Version 2 must carry `metering`, and
+    `metering` needs version 2.
+  - The signed message format is unchanged.
+  - The record is kept whole in `run_records.record_json`, so there is no migration.
+  - Verifiers can compare `fuel_used` between records with the same `meter`. It matches exactly only when the
+    input and host replies match (for example a replay with recorded model replies).
+  - A server from before this change rejects version 2 records (strict schema), so the server ships first.
+- **Budget:** neither the harness limits (SPEC 6.1) nor the manifest (SPEC 6.4) has a fuel field, and no number
+  is approved.
+  - The config value `APPROVED_FUEL_BUDGET` is null.
+  - With null, fuel is counted and recorded but limits nothing.
+  - Tests and self-checks use explicit test budgets only.
+- **Self-checks:** two new checks, so Settings shows 17.
+  - `fuel-exhausted`: a runaway loop stops with `fuel_exhausted`.
+  - `fuel-counted`: a counting module uses exactly 10039 fuel, worked out by hand from the cost rules.
+- **Fixtures:** unchanged. Metering happens at load, so `harness.wasm` and the pinned hashes did not move.
+- **Known limits of `meter/1`:**
+  - A host function call counts as one instruction.
+  - `memory.copy` and `memory.fill` count as one whatever their length; they are bounded by the memory cap.
+  - Fuel is a count of instructions, not CPU time.
+  - The instrumentation overhead has not been measured.
+  - The engine is still V8, not Wasmtime; that deviation stands.
+- **Needs Rex:**
+  - The fuel budget value, and whether it is per harness or per swarm.
+  - Whether it becomes a `harness.json` limit or a manifest field (either is a schema change), and how it
+    relates to the existing `cpu_ms` limit.
+  - Whether verifiers act on fuel differences (for example in redundancy groups). Today fuel is only recorded.
+
 ## M2 Local sources and model catalog (2026-11-25)
 
 ### Hash pinning (SPEC 5.4)
@@ -362,6 +417,8 @@ These settle the open items from M0 to M3. Where an earlier section below says *
   - **Gap:** fuel and epoch interruption are replaced by a wall-time limit that terminates the worker (this works
     even in a tight loop). `cpu_ms` is therefore enforced only as a wall-time bound. Swapping in Wasmtime (for
     example as a small sidecar binary) would restore true fuel metering.
+  - Deterministic fuel counting now exists through load-time instrumentation; see "WebAssembly metering
+    (2026-11-25)".
 - **Static checks before running:**
   - imports come only from `swarm`, and each host function needs its capability;
   - the module may not define its own memory or carry a start function;

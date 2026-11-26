@@ -12,6 +12,7 @@ import { detectHardware, systemProbeDeps } from '@swarm-explorer/node-core/probe
 import { HF_DEFAULT_BASE, LLAMA_BENCH_ARGS, hfInstall, ollamaBenchmark, ollamaInstall, ollamaRemove, parseLlamaBench } from '@swarm-explorer/node-core/sources';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import {
+  APPROVED_FUEL_BUDGET,
   completeResponseSchema,
   egressFetch,
   grantedCapabilities,
@@ -94,7 +95,8 @@ async function harnessRun(id: number, spec: HarnessRunSpec): Promise<HarnessRunR
       bundle,
       input: spec.input,
       granted: grantedCapabilities(bundle.harness.capabilities, { networkDomains: spec.permissions.network, scratchBytes: spec.permissions.scratchBytes }),
-      limits: { memoryMb: bundle.harness.limits.memory_mb, wallMs, maxModelCalls: bundle.harness.loop.max_steps, maxTokensPerCall: MAX_TOKENS_PER_CALL },
+      // Fuel is always counted (meter/1). No fuel budget is approved yet, so it limits nothing (Needs Rex).
+      limits: { memoryMb: bundle.harness.limits.memory_mb, wallMs, maxModelCalls: bundle.harness.loop.max_steps, maxTokensPerCall: MAX_TOKENS_PER_CALL, fuel: APPROVED_FUEL_BUDGET },
       host: {
         complete: async (req) => {
           // Pause, leave or a rule stop aborts the run; hanging up cancels the model call in the runtime.
@@ -115,14 +117,17 @@ async function harnessRun(id: number, spec: HarnessRunSpec): Promise<HarnessRunR
       signal: ctl.signal,
     });
     const screen = 'screen' in r ? r.screen : null;
+    const fuel = 'fuel' in r ? r.fuel : undefined;
     if (r.status === 'ok') {
       const out = r.output;
-      if (!out || typeof out !== 'object' || Array.isArray(out)) return { status: 'invalid_output', output: null, detail: 'The answer was not a JSON object.', screen, modelCalls: r.modelCalls };
-      return { status: 'ok', output: out as Record<string, unknown>, detail: 'finished', screen, modelCalls: r.modelCalls, tokens };
+      if (!out || typeof out !== 'object' || Array.isArray(out)) return { status: 'invalid_output', output: null, detail: 'The answer was not a JSON object.', screen, modelCalls: r.modelCalls, fuel };
+      return { status: 'ok', output: out as Record<string, unknown>, detail: 'finished', screen, modelCalls: r.modelCalls, tokens, fuel };
     }
-    if (r.status === 'failed' && r.reason === 'cancelled') return { ...empty, status: 'cancelled', detail: 'Stopped.', screen };
+    if (r.status === 'failed' && r.reason === 'cancelled') return { ...empty, status: 'cancelled', detail: 'Stopped.', screen, fuel };
+    // Out of fuel: no output leaves the sandbox, so nothing partial can be submitted.
+    if (r.status === 'fuel_exhausted') return { ...empty, status: 'fuel_exhausted', detail: 'Stopped when its fuel budget ran out.', screen, fuel };
     const detail = r.status === 'limit_exceeded' ? `Stopped at the ${r.limit.replace('_', ' ')} limit.` : r.reason;
-    return { status: r.status, output: null, detail: detail.slice(0, 400), screen, modelCalls: 0 };
+    return { status: r.status, output: null, detail: detail.slice(0, 400), screen, modelCalls: 0, fuel };
   } finally {
     runs.delete(id);
   }
