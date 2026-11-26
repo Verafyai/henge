@@ -13,8 +13,6 @@ const r = (method: string, path: string, milestone: string): PlannedRoute => ({
 });
 
 export const PLANNED_ROUTES: PlannedRoute[] = [
-  // 13.3 Task protocol (the lease endpoints are built in M5)
-  r('GET', '/results/{id}', 'M7'),
   // 13.4 Ledger, publisher and admin
   r('POST', '/pools/{id}/donations', 'M9'),
   r('POST', '/jobs', 'M9'),
@@ -24,7 +22,6 @@ export const PLANNED_ROUTES: PlannedRoute[] = [
   r('POST', '/swarm-releases', 'M11'),
   r('POST', '/publishers/{id}/credit-purchases', 'M9'),
   r('GET', '/publishers/{id}/dashboard', 'M9'),
-  r('POST', '/admin/revocations', 'M7'),
 ];
 
 export function matchPlanned(method: string, path: string): PlannedRoute | undefined {

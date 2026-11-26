@@ -1,6 +1,6 @@
 import { leaseTransitions } from '@swarm-explorer/core';
 import { canonicalJson } from '@swarm-explorer/schema';
-import { sha256Digest } from '@swarm-explorer/schema/node';
+import { sha256Digest, verifiedRevocation } from '@swarm-explorer/schema/node';
 import { and, eq } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getDb } from './client';
@@ -16,6 +16,8 @@ import {
   uploadTasks,
   type RunRecordRow,
 } from './coordinator';
+import { currentKillState, setKillSwitch } from './kill-switch';
+import { listPlatformKeys } from './platform-keys';
 import { grantPermissions, leaseQualificationTask, leaveMembership, nodeMemberships, startJoin, submitQualificationResult } from './membership';
 import { getSwarm } from './queries';
 import { accounts, deadlineMisses, installs, leaseRules, leases, ledgerEntries, modelArtifacts, models, nodeModels, nodes, qualificationTasks, results, tasks } from './schema';
@@ -276,5 +278,59 @@ describe('timeshare (SPEC 7.1)', () => {
     expect(await shares()).toEqual([[pg, 10_000], [jr, 0]]);
     // Choosing equal shares clears the customized flag.
     expect(await setShares({ accountId: demo, nodeId: node, shares: [{ membershipId: pg, shareBp: 5000 }, { membershipId: jr, shareBp: 5000 }] })).toMatchObject({ customized: false });
+  });
+});
+
+describe('kill switch (SPEC 11.6, M7)', () => {
+  const admin = async () => (await (await getDb()).select().from(accounts).where(eq(accounts.handle, 'admin')))[0]!.id;
+  const kill = async (o: { target: 'platform' | 'swarm'; swarm?: string; action?: 'revoke' | 'restore'; key?: string }) =>
+    setKillSwitch({ target: o.target, ...(o.swarm ? { swarm: o.swarm } : {}), action: o.action ?? 'revoke', reason: 'Test stop', actorAccountId: await admin(), idempotencyKey: o.key ?? `kill-${Math.random()}` });
+
+  it('a global stop cancels open leases at once, refuses new work, and a restore lifts it', async () => {
+    await addTasks(2, 'kill');
+    const node = await newNode();
+    const mem = await qualify(node);
+    const running = (await lease(node)).grant!.lease;
+    await startLease({ accountId: demo, leaseId: running.id, pins: await pins() });
+
+    const key = `kill-${Math.random()}`;
+    const r = await kill({ target: 'platform', key });
+    // Earlier tests left other leases open; every one of them is cancelled too.
+    expect(r.cancelledLeases).toBeGreaterThanOrEqual(1);
+    expect(r).toMatchObject({ duplicate: false, entry: { targetType: 'platform', targetId: '*', action: 'revoke' } });
+    // Idempotent by key; a second stop of the same thing is refused.
+    expect(await kill({ target: 'platform', key })).toMatchObject({ duplicate: true, entry: { id: r.entry.id } });
+    await expect(kill({ target: 'platform' })).rejects.toMatchObject({ code: 'already_stopped' });
+
+    const db = await getDb();
+    const [l] = await db.select().from(leases).where(eq(leases.id, running.id));
+    expect(l).toMatchObject({ status: 'abandoned', cancelReason: 'kill_switch' });
+    expect((await db.select().from(tasks).where(eq(tasks.id, running.taskId)))[0]!.status).toBe('queued');
+    await expect(startLease({ accountId: demo, leaseId: running.id, pins: await pins() })).rejects.toMatchObject({ code: 'lease_cancelled' });
+    await expect(lease(node)).rejects.toMatchObject({ code: 'killed' });
+    await expect(leaseQualificationTask({ accountId: demo, membershipId: mem })).rejects.toMatchObject({ code: 'killed' });
+
+    // The feed entry is signed by a registered platform key and says exactly what was decided.
+    const keys = await listPlatformKeys('revocation');
+    const signed = verifiedRevocation({ signedPayload: r.entry.signedPayload, signature: r.entry.signature }, keys);
+    expect(signed).toMatchObject({ id: r.entry.id, target_type: 'platform', target_id: '*', action: 'revoke', reason: 'Test stop' });
+
+    const lifted = await kill({ target: 'platform', action: 'restore' });
+    expect(lifted.entry.effectiveAt.getTime()).toBeGreaterThan(r.entry.effectiveAt.getTime());
+    await expect(kill({ target: 'platform', action: 'restore' })).rejects.toMatchObject({ code: 'not_stopped' });
+    expect((await lease(node)).grant).not.toBeNull();
+  });
+
+  it('a swarm stop affects only that swarm', async () => {
+    const node = await newNode();
+    await expect(kill({ target: 'swarm', swarm: 'nope' })).rejects.toMatchObject({ status: 404 });
+    const r = await kill({ target: 'swarm', swarm: SLUG });
+    expect(r.entry).toMatchObject({ targetType: 'swarm', targetId: SLUG });
+    await qualify(node, 'challenge-vaults');
+    await expect(lease(node)).rejects.toMatchObject({ code: 'swarm_killed', details: { swarm: SLUG } });
+    // Another swarm still takes work.
+    expect((await currentKillState(await getDb())).global).toBeNull();
+    await kill({ target: 'swarm', swarm: SLUG, action: 'restore' });
+    expect((await currentKillState(await getDb())).swarms.size).toBe(0);
   });
 });

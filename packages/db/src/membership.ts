@@ -9,6 +9,7 @@ import { getDb, type Db } from './client';
 import { rebalanceShares as rebalance } from './coordinator';
 import { rescoreQualification } from './verification';
 import { MembershipError } from './errors';
+import { assertWorkAllowed } from './kill-switch';
 import { getSwarm, policyAccepts, type SwarmRow } from './queries';
 import {
   harnessReleases,
@@ -179,6 +180,8 @@ export async function leaseQualificationTask(o: { accountId: string; membershipI
   const db = await getDb();
   return db.transaction(async (tx) => {
     const m = await ownedMembership(tx, o.accountId, o.membershipId);
+    // Qualification runs real code on the node, so the kill switch stops it too (SPEC 11.6).
+    await assertWorkAllowed(tx, { swarmId: m.swarmId }, now);
     if (m.status !== 'qualifying') throw new MembershipError(409, 'not_qualifying', m.status === 'joining' ? 'Approve this swarm’s permissions first.' : 'This membership is not qualifying.');
     const rel = await requireGrant(tx, m);
     const rule = rel.manifest.qualification;
@@ -222,6 +225,7 @@ export async function submitQualificationResult(o: { accountId: string; membersh
   const db = await getDb();
   return db.transaction(async (tx) => {
     const m = await ownedMembership(tx, o.accountId, o.membershipId);
+    await assertWorkAllowed(tx, { swarmId: m.swarmId }, now);
     if (m.status !== 'qualifying') throw new MembershipError(409, 'not_qualifying', 'This membership is not qualifying.');
     const rel = await requireGrant(tx, m);
     const rule = rel.manifest.qualification;

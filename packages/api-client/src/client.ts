@@ -4,6 +4,8 @@ import {
   harnessReleaseSchema,
   healthSchema,
   modelListSchema,
+  publicResultsSchema,
+  receiptKeysSchema,
   revocationFeedSchema,
   swarmDetailSchema,
   swarmListSchema,
@@ -70,6 +72,8 @@ export function createApiClient(opts: ApiClientOptions) {
     harnessRelease: (name: string, version: string) =>
       request(harnessReleaseSchema, `/harnesses/${encodeURIComponent(name)}/releases/${encodeURIComponent(version)}`),
     revocations: (since?: string) => request(revocationFeedSchema, `/revocations${q({ since })}`),
+    swarmResults: (slug: string) => request(publicResultsSchema, `/swarms/${encodeURIComponent(slug)}/results`),
+    receiptKeys: () => request(receiptKeysSchema, '/receipts/keys'),
   };
 }
 

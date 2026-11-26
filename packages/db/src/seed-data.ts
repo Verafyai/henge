@@ -8,6 +8,7 @@ export const seedAccounts = [
   { handle: 'demo', displayName: 'Demo Contributor', platformRole: 'none' },
   { handle: 'verafy-team', displayName: 'Verafy Team (example)', platformRole: 'none' },
   { handle: 'reviewer', displayName: 'Example Reviewer', platformRole: 'reviewer' },
+  { handle: 'admin', displayName: 'Example Admin', platformRole: 'admin' },
 ] as const;
 
 export const seedOauthClients = [
