@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Swarm Explorer CLI: catalog browsing and manifest validation now; developer platform in M11 and headless node later",
+  "description": "Henge CLI: catalog browsing and manifest validation now; developer platform in M11 and headless node later",
   "bin": {
     "swarm": "./src/bin.ts"
   },

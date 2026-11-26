@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 
 const FORBIDDEN = /crowdfund|constitution|treasury|USDC|cash out your|withdraw|back this|stage \d/i;
 
-test('home lists the launch swarms as example data, browse-only', async ({ page }) => {
-  await page.goto('/');
+test('the swarm store lists the launch swarms as example data, browse-only', async ({ page }) => {
+  await page.goto('/swarms');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('An app store for swarms.');
   await expect(page.getByText('Example data').first()).toBeVisible();
   for (const name of ['Challenge Vaults', 'Verafy DAO juries', 'Prompt Guard red team']) {
@@ -15,7 +15,7 @@ test('home lists the launch swarms as example data, browse-only', async ({ page 
 });
 
 test('search narrows the list', async ({ page }) => {
-  await page.goto('/?q=lean');
+  await page.goto('/swarms?q=lean');
   await expect(page.locator('#swarms').getByRole('heading', { level: 3 })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Challenge Vaults' })).toBeVisible();
 });
@@ -47,12 +47,17 @@ test('unknown swarm is a 404 page', async ({ page }) => {
   expect(res?.status()).toBe(404);
 });
 
-test('models and download pages render without a fake download', async ({ page }) => {
+test('models page renders', async ({ page }) => {
   await page.goto('/models');
   await expect(page.getByRole('heading', { name: 'Phi-4 14B' })).toBeVisible();
   await expect(page.getByText('phi4:14b-q4_K_M')).toBeVisible();
-  await page.goto('/download');
-  await expect(page.getByText('Public builds are not available yet.')).toBeVisible();
+});
+
+test('the Henge web header links to the store, which moved to /swarms', async ({ page }) => {
+  await page.goto('/models');
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Swarms' })).toHaveAttribute('href', '/swarms');
+  await page.goto('/login');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sign in to Henge web');
 });
 
 test('the /v1 API answers with contracts and the error envelope', async ({ request }) => {

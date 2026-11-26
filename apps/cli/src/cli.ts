@@ -6,7 +6,7 @@ import { verifyReceipt, type PlatformPublicKey } from '@swarm-explorer/schema/no
 
 export const VERSION = '0.1.0';
 
-const HELP = `swarm ${VERSION} (Swarm Explorer CLI)
+const HELP = `swarm ${VERSION} (Henge CLI)
 
 Usage:
   swarm swarms [--category <key>]   List listed swarms

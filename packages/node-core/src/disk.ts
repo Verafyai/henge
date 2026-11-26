@@ -8,7 +8,7 @@ export type InstalledForDisk = {
   sizeBytes: number;
   lastUsedAt: number | null;
   installedAt: number;
-  /** Only models Swarm Explorer downloaded can be removed by it. Pre-existing runtime models are the user's. */
+  /** Only models Henge downloaded can be removed by it. Pre-existing runtime models are the user's. */
   managed: boolean;
 };
 

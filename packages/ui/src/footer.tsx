@@ -1,7 +1,7 @@
 import { VerafyMark } from './logo';
 
 const cols = [
-  { title: 'Explore', links: [['Swarms', '/'], ['Models', '/models']] },
+  { title: 'Explore', links: [['Swarms', '/swarms'], ['Models', '/models']] },
   { title: 'Node', links: [['Download', '/download'], ['Sign in', '/login']] },
 ] as const;
 
@@ -12,7 +12,7 @@ export function Footer() {
         <div className="md:col-span-2">
           <VerafyMark className="mb-3 h-4 w-auto text-ink" />
           <p className="max-w-sm text-zinc-600">
-            Swarm Explorer by Verafy is where you browse swarms. Henge, the desktop app, runs one node on a local model and gives its spare time to the causes you choose.
+            Henge web by Verafy is where you browse swarms. Henge, the desktop app, runs one node on a local model and gives its spare time to the causes you choose.
           </p>
         </div>
         {cols.map((c) => (

@@ -315,8 +315,20 @@ importers:
         specifier: 26.6.7
         version: 26.6.7
 
+  packages/prompt-guard:
+    devDependencies:
+      '@swarm-explorer/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: 26.6.7
+        version: 26.6.7
+
   packages/sandbox:
     dependencies:
+      '@swarm-explorer/prompt-guard':
+        specifier: workspace:*
+        version: link:../prompt-guard
       '@swarm-explorer/schema':
         specifier: workspace:*
         version: link:../schema

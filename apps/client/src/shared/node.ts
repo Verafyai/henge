@@ -83,13 +83,15 @@ export type HarnessRunSpec = {
 };
 
 export const harnessRunResultSchema = z.object({
-  status: z.enum(['ok', 'refused', 'limit_exceeded', 'failed', 'invalid_output', 'bundle_rejected', 'cancelled']),
+  status: z.enum(['ok', 'refused', 'fuel_exhausted', 'limit_exceeded', 'failed', 'invalid_output', 'bundle_rejected', 'cancelled']),
   output: z.record(z.string(), z.unknown()).nullable(),
   detail: z.string().max(400),
   screen: z.object({ verdict: z.enum(['allow', 'flag']), reasons: z.array(z.string().max(60)).max(20), screener: z.string().max(60) }).nullable(),
   modelCalls: z.number().int().nonnegative(),
   /** Token counts the proxy reported across the run's model calls, when it reported them. */
   tokens: z.object({ input: z.number().int().nonnegative(), output: z.number().int().nonnegative() }).optional(),
+  /** Deterministic instruction metering of the run (meter/1); `used` is null when the run was ended from outside. */
+  fuel: z.object({ meter: z.literal('meter/1'), budget: z.number().int().positive().nullable(), used: z.number().int().nonnegative().nullable() }).optional(),
 });
 export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
 

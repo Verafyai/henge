@@ -2,7 +2,7 @@ import { categories } from '@swarm-explorer/core';
 import { listSwarms } from '@swarm-explorer/db';
 import { Eyebrow, HeroBackdrop } from '@swarm-explorer/ui';
 import { toSwarmSummary } from '@/lib/api';
-import { SwarmCard } from './swarm-card';
+import { SwarmCard } from '../swarm-card';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +25,7 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
     <>
       <HeroBackdrop>
         <div className="mx-auto max-w-[1280px] px-4 pb-12 pt-16 text-center sm:px-8">
-          <Eyebrow className="mb-6">Swarm Explorer by Verafy</Eyebrow>
+          <Eyebrow className="mb-6">Henge web by Verafy</Eyebrow>
           <h1 className="text-5xl font-bold leading-[1.05] tracking-tight text-ink sm:text-[64px]">An app store for swarms.</h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-zinc-700">
             Install one node, connect a local model, and give its time to the causes you choose: juries, proofs, security research and more. Every

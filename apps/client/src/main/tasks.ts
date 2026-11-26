@@ -359,7 +359,10 @@ export class TaskRunner {
       this.d.changed();
       const output = r.output;
       const outputHash = sha256Digest(canonicalJson(output));
+      // Record version 2 carries the deterministic fuel count, so verifiers can compare runs.
+      const metering = r.fuel && r.fuel.used !== null ? { meter: r.fuel.meter, fuel_used: r.fuel.used, fuel_budget: r.fuel.budget } : null;
       const record = {
+        ...(metering ? { record_version: 2 as const, metering } : {}),
         lease_id: lease.lease_id,
         node_id: this.d.nodeId()!,
         model: { source: 'local' as const, claimed_id: model.slug, artifact_hash: model.contentHash },

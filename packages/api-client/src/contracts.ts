@@ -1,5 +1,5 @@
 /**
- * Wire contracts for the Swarm Explorer API (SPEC 13). Shared by the website's route
+ * Wire contracts for the Henge web API (SPEC 13). Shared by the website's route
  * handlers, the desktop client and the CLI, so both ends parse the same shapes.
  * All APIs are versioned under /v1 and errors are `{error:{code,message,details}}`.
  */
@@ -277,8 +277,23 @@ export type AbandonReason = z.infer<typeof abandonReasonSchema>;
 export const leaseAbandonSchema = z.object({ reason: abandonReasonSchema }).strict();
 export const leaseAbandonedSchema = z.object({ lease_id: z.uuid(), status: leaseStatusSchema, requeued: z.boolean() });
 
+/**
+ * Deterministic instruction metering of the harness run (record version 2). `meter` names the
+ * instrumentation, so verifiers compare fuel only between records with the same meter. A null
+ * budget means the run had no fuel limit (no budget is approved yet); fuel was still counted.
+ */
+export const runMeteringSchema = z
+  .object({ meter: z.literal('meter/1'), fuel_used: z.number().int().nonnegative(), fuel_budget: z.number().int().positive().nullable() })
+  .strict();
+export type RunMetering = z.infer<typeof runMeteringSchema>;
+
+/**
+ * Version 1 records (no `record_version`) stay valid. Version 2 adds `metering` and must carry it.
+ * The signed message format is the same for both.
+ */
 export const runRecordSchema = z
   .object({
+    record_version: z.literal(2).optional(),
     lease_id: z.uuid(),
     node_id: z.uuid(),
     model: z.object({ source: z.enum(['local', 'provider']), claimed_id: z.string().min(1).max(120), artifact_hash: digestSchema.nullable() }).strict(),
@@ -288,10 +303,12 @@ export const runRecordSchema = z
     api_cost: z.object({ reported_usd_micros: z.number().int().nonnegative().nullable(), provider_request_ids: z.array(z.string().max(200)).max(64) }).strict(),
     output_sha256: digestSchema,
     client_version: semverSchema,
+    metering: runMeteringSchema.optional(),
     /** Ed25519 device signature, base64url, over `runRecordMessage` of the record without this field. */
     signature: z.string().regex(/^[A-Za-z0-9_-]{80,90}$/),
   })
-  .strict();
+  .strict()
+  .refine((r) => (r.record_version === 2) === (r.metering !== undefined), { message: 'record_version 2 requires metering, and metering requires record_version 2', path: ['metering'] });
 export type RunRecord = z.infer<typeof runRecordSchema>;
 
 /** The bytes a device signs for a run record: a domain tag and the canonical JSON of the record minus `signature`. */

@@ -16,7 +16,7 @@ export const MODEL_POLICIES = ['any', 'class', 'diverse'] as const;
 /** SPEC 6.5, verbatim. */
 export const coreManifestSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  title: 'Swarm Explorer core manifest',
+  title: 'Henge core manifest',
   type: 'object',
   required: ['id', 'name', 'publisher', 'category', 'summary', 'harness', 'models', 'verification', 'permissions', 'credits', 'task', 'qualification', 'results_url'],
   properties: {
@@ -105,8 +105,8 @@ const nullable = (t: 'integer' | 'number' | 'string') => ({ type: [t, 'null'] })
 /** Production `manifest_version: 1` schema (SPEC 6.4). */
 export const manifestV1Schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://swarmexplorer.verafy.ai/schemas/manifest-v1.json',
-  title: 'Swarm Explorer manifest v1',
+  $id: 'https://henge.verafy.ai/schemas/manifest-v1.json',
+  title: 'Henge manifest v1',
   type: 'object',
   required: [
     'manifest_version', 'id', 'name', 'publisher', 'category', 'summary', 'harness', 'models', 'verification',
@@ -255,8 +255,8 @@ const RELPATH = '^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._/-]+$';
 
 export const harnessBundleSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://swarmexplorer.verafy.ai/schemas/harness-v1.json',
-  title: 'Swarm Explorer harness bundle v1',
+  $id: 'https://henge.verafy.ai/schemas/harness-v1.json',
+  title: 'Henge harness bundle v1',
   type: 'object',
   required: ['harness_version', 'name', 'version', 'runtime', 'entry', 'system_prompt', 'tools', 'loop', 'output_schema', 'min_model_class', 'capabilities', 'limits', 'fixtures', 'licenses', 'sbom'],
   properties: {

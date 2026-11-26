@@ -1,7 +1,7 @@
-# Henge and Swarm Explorer
+# Henge and Henge web
 
 Verafy's app store for swarms. **Henge by Verafy** is the desktop app: install one node, connect a local model, and
-give its time to the causes you choose. **Swarm Explorer** is the web view of the swarms.
+give its time to the causes you choose. **Henge web** is the web view of the swarms (henge.verafy.ai once staging exists).
 Nodes earn credits for verified work in funded swarms; volunteer swarms earn impact only.
 
 Source of truth: `docs/SWARM-EXPLORER-SPEC.md`. Decisions: `docs/DECISIONS.md`. The SwarmStarter documents in
@@ -75,3 +75,17 @@ apps/mobile          Placeholder only; the companion is optional and not schedul
 ```
 
 Signing and release keys: `docs/CERTIFICATES.md`. Nothing is signed or published without Rex's approval.
+
+## Test node against staging
+
+Staging is the protected Vercel preview of the `staging` branch (project `web`). A test node is an unpackaged client
+run with two environment variables, set in your own shell and never committed:
+
+```sh
+export SWARM_EXPLORER_API_URL=https://web-git-staging-verafyai.vercel.app
+export HENGE_VERCEL_BYPASS=...   # Vercel's protection-bypass secret for automation
+pnpm --filter @swarm-explorer/client dev
+```
+
+The client adds the bypass header only to requests for that API origin, and only in unpackaged runs; packaged builds
+ignore both variables. Sign in opens staging in your browser, where only the allowlisted GitHub accounts get in.

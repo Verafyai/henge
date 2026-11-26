@@ -128,6 +128,16 @@ export const CHECK_WAT: Record<string, string> = {
   /** Spins forever. Ended by the wall-time limit. */
   spin: `(module ${MEM} ${ALLOC} (func (export "run") (param i32 i32) (result i64) (loop $l (br $l)) (i64.const 0)))`,
 
+  /** Counts to 1000 and returns {}. Its fuel under meter/1 is fixed (COUNT_FUEL in checks.ts). */
+  count: `(module ${MEM} ${ALLOC} ${data(16, '{}')}
+    (func (export "run") (param i32 i32) (result i64) (local $i i32)
+      (block $done
+        (loop $next
+          (br_if $done (i32.ge_u (local.get $i) (i32.const 1000)))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br $next)))
+      (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 2))))`,
+
   /** Grows memory until the host cap stops it. */
   memory_hog: `(module ${MEM} ${ALLOC}
     (func (export "run") (param i32 i32) (result i64)

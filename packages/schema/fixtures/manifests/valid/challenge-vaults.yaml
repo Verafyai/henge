@@ -8,7 +8,7 @@ name: Challenge Vaults
 publisher: verafy.ai
 category: mathematics
 summary: Search for Lean proofs of open Erdos problems
-harness: { name: lean-prover, version: 1.4.0, hash: sha256-2cb112d40697cdfbdbb6d7ad05631e6f4885ec1c9149e71c3e52a7557e857937, runtime: wasm }
+harness: { name: lean-prover, version: 1.4.0, hash: sha256-41579b824c0e1eec59a4dfc83da647239c1b8e7020da622d96d2d32262d30d42, runtime: wasm }
 models: { policy: class, class: code-7b-plus, api_allowed: true }
 verification: [machine-check]
 verification_config: { pending_window_s: 604800 }
