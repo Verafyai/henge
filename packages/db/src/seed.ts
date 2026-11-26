@@ -23,6 +23,7 @@ import {
   publishers,
   swarmReleases,
   swarms,
+  verificationRules,
 } from './schema';
 import { seedAccounts, seedEconomicConfigV1, seedModels, seedOauthClients, seedPublisher, seedQualificationTasks, seedSwarmFiles, seedTasks } from './seed-data';
 
@@ -33,6 +34,7 @@ const ALL_TABLES = [
   'outbox_events', 'device_nonces', 'license_acceptances', 'fit_calibrations', 'idempotency_records', 'client_releases', 'web_sessions', 'access_tokens', 'refresh_tokens', 'oauth_codes',
   'notifications', 'notification_prefs', 'share_cards', 'team_members', 'teams', 'account_badges', 'badges',
   'economic_configs', 'credit_purchases', 'ledger_entries', 'pools', 'credit_accounts',
+  'verifier_nonces', 'verifier_keys', 'verification_rules', 'task_known_answers',
   'impact_events', 'reputation_events', 'verification_records', 'results', 'run_records', 'deadline_misses', 'lease_rules', 'leases', 'tasks',
   'qualification_attempts', 'qualification_tasks', 'qualifications', 'permission_grants', 'memberships',
   'revocations', 'reports', 'reviews', 'swarm_releases', 'swarms', 'harness_releases', 'harnesses',
@@ -154,6 +156,9 @@ export async function seed() {
 
     // Lease rule version 1 (SPEC 7.3): no approved miss threshold and no renewals until Rex sets them.
     await db.insert(leaseRules).values({ swarmId: swarm!.id, version: 1, notes: 'No repeated-miss threshold or renewal limit approved yet. Misses are counted only.' });
+    // Verification rule version 1 (SPEC 8.1, 9.2): no review window, redundancy count or jury panel
+    // size is approved, so accepted work stays pending and those methods cannot decide yet.
+    await db.insert(verificationRules).values({ swarmId: swarm!.id, version: 1, notes: 'No review window, redundancy count, jury panel size or known-answer rate approved yet. Manifest values are fixture illustrations.' });
 
     // Example queued tasks for the hosted coordinator (M5 demo path). Volunteer swarms carry no reward.
     const reward = manifest.credits.funded ? (manifest.credits.per_accepted_task ?? null) : null;
@@ -174,7 +179,7 @@ export async function seed() {
 
     const known = seedQualificationTasks[manifest.id] ?? [];
     if (known.length !== manifest.qualification.tasks) throw new Error(`${file}: needs ${manifest.qualification.tasks} qualification tasks`);
-    await db.insert(qualificationTasks).values(known.map((k) => ({ swarmId: swarm!.id, inputJson: k.input, expectedJson: k.expected })));
+    await db.insert(qualificationTasks).values(known.map((k) => ({ swarmId: swarm!.id, inputJson: k.input, expectedJson: k.expected, machineCheck: Boolean(k.machineCheck) })));
 
     if (manifest.credits.funded) {
       // Funded but empty: no pricing is approved, so nothing has been purchased (SPEC 9.6A).

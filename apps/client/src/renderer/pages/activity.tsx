@@ -1,6 +1,7 @@
 import { formatShare } from '@swarm-explorer/core';
 import { useNode, useNodeActions, useSwarms } from '../api';
 import { Btn, Empty } from '../ui/bits';
+import { ResultsList } from './results';
 
 const OUTCOME: Record<'submitted' | 'late' | 'abandoned' | 'failed', string> = {
   submitted: 'Submitted',
@@ -28,7 +29,7 @@ export function ActivityPage() {
   return (
     <div className="mx-auto max-w-[960px] px-6 py-8">
       <h1 className="text-3xl font-bold">Activity</h1>
-      <p className="mt-2 text-zinc-600">What this node is doing, and why. Submitted results wait for the swarm to verify them.</p>
+      <p className="mt-2 text-zinc-600">What this node is doing, and why. Each result shows where it is in verification and what it really earned.</p>
       {!t ? null : (
         <div className="mt-6 space-y-4">
           <section aria-label="Now" className="rounded-xl border border-zinc-200 p-5">
@@ -83,7 +84,7 @@ export function ActivityPage() {
           </section>
 
           <section aria-label="Recent tasks" className="rounded-xl border border-zinc-200 p-5">
-            <h2 className="font-semibold">Recent tasks</h2>
+            <h2 className="font-semibold">Recent tasks this session</h2>
             {t.history.length === 0 ? (
               <Empty className="mt-2" title="No tasks yet this session." />
             ) : (
@@ -96,6 +97,12 @@ export function ActivityPage() {
                 ))}
               </ul>
             )}
+          </section>
+
+          <section aria-label="Verification" className="rounded-xl border border-zinc-200 p-5">
+            <h2 className="font-semibold">Your results</h2>
+            <p className="mt-1 text-xs text-zinc-500">The swarm’s state for each result: Submitted, Verifying, Pending, Settled, Rejected or Clawed back.</p>
+            <ResultsList limit={10} label="Activity results" />
           </section>
         </div>
       )}

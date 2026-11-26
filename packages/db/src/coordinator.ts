@@ -2,8 +2,8 @@
  * Hosted coordinator (SPEC 7, 13.3): task upload, leases with server deadlines, start, renew,
  * abandon, submit, expiry and requeue, and timeshare updates. Nodes always pull; nothing here ever
  * calls a node. Every state change runs in one transaction and follows the SPEC 7.3 diagram up to
- * `submitted`. Verification, pending and settled credit, and clawback are M6: submitted results
- * wait here for the verifier.
+ * `submitted`. Verification, pending and settled credit, and clawback live in verification.ts and
+ * ledger.ts (M6); expiry, abandon and rejection release any pool reservation.
  *
  * Funding is stubbed as volunteer only: funded swarms lease nothing until publisher funding,
  * pool reservations and spend checks arrive (TODO M9).
@@ -13,7 +13,9 @@ import { canonicalJson, type ManifestV1 } from '@swarm-explorer/schema';
 import { sha256Digest } from '@swarm-explorer/schema/node';
 import { and, asc, count, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { getDb, type Db } from './client';
+import { releaseReservation } from './ledger';
 import { MembershipError } from './membership';
+import { recordReputation } from './reputation';
 import { getSwarm, policyAccepts } from './queries';
 import {
   deadlineMisses,
@@ -35,8 +37,10 @@ import {
   runRecords,
   swarmReleases,
   swarms,
+  taskKnownAnswers,
   tasks,
 } from './schema';
+import { currentVerificationRule } from './verification';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Lease = typeof leases.$inferSelect;
@@ -61,8 +65,8 @@ export async function currentLeaseRule(tx: Tx | Db, swarmId: string) {
 /**
  * Expires open leases past their server deadline and puts their tasks back in the queue (SPEC 7.3:
  * Leased or Running to Expired, then Requeued). Each miss is counted per node, swarm and lease rule
- * version. The repeated-miss threshold has no approved value, so nothing here lowers reputation;
- * M6 applies an approved threshold to these counts.
+ * version. Reputation drops only when the swarm's lease rule has an approved repeated-miss threshold;
+ * the seeded rules have none.
  */
 export async function expireLeases(tx: Tx, now: Date, only?: { leaseId?: string }) {
   const due = await tx
@@ -75,10 +79,17 @@ export async function expireLeases(tx: Tx, now: Date, only?: { leaseId?: string 
     await tx.update(leases).set({ status: 'expired', expiredAt: now, requeuedAt: now }).where(eq(leases.id, lease.id));
     await tx.update(tasks).set({ status: 'queued' }).where(and(eq(tasks.id, lease.taskId), eq(tasks.status, 'leased')));
     const rule = await currentLeaseRule(tx, swarmId);
-    await tx
+    const [miss] = await tx
       .insert(deadlineMisses)
       .values({ nodeId: lease.nodeId, swarmId, ruleVersion: rule.version, misses: 1, lastMissedAt: now })
-      .onConflictDoUpdate({ target: [deadlineMisses.nodeId, deadlineMisses.swarmId, deadlineMisses.ruleVersion], set: { misses: sql`${deadlineMisses.misses} + 1`, lastMissedAt: now } });
+      .onConflictDoUpdate({ target: [deadlineMisses.nodeId, deadlineMisses.swarmId, deadlineMisses.ruleVersion], set: { misses: sql`${deadlineMisses.misses} + 1`, lastMissedAt: now } })
+      .returning({ misses: deadlineMisses.misses });
+    // Repeated misses lower reputation only under an approved threshold (SPEC 7.3); null counts only.
+    const threshold = rule.repeatedMissThreshold;
+    if (threshold !== null && threshold > 0 && miss && miss.misses % threshold === 0)
+      await recordReputation(tx, { accountId: lease.accountId, nodeId: lease.nodeId, swarmId, type: 'repeated_deadline_miss', evidenceRef: `misses:${lease.nodeId}:${swarmId}:${rule.version}:${miss.misses}` });
+    // A pool reservation, if this lease had one, returns to the pool (SPEC 9.5).
+    await releaseReservation(tx, { leaseId: lease.id, swarmId });
     await outbox(tx, 'lease.expired', { lease_id: lease.id, task_id: lease.taskId, node_id: lease.nodeId });
   }
   return due.length;
@@ -94,7 +105,7 @@ export async function sweepExpiredLeases(now = new Date()) {
  * Task upload (SPEC 13.4 tasks:batch, hosted coordinator)
  * ------------------------------------------------------------------------- */
 
-export type TaskUpload = { coordinator_task_id: string; input: Record<string, unknown>; urgent?: boolean };
+export type TaskUpload = { coordinator_task_id: string; input: Record<string, unknown>; urgent?: boolean; known_answer?: Record<string, unknown> };
 
 /** The publisher's owner uploads tasks for a listed swarm. Idempotent by coordinator task id. */
 export async function uploadTasks(o: { accountId: string; slug: string; tasks: TaskUpload[] }) {
@@ -105,20 +116,36 @@ export async function uploadTasks(o: { accountId: string; slug: string; tasks: T
   if (pub?.owner !== o.accountId) throw err(403, 'forbidden', 'Only the publisher can upload tasks for this swarm.');
   if (s.manifest.coordinator.mode !== 'hosted') throw err(409, 'self_hosted_coordinator', 'This swarm runs its own coordinator.');
   if (o.tasks.some((t) => t.urgent) && !s.manifest.task.urgent_allowed) throw err(422, 'urgent_not_allowed', 'This swarm does not allow urgent tasks.');
+  const methods = s.manifest.verification as string[];
+  if (o.tasks.some((t) => t.known_answer) && !methods.includes('known-answers')) throw err(422, 'known_answers_not_used', 'This swarm does not verify with known answers.');
+  // Redundancy sends each task to N independent nodes. N has no default (SPEC 8.1): without an
+  // approved count the coordinator refuses the upload rather than invent one.
+  const rule = methods.includes('redundancy') ? await currentVerificationRule(db, s.swarm.id) : null;
+  if (rule && rule.redundancyCount === null) throw err(409, 'redundancy_unconfigured', 'This swarm has no redundancy count configured yet.');
+  const copies = rule?.redundancyCount ?? 1;
   const reward = s.manifest.credits.funded ? (s.manifest.credits.per_accepted_task ?? null) : null;
-  const rows = o.tasks.map((t) => ({
-    swarmId: s.swarm.id,
-    releaseId: s.release.id,
-    coordinatorTaskId: t.coordinator_task_id,
-    inputRef: `coordinator:${s.swarm.slug}/${t.coordinator_task_id}`,
-    inputHash: sha256Digest(canonicalJson(t.input)),
-    inputJson: t.input,
-    modelRequirementJson: { policy: s.manifest.models.policy, allowed_classes: modelClasses(s.manifest) },
-    urgent: Boolean(t.urgent),
-    rewardCredits: reward,
-  }));
-  const inserted = rows.length ? await db.insert(tasks).values(rows).onConflictDoNothing().returning({ id: tasks.id }) : [];
-  return { accepted: inserted.length, duplicates: rows.length - inserted.length };
+  const rows = o.tasks.flatMap((t) =>
+    Array.from({ length: copies }, (_, i) => ({
+      swarmId: s.swarm.id,
+      releaseId: s.release.id,
+      coordinatorTaskId: copies > 1 ? `${t.coordinator_task_id}:r${i + 1}` : t.coordinator_task_id,
+      inputRef: `coordinator:${s.swarm.slug}/${t.coordinator_task_id}`,
+      inputHash: sha256Digest(canonicalJson(t.input)),
+      inputJson: t.input,
+      modelRequirementJson: { policy: s.manifest.models.policy, allowed_classes: modelClasses(s.manifest) },
+      urgent: Boolean(t.urgent),
+      rewardCredits: reward,
+      redundancyGroup: copies > 1 ? t.coordinator_task_id : null,
+    })),
+  );
+  return db.transaction(async (tx) => {
+    const inserted = rows.length ? await tx.insert(tasks).values(rows).onConflictDoNothing().returning({ id: tasks.id, coordinatorTaskId: tasks.coordinatorTaskId }) : [];
+    // Hidden known answers sit apart from the task, so no task view can reveal which tasks are known.
+    const known = new Map(o.tasks.filter((t) => t.known_answer).map((t) => [t.coordinator_task_id, t.known_answer!]));
+    const answers = inserted.flatMap((r) => (known.has(r.coordinatorTaskId) ? [{ taskId: r.id, expectedJson: known.get(r.coordinatorTaskId)! }] : []));
+    if (answers.length) await tx.insert(taskKnownAnswers).values(answers);
+    return { accepted: inserted.length / copies, duplicates: (rows.length - inserted.length) / copies };
+  });
 }
 
 function modelClasses(m: ManifestV1): string[] {
@@ -239,6 +266,16 @@ export async function requestLease(o: { accountId: string; nodeId: string; slug:
       .orderBy(desc(tasks.urgent), asc(tasks.createdAt), asc(tasks.id))
       .limit(8);
     for (const c of candidates) {
+      // Redundancy replicas go to independent accounts: never two replicas of one task to one account (SPEC 8.3).
+      if (c.task.redundancyGroup) {
+        const mine = await tx
+          .select({ id: leases.id })
+          .from(leases)
+          .innerJoin(tasks, eq(tasks.id, leases.taskId))
+          .where(and(eq(tasks.swarmId, s.swarm.id), eq(tasks.redundancyGroup, c.task.redundancyGroup), eq(leases.accountId, o.accountId)))
+          .limit(1);
+        if (mine.length) continue;
+      }
       const claimed = await tx.update(tasks).set({ status: 'leased' }).where(and(eq(tasks.id, c.task.id), eq(tasks.status, 'queued'))).returning({ id: tasks.id });
       if (!claimed.length) continue;
       const [lease] = await tx
@@ -383,6 +420,8 @@ export async function abandonLease(o: { accountId: string; leaseId: string; reas
     if (lease.status === 'running') move(lease, 'abandoned');
     const [updated] = await tx.update(leases).set({ status: 'abandoned', abandonedAt: now, requeuedAt: now }).where(eq(leases.id, lease.id)).returning();
     await tx.update(tasks).set({ status: 'queued' }).where(and(eq(tasks.id, lease.taskId), eq(tasks.status, 'leased')));
+    const [t] = await tx.select({ swarmId: tasks.swarmId }).from(tasks).where(eq(tasks.id, lease.taskId));
+    await releaseReservation(tx, { leaseId: lease.id, swarmId: t!.swarmId });
     await outbox(tx, 'lease.abandoned', { lease_id: lease.id, task_id: lease.taskId, node_id: lease.nodeId, reason: o.reason });
     return updated!;
   });
@@ -404,7 +443,7 @@ export type RunRecordRow = {
 /**
  * Submit (SPEC 7.3, 13.3). Idempotent by lease and result hash. A different result for the same
  * lease is refused. A result after expiry or abandonment is recorded and never paid; an on-time one
- * moves the lease to Submitted, where M6's verifier picks it up. The caller verifies the output hash
+ * moves the lease to Submitted, where verification intake picks it up. The caller verifies the output hash
  * and the run record's device signature first.
  */
 export async function submitResult(o: { accountId: string; leaseId: string; output: Record<string, unknown>; outputHash: string; schemaValid: boolean | null; run: RunRecordRow; now?: Date }) {
@@ -417,6 +456,9 @@ export async function submitResult(o: { accountId: string; leaseId: string; outp
     if (same) return { lease, result: same, duplicate: true };
     if (prior.length) throw err(409, 'already_submitted', 'This lease already has a different result.');
     if (lease.status === 'leased') throw err(409, 'lease_not_running', 'Start the lease before submitting a result.');
+    // A device signature is accepted once: replaying a run record from another lease is refused (SPEC 8.3).
+    const [replayed] = await tx.select({ leaseId: runRecords.leaseId }).from(runRecords).where(eq(runRecords.runRecordSignature, o.run.signature)).limit(1);
+    if (replayed && replayed.leaseId !== lease.id) throw err(409, 'run_record_replayed', 'That run record was already used for another lease.');
     lease = await fresh(tx, lease, now);
     const disposition = lease.status === 'running' ? 'on_time' : lease.status === 'expired' ? 'late' : lease.status === 'abandoned' ? 'after_abandon' : null;
     if (!disposition) throw err(409, 'lease_closed', `This lease is ${lease.status}.`);

@@ -14,11 +14,8 @@ const r = (method: string, path: string, milestone: string): PlannedRoute => ({
 
 export const PLANNED_ROUTES: PlannedRoute[] = [
   // 13.3 Task protocol (the lease endpoints are built in M5)
-  r('POST', '/verifications', 'M6'),
   r('GET', '/results/{id}', 'M7'),
   // 13.4 Ledger, publisher and admin
-  r('GET', '/wallet', 'M6'),
-  r('GET', '/ledger', 'M6'),
   r('POST', '/pools/{id}/donations', 'M9'),
   r('POST', '/jobs', 'M9'),
   r('POST', '/publishers', 'M9'),

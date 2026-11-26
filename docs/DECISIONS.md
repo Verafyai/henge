@@ -489,6 +489,107 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - **Renewal and miss threshold:** these wait for Rex's values.
 - **Expiry:** expired leases are swept when the coordinator is called, with no timer yet.
 
+## M6 Verification, ledger and reputation (2026-11-25)
+
+### States (SPEC 7.3, 8)
+- **Pipeline:** Submitted, then Verifying once intake passes (output schema valid and the run record signature
+  verifies against the install's device key), then Pending or Rejected, then Settled when the review window closes
+  with no fraud found, or Clawed back if fraud is found while Pending. Settled is final.
+- **Intake failures:** an invalid schema or a bad run record signature is Rejected at intake with a record. A
+  result whose schema cannot be checked yet stays Submitted until it can.
+- **Records:** every decision writes a `verification_records` row (method, verifier version, result hash,
+  evidence hashes, outcome, rationale code, panel, signature), one per result and method. Coordinator decisions are
+  signed with the coordinator key; worker decisions carry the worker's own signature over
+  `swarm-explorer-verification-v1\n` plus the canonical payload.
+- **Where it runs:** the results endpoint runs intake and the coordinator side methods right after submit. Wallet,
+  results and verifier work reads run a lazy pass (intake, methods, settlement). There is no background job yet.
+- **Migration 0006** adds verification rules, verifier keys and nonces, hidden known answers, ledger buckets, lease
+  state timestamps, redundancy groups, a unique run record signature and impact revocation.
+
+### Verifiers (SPEC 8.1), package `@swarm-explorer/verify`
+- **One interface:** `Verifier<Input>` with `method`, `version` and `verify()`, keyed by the manifest's method.
+  `verify` returns null when it cannot decide yet, and the subject stays in Verifying.
+- **Machine check** runs in a separate verifier worker (`apps/verifier`). It polls `GET /v1/verifier/work` and
+  posts signed records to `POST /v1/verifications`. Requests are signed with the worker's Ed25519 key over method,
+  path, body hash, time and nonce, and each nonce is accepted once. The platform re-checks the key, the record
+  signature, that the subject waits for this method and that the record names the stored output hash.
+- **Lean:** the worker writes the pinned statement plus the candidate proof to a temp folder and runs `lean` or
+  `lake env lean` with a wall-clock limit, a minimal environment and its own process group. Network is denied with
+  `sandbox-exec` on macOS or `unshare --net` on Linux; with neither it does not check and leaves the result
+  waiting. Before Lean runs it refuses sorry, admit, new axioms, other declarations, options, metaprograms,
+  native_decide and any change to the statement. After, `#print axioms` must list only propext, Classical.choice
+  and Quot.sound. Tests use a fake Lean; the real Lean test skips when Lean is not installed.
+- **Challenge Vaults qualification** now waits for this check too. A matching status is not enough; the attempt
+  waits (`check_status: awaiting`) until the worker accepts or rejects the proof, then the round is scored. The
+  qualification lease answers 409 `qualification_checking` while answers wait.
+- **Prompt Guard reproduction:** the worker re-runs the claimed attack against a pinned fixture target (a keyword
+  guarded model in the Prompt Guard wasm harness, bundle hash checked on load). It is deterministic, has no
+  network and does not use the PR #6 screener. Accepted only when the target's reply leaks its word.
+- **Known answers:** publishers upload hidden expected outputs with tasks (`known_answer`), only for swarms that
+  list the method. Leases look the same for known and ordinary tasks, and node-facing views never show rationale.
+  A wrong known answer is Rejected, and that node's ordinary results then wait in Verifying for review.
+- **Redundancy:** each task is uploaded as N replicas in one redundancy group. One account never leases two
+  replicas of a group, so same-account nodes are never independent. Agreement is a strict majority of distinct
+  accounts by canonical output hash; no majority rejects all. N is `verification_rules.redundancy_count`, null,
+  and uploads are refused with `redundancy_unconfigured` until it is set.
+- **Jury:** a `JuryAdapter` interface plus a fixture adapter. The submitter's account and node are excluded, one
+  seat per account, and the panel needs `jury_panel_size` seats and the manifest's model family diversity. The
+  panel size is null, so no jury rules yet. Real juries are later.
+- **Publisher review:** results wait in Verifying; there is no review queue yet.
+
+### Ledger (SPEC 9)
+- **Double entry:** every movement is one transaction whose debits equal its credits, with an idempotency key.
+  Buckets are pool available and reserved, account pending and settled, and platform issued (the only bucket
+  allowed below zero). Other balances may never go negative.
+- **Movements:** lease reserve and release, accept to pending, settle, and clawback (pending back to the pool).
+  Accept, settle and clawback are idempotent per result, so a result is never paid twice.
+- **Volunteer swarms create no credits.** Funding, reserving and accepting all refuse a volunteer swarm with
+  `volunteer_swarm`, and tests prove the whole pipeline writes no ledger rows for volunteer work.
+- **Funded path:** tested with a test-funded pool fixture (`fundPool`, test only) and leases made directly,
+  because funded leasing stays off until M9. Without a reservation, an accepted funded result earns impact only.
+- **Reconciliation:** `reconcileLedger` checks every transaction balances, the ledger sums to zero, no bucket is
+  negative, pool caches match the entries and pending equals unsettled acceptances.
+- **Impact** is recorded per accepted result in `impact_events` (units from the manifest's impact weight). It is
+  pending until settled and revoked on clawback. It is never spendable and never becomes credits.
+- No purchases, transfers or cash out were added.
+
+### Reputation and anti-cheat
+- **Events:** accepted, rejected, clawed back and repeated deadline miss, one per evidence reference. Scoring
+  version `unit-v0` adds 1 or subtracts 1. It is a placeholder that nothing uses yet.
+- **Deadline misses** count toward reputation only when `lease_rules.repeated_miss_threshold` is set. It stays
+  null, so misses are counted but lower nothing.
+- **Replays:** a run record signature can be used for one lease only (`run_record_replayed`). Worker request
+  nonces are single use, and a second different verdict for the same subject is `already_verified`.
+- **No self grading:** jurors never include the submitter's account or node.
+
+### Review window and settlement
+- `verification_rules.review_window_s` is null with no approved value. Pending work never settles while it is
+  null. Tests and e2e set a short test window through the dev only `POST /v1/dev/verification-rules`.
+- Every new rule is a new version row; the current version applies.
+
+### New endpoints
+- `GET /v1/verifier/work` and `POST /v1/verifications` (verifier signed), `GET /v1/wallet`, `GET /v1/ledger` and
+  `GET /v1/me/results` (bearer), `POST /v1/admin/results/{id}/clawback` (reviewer or admin, Idempotency-Key), and
+  dev only `POST /v1/dev/verification-rules`. Added to SPEC 13.3 and 13.4 and the api-client contracts.
+
+### Client
+- **Activity** lists recent results with the server's state (Submitted, Verifying, Pending, Settled, Rejected,
+  Clawed back) and when each state was reached. **Wallet** shows impact always and credits only once the account
+  has funded work. Volunteer work says it earns impact, not credits.
+- The client e2e runs the verifier worker: the M5 demo task goes Submitted, Verifying, Pending, then Settled with
+  a test window, and shows impact and no credits.
+
+### Needs Rex
+- **Worker hosting:** where the verifier worker runs and who holds its key. Nothing is provisioned.
+- **Values:** review window, redundancy count N, jury panel size, known-answer rate and the repeated-miss
+  threshold. All are null.
+- **Reputation weights** and what reputation gates.
+- **Coordinator key custody:** `COORDINATOR_VERIFIER_KEY` in production; dev uses an ephemeral key.
+- **Real Prompt Guard target:** the pinned target is a fixture.
+- **Real juries** and a publisher review queue.
+- **IP range evidence** for independence is not implemented; independence is by account only.
+- **Funded leasing and reservations** arrive with pools in M9.
+
 ## Desktop app is dark only (Rex, 2026-11-25)
 - Henge SPEC 9.1: the app is dark only and matches the Henge pages on www.verafy.ai. There is no light mode.
 - **How:** `apps/client/src/renderer/styles.css` overrides the shared Verafy preset for the desktop app alone.

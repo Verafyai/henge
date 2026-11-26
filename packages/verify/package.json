@@ -1,0 +1,24 @@
+{
+  "name": "@swarm-explorer/verify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Verifiers (SPEC 8): one Verifier interface for machine checks, known answers, redundancy and juries, plus the signed verification record format",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@swarm-explorer/sandbox": "workspace:*",
+    "@swarm-explorer/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@swarm-explorer/config": "workspace:*",
+    "@types/node": "26.6.7"
+  }
+}

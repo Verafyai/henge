@@ -414,7 +414,8 @@ export const qualificationResultSchema = z
       .strict(),
   })
   .strict();
-export const qualificationScoredSchema = z.object({ correct: z.boolean(), qualification: qualificationProgressSchema, membership: membershipSchema });
+/** `correct` is null while a machine-checked answer (a Lean proof) waits for the swarm's verifier. */
+export const qualificationScoredSchema = z.object({ correct: z.boolean().nullable(), qualification: qualificationProgressSchema, membership: membershipSchema });
 
 /** DELETE /v1/memberships/{id} */
 export const membershipLeftSchema = z.object({ id: z.uuid(), left_at: isoDate, abandoned_leases: z.number().int().nonnegative() });
@@ -424,3 +425,102 @@ export const releaseReviewSchema = z
   .object({ outcome: z.enum(['approved', 'rejected', 'changes_requested']), checklist: z.record(z.string(), z.boolean()), rationale: z.string().min(1).max(4000) })
   .strict();
 export const releaseReviewedSchema = z.object({ release_id: z.uuid(), review_status: z.enum(['approved', 'rejected', 'draft']), reconsent_required: z.number().int(), moved: z.number().int() });
+
+/* ----------------------------------------------------------------------------
+ * Verification (SPEC 8, 13.3), M6
+ * ------------------------------------------------------------------------- */
+
+export const verificationSubjectSchema = z.object({ type: z.enum(['result', 'qualification_attempt']), id: z.uuid() }).strict();
+
+/** GET /v1/verifier/work: results and qualification answers waiting for a machine check. Verifier-signed. */
+export const verifierWorkItemSchema = z.object({
+  subject: verificationSubjectSchema,
+  swarm: z.string(),
+  release_id: z.uuid(),
+  harness: z.string(),
+  checker: z.enum(['lean', 'prompt-guard-reproduction']).nullable(),
+  input: z.record(z.string(), z.unknown()),
+  output: z.record(z.string(), z.unknown()),
+  output_sha256: digestSchema,
+});
+export type VerifierWorkItem = z.infer<typeof verifierWorkItemSchema>;
+export const verifierWorkSchema = z.object({ items: z.array(verifierWorkItemSchema) });
+
+/** The signed record payload (SPEC 8.2); the signature covers its canonical JSON. */
+export const verificationPayloadSchema = z
+  .object({
+    subject_type: z.enum(['result', 'qualification_attempt']),
+    subject_id: z.uuid(),
+    method: verificationMethodSchema,
+    verifier_version: z.string().min(1).max(120),
+    evidence_hashes: z.array(digestSchema).max(16),
+    result_hash: digestSchema,
+    outcome: z.enum(['accepted', 'rejected']),
+    rationale_code: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+    panel: z.record(z.string(), z.unknown()).nullable(),
+  })
+  .strict();
+
+/** POST /v1/verifications: a signed verifier submission. `signature` is `keyId:base64url`. */
+export const verificationSubmitSchema = z.object({ payload: verificationPayloadSchema, signature: z.string().min(10).max(300) }).strict();
+export const verificationRecordedSchema = z.object({
+  subject: verificationSubjectSchema,
+  /** The result's lease state after this verdict, or the qualification answer's check status. */
+  status: z.string().nullable(),
+  duplicate: z.boolean(),
+});
+
+/* ----------------------------------------------------------------------------
+ * Wallet, ledger and results (SPEC 9, 13.4), M6
+ * ------------------------------------------------------------------------- */
+
+/** GET /v1/wallet. Credits come only from funded swarms; impact is separate and nonspendable. */
+export const walletSchema = z.object({
+  credits: z.object({ settled: z.number().int().nonnegative(), pending: z.number().int().nonnegative(), reserved: z.number().int().nonnegative() }),
+  impact: z.object({ settled: z.number().int().nonnegative(), pending: z.number().int().nonnegative() }),
+  /** False until the account has a result in a funded swarm; clients then show impact only. */
+  has_funded_work: z.boolean(),
+});
+export type Wallet = z.infer<typeof walletSchema>;
+
+/** GET /v1/ledger: the caller's own ledger rows. */
+export const ledgerListSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.uuid(),
+      txn_id: z.uuid(),
+      movement_type: z.enum(['purchase', 'donation', 'lease_reserve', 'reserve_release', 'accept_pending', 'settle', 'clawback', 'job_reserve', 'refund', 'correction']),
+      bucket: z.enum(['available', 'reserved', 'pending', 'settled', 'issued']),
+      debit: z.number().int().nonnegative(),
+      credit: z.number().int().nonnegative(),
+      reference_type: z.string(),
+      reference_id: z.string(),
+      created_at: isoDate,
+    }),
+  ),
+});
+
+export const resultStateSchema = z.enum(['submitted', 'verifying', 'pending', 'settled', 'rejected', 'clawed_back', 'not_counted']);
+export type ResultState = z.infer<typeof resultStateSchema>;
+
+/** GET /v1/me/results: each submitted result's real state, impact and credits (added M6, 2026-11-25). */
+export const resultItemSchema = z.object({
+  result_id: z.uuid(),
+  lease_id: z.uuid(),
+  swarm: z.string(),
+  swarm_name: z.string(),
+  funded: z.boolean(),
+  state: resultStateSchema,
+  disposition: z.enum(['on_time', 'late', 'after_abandon']),
+  timeline: z.array(z.object({ state: resultStateSchema.exclude(['not_counted']), at: isoDate })),
+  impact: z.object({ units: z.number().int().nonnegative(), status: z.enum(['pending', 'settled', 'revoked']) }).nullable(),
+  credits: z.object({ amount: z.number().int().positive(), status: z.enum(['pending', 'settled', 'clawed_back']) }).nullable(),
+  submitted_at: isoDate,
+});
+export type ResultItem = z.infer<typeof resultItemSchema>;
+export const resultListSchema = z.object({ items: z.array(resultItemSchema) });
+
+/** POST /v1/admin/results/{id}/clawback: fraud found while pending (added M6, 2026-11-25). */
+export const clawbackSchema = z.object({ reason: z.string().min(3).max(500) }).strict();
+export const clawedBackSchema = z.object({ result_id: z.uuid(), status: z.literal('clawed_back'), duplicate: z.boolean() });
+

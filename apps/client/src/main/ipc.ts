@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { app, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
-import { installListSchema, meSchema } from '@swarm-explorer/api-client';
+import { installListSchema, meSchema, resultListSchema, walletSchema, type ResultItem, type Wallet } from '@swarm-explorer/api-client';
 import { z } from 'zod';
 import { IPC, type Account, type AppInfo, type Install } from '../shared/bridge';
 import type { Route } from '../shared/routes';
@@ -68,6 +68,26 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
     try {
       const res = await auth.authedFetch('/v1/me/installs');
       const parsed = installListSchema.safeParse(await res.json());
+      return res.ok && parsed.success ? parsed.data.items : null;
+    } catch {
+      return null;
+    }
+  }, null);
+
+  handle(IPC.wallet, none, async (): Promise<Wallet | null> => {
+    try {
+      const res = await auth.authedFetch('/v1/wallet');
+      const parsed = walletSchema.safeParse(await res.json());
+      return res.ok && parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }, null);
+
+  handle(IPC.results, none, async (): Promise<ResultItem[] | null> => {
+    try {
+      const res = await auth.authedFetch('/v1/me/results');
+      const parsed = resultListSchema.safeParse(await res.json());
       return res.ok && parsed.success ? parsed.data.items : null;
     } catch {
       return null;

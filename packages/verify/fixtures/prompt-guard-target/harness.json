@@ -1,0 +1,15 @@
+{
+  "harness_version": 1,
+  "name": "prompt-guard-fixture-target",
+  "version": "1.0.0",
+  "runtime": "wasm",
+  "entry": "harness.wasm",
+  "system_prompt": "system-prompt.md",
+  "tools": [],
+  "loop": { "max_steps": 1, "retries": 0, "step_timeout_s": 10, "total_timeout_s": 10 },
+  "output_schema": "output.schema.json",
+  "min_model_class": "fixture",
+  "capabilities": ["model.complete"],
+  "limits": { "memory_mb": 64, "cpu_ms": 10000, "wall_s": 10, "scratch_mb": 0, "processes": 1 },
+  "x-example": "Pinned fixture target for the Prompt Guard red team reproduced-attack check. The real target (Prompt Guard in front of a reviewed model) replaces it; see docs/DECISIONS.md M6."
+}

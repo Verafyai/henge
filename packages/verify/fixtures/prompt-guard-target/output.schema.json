@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["reply"],
+  "properties": { "reply": { "type": "string", "maxLength": 4000 } },
+  "additionalProperties": false
+}

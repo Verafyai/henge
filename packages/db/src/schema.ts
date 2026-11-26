@@ -80,6 +80,8 @@ export const configStatus = pgEnum('config_status', ['proposal', 'approved', 're
 export const teamVisibility = pgEnum('team_visibility', ['private', 'public']);
 export const teamRole = pgEnum('team_role', ['owner', 'member']);
 export const channel = pgEnum('release_channel', ['stable', 'beta', 'internal']);
+/** Ledger buckets (SPEC 9.5): every credit account is one balance of one owner. */
+export const creditBucket = pgEnum('credit_bucket', ['available', 'reserved', 'pending', 'settled', 'issued']);
 
 /* ----------------------------------------------------------------------------
  * 12.1 Identity and nodes
@@ -485,6 +487,8 @@ export const qualificationTasks = pgTable(
     swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
     inputJson: jsonb('input_json').notNull(),
     expectedJson: jsonb('expected_json').notNull(),
+    /** The answer also needs the swarm's machine check (for example Lean) before it counts (M6). */
+    machineCheck: boolean('machine_check').notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index('qualification_tasks_swarm_idx').on(t.swarmId)],
@@ -501,7 +505,13 @@ export const qualificationAttempts = pgTable(
     deadlineAt: ts('deadline_at').notNull(),
     submittedAt: ts('submitted_at'),
     outputHash: text('output_hash'),
+    /** Null while a machine-checked answer waits for the verifier worker. */
     correct: boolean('correct'),
+    /** Kept only for answers that wait for a machine check. */
+    outputJson: jsonb('output_json'),
+    checkStatus: text('check_status', { enum: ['awaiting', 'accepted', 'rejected'] }),
+    /** The signed verifier record for a machine-checked answer. */
+    checkRecordJson: jsonb('check_record_json'),
   },
   (t) => [uniqueIndex('qualification_attempts_task_idx').on(t.qualificationId, t.taskId)],
 );
@@ -522,11 +532,14 @@ export const tasks = pgTable(
     /** Null for volunteer swarms, which pay impact only. */
     rewardCredits: credits('reward_credits'),
     status: taskStatus('status').notNull().default('queued'),
+    /** Replicas of one task for redundancy verification share this key (SPEC 8.1). */
+    redundancyGroup: text('redundancy_group'),
     createdAt: createdAt(),
   },
   (t) => [
     uniqueIndex('tasks_coordinator_idx').on(t.swarmId, t.coordinatorTaskId),
     index('tasks_queue_idx').on(t.swarmId, t.status),
+    index('tasks_redundancy_idx').on(t.swarmId, t.redundancyGroup),
     check('tasks_reward_check', sql`${t.rewardCredits} is null or ${t.rewardCredits} > 0`),
   ],
 );
@@ -554,6 +567,12 @@ export const leases = pgTable(
     abandonedAt: ts('abandoned_at'),
     expiredAt: ts('expired_at'),
     requeuedAt: ts('requeued_at'),
+    /** When the result moved through verification (SPEC 7.3), for the node's timeline. */
+    verifyingAt: ts('verifying_at'),
+    pendingAt: ts('pending_at'),
+    settledAt: ts('settled_at'),
+    rejectedAt: ts('rejected_at'),
+    clawedBackAt: ts('clawed_back_at'),
     idempotencyKey: text('idempotency_key').notNull(),
   },
   (t) => [
@@ -613,7 +632,8 @@ export const runRecords = pgTable(
     /** The signed run record exactly as sent (SPEC 13.3), for the verifier (M6). */
     recordJson: jsonb('record_json'),
   },
-  (t) => [uniqueIndex('run_records_lease_idx').on(t.leaseId)],
+  // A device signature is accepted once: a replayed run record is refused (SPEC 8.3).
+  (t) => [uniqueIndex('run_records_lease_idx').on(t.leaseId), uniqueIndex('run_records_signature_idx').on(t.runRecordSignature)],
 );
 
 export const results = pgTable(
@@ -635,21 +655,101 @@ export const results = pgTable(
   (t) => [uniqueIndex('results_lease_hash_idx').on(t.leaseId, t.outputHash)],
 );
 
-export const verificationRecords = pgTable('verification_records', {
-  id: id(),
-  resultId: uuid('result_id').notNull().references(() => results.id),
-  method: verificationMethod('method').notNull(),
-  verifierVersion: text('verifier_version').notNull(),
-  evidenceHashes: text('evidence_hashes').array().notNull(),
-  outcome: verificationOutcome('outcome').notNull(),
-  rationaleCode: text('rationale_code').notNull(),
-  panelJson: jsonb('panel_json'),
-  signature: text('signature').notNull(),
-  pendingWindowEndsAt: ts('pending_window_ends_at'),
+/**
+ * Signed verification records (SPEC 8.2). One per result and method. `signature` is
+ * `keyId:base64url` by a key in `verifier_keys`, over the canonical record (see verification.ts).
+ */
+export const verificationRecords = pgTable(
+  'verification_records',
+  {
+    id: id(),
+    resultId: uuid('result_id').notNull().references(() => results.id),
+    leaseId: uuid('lease_id').references(() => leases.id),
+    releaseId: uuid('release_id').references(() => swarmReleases.id),
+    method: verificationMethod('method').notNull(),
+    verifierVersion: text('verifier_version').notNull(),
+    verifierKeyId: text('verifier_key_id'),
+    evidenceHashes: text('evidence_hashes').array().notNull(),
+    resultHash: text('result_hash'),
+    outcome: verificationOutcome('outcome').notNull(),
+    rationaleCode: text('rationale_code').notNull(),
+    panelJson: jsonb('panel_json'),
+    signature: text('signature').notNull(),
+    pendingWindowEndsAt: ts('pending_window_ends_at'),
+    /** Fraud found while pending moves this to `fraud_found` (SPEC 8.2). */
+    disputeStatus: text('dispute_status', { enum: ['none', 'fraud_found'] }).notNull().default('none'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('verification_records_result_method_idx').on(t.resultId, t.method)],
+);
+
+/**
+ * Coordinator verification rules per swarm, versioned like lease rules (SPEC 8.1, 9.2). No value
+ * here is approved: a null review window means accepted work stays pending and never settles, a
+ * null redundancy count or jury panel size means those methods cannot decide yet.
+ */
+export const verificationRules = pgTable(
+  'verification_rules',
+  {
+    id: id(),
+    swarmId: uuid('swarm_id').notNull().references(() => swarms.id),
+    version: integer('version').notNull(),
+    reviewWindowS: integer('review_window_s'),
+    knownAnswerRate: real('known_answer_rate'),
+    redundancyCount: integer('redundancy_count'),
+    juryPanelSize: integer('jury_panel_size'),
+    status: configStatus('status').notNull().default('proposal'),
+    notes: text('notes').notNull().default(''),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('verification_rules_version_idx').on(t.swarmId, t.version),
+    check('verification_rules_positive', sql`(${t.reviewWindowS} is null or ${t.reviewWindowS} >= 0) and (${t.redundancyCount} is null or ${t.redundancyCount} >= 2) and (${t.juryPanelSize} is null or ${t.juryPanelSize} >= 1)`),
+  ],
+);
+
+/** Keys that sign verification records: the coordinator's own and each verifier worker's. */
+export const verifierKeys = pgTable(
+  'verifier_keys',
+  {
+    id: id(),
+    keyId: text('key_id').notNull(),
+    /** Ed25519 SPKI DER, base64url. */
+    publicKey: text('public_key').notNull(),
+    kind: text('kind', { enum: ['coordinator', 'worker'] }).notNull(),
+    methods: text('methods').array().notNull(),
+    status: keyStatus('status').notNull().default('active'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('verifier_keys_key_id_idx').on(t.keyId)],
+);
+
+/** Replay protection for signed verifier requests: each nonce is accepted once per key. */
+export const verifierNonces = pgTable(
+  'verifier_nonces',
+  {
+    keyId: text('key_id').notNull(),
+    nonce: text('nonce').notNull(),
+    seenAt: ts('seen_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.keyId, t.nonce] })],
+);
+
+/**
+ * Hidden known answers for tasks mixed into the queue (SPEC 8.1). Kept apart from `tasks` so no
+ * task view can include them; nodes are never told which tasks are known.
+ */
+export const taskKnownAnswers = pgTable('task_known_answers', {
+  taskId: uuid('task_id')
+    .primaryKey()
+    .references(() => tasks.id),
+  expectedJson: jsonb('expected_json').notNull(),
   createdAt: createdAt(),
 });
 
-export const reputationEvents = pgTable('reputation_events', {
+export const reputationEvents = pgTable(
+  'reputation_events',
+  {
   id: id(),
   accountId: uuid('account_id').notNull().references(() => accounts.id),
   nodeId: uuid('node_id').references(() => nodes.id),
@@ -659,7 +759,10 @@ export const reputationEvents = pgTable('reputation_events', {
   scoreVersion: text('score_version').notNull(),
   evidenceRef: text('evidence_ref').notNull(),
   createdAt: createdAt(),
-});
+},
+  // One event per kind and evidence, so a retried verification never scores twice.
+  (t) => [uniqueIndex('reputation_events_evidence_idx').on(t.eventType, t.evidenceRef)],
+);
 
 export const impactEvents = pgTable(
   'impact_events',
@@ -672,6 +775,8 @@ export const impactEvents = pgTable(
     units: integer('units').notNull(),
     resultId: uuid('result_id').notNull().references(() => results.id),
     createdAt: createdAt(),
+    /** Set when the result is clawed back; revoked impact no longer counts. */
+    revokedAt: ts('revoked_at'),
   },
   (t) => [uniqueIndex('impact_events_result_idx').on(t.resultId), check('impact_units_check', sql`${t.units} >= 0`)],
 );
@@ -686,10 +791,12 @@ export const creditAccounts = pgTable(
     id: id(),
     ownerType: creditOwnerType('owner_type').notNull(),
     ownerId: uuid('owner_id'),
+    /** Which balance this account holds. Only the platform's `issued` mirror may go negative. */
+    bucket: creditBucket('bucket').notNull().default('available'),
     currency: text('currency', { enum: ['credit'] }).notNull().default('credit'),
     status: accountStatus('status').notNull().default('active'),
   },
-  (t) => [uniqueIndex('credit_accounts_owner_idx').on(t.ownerType, t.ownerId)],
+  (t) => [uniqueIndex('credit_accounts_owner_idx').on(t.ownerType, t.ownerId, t.bucket)],
 );
 
 export const pools = pgTable(

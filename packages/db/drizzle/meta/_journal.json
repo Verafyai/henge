@@ -43,6 +43,13 @@
       "when": 1795645564349,
       "tag": "0005_m5_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795648854193,
+      "tag": "0006_m6_verification",
+      "breakpoints": true
     }
   ]
 }

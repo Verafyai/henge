@@ -24,6 +24,8 @@ const bridge: SwarmBridge = {
     me: () => invoke(IPC.me),
     installs: () => invoke(IPC.installs),
     revokeInstall: (id) => invoke(IPC.revokeInstall, String(id)),
+    wallet: () => invoke(IPC.wallet),
+    results: () => invoke(IPC.results),
   },
   recent: {
     list: () => invoke(IPC.recentList),

@@ -883,6 +883,7 @@ All APIs are versioned under `/v1`, use JSON, require `Idempotency-Key` for writ
 | POST | `/v1/leases/{lease_id}/results` | Output reference/hash and signed run record. Idempotent by lease/result hash. |
 | GET | `/v1/leases/{lease_id}` | Status for recovery. |
 | POST | `/v1/verifications` | Signed verifier submission. Platform validates assignment and reservation before pending credit. |
+| GET | `/v1/verifier/work` | Verifier-signed: results and qualification answers waiting for a machine check (added M6, 2026-11-25). |
 | GET | `/v1/results/{id}` | Public or authorized result view. |
 
 Lease response example structure:
@@ -925,6 +926,7 @@ Run record structure:
 |---|---|---|
 | GET | `/v1/wallet` | Settled, pending, reserved, impact summary |
 | GET | `/v1/ledger` | User-scoped ledger rows |
+| GET | `/v1/me/results` | The caller's results with their real state, state timeline, impact and credits (added M6, 2026-11-25) |
 | POST | `/v1/pools/{id}/donations` | Donate credits to volunteer pool |
 | POST | `/v1/jobs` | Reserve credits and submit own tasks/swarm |
 | POST | `/v1/publishers` | Create publisher |
@@ -935,6 +937,7 @@ Run record structure:
 | POST | `/v1/swarms/{id}/tasks:batch` | Hosted coordinator task upload |
 | GET | `/v1/publishers/{id}/dashboard` | Publisher metrics and results |
 | POST | `/v1/admin/reviews/{id}` | Approve/reject release |
+| POST | `/v1/admin/results/{id}/clawback` | Reviewer records fraud found while pending; pending credit returns to the pool (added M6, 2026-11-25) |
 | POST | `/v1/admin/revocations` | Signed kill-switch/revocation event |
 
 ### 13.5 Events

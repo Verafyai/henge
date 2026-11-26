@@ -3,7 +3,7 @@
  * named, typed methods. No generic invoke, no filesystem, no Node globals.
  * Tokens never cross this bridge; the main process makes authenticated calls.
  */
-import type { JoinStarted, SwarmDetail } from '@swarm-explorer/api-client';
+import type { JoinStarted, ResultItem, SwarmDetail, Wallet } from '@swarm-explorer/api-client';
 import type { RunRules } from '@swarm-explorer/node-core';
 import type { MembershipResult, MembershipsOverview, ModelActionResult, ModelInstallInput, NodeOverview, NodeSetup, Permissions, SandboxCheck } from './node';
 import type { Route } from './routes';
@@ -54,6 +54,10 @@ export interface SwarmBridge {
     me(): Promise<Account | null>;
     installs(): Promise<Install[] | null>;
     revokeInstall(id: string): Promise<boolean>;
+    /** Wallet (SPEC 9): credits from funded work and impact from volunteer work. Null when signed out or offline. */
+    wallet(): Promise<Wallet | null>;
+    /** Recent results with their real verification state (SPEC 8). Null when signed out or offline. */
+    results(): Promise<ResultItem[] | null>;
   };
   /** Recently viewed swarms, kept in the encrypted local cache. */
   recent: {
@@ -118,6 +122,8 @@ export const IPC = {
   me: 'account:me',
   installs: 'account:installs',
   revokeInstall: 'account:revoke-install',
+  wallet: 'account:wallet',
+  results: 'account:results',
   recentList: 'recent:list',
   recentAdd: 'recent:add',
   updatesCheck: 'updates:check',
