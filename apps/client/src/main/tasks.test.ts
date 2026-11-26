@@ -1,8 +1,9 @@
-import { createPublicKey, generateKeyPairSync } from 'node:crypto';
-import { runRecordMessage, type MembershipView, type RevocationEntry, type StoreHome } from '@swarm-explorer/api-client';
+import { runRecordMessage, type MembershipView, type StoreHome } from '@swarm-explorer/api-client';
 import { DEFAULT_RUN_RULES, enforcementSupport, type Sensors } from '@swarm-explorer/node-core';
 import { canonicalJson } from '@swarm-explorer/schema';
 import { REVOCATION_PREFIX, revocationCanonical, sha256Digest, signStatement } from '@swarm-explorer/schema/node';
+import { createPublicKey, generateKeyPairSync } from 'node:crypto';
+import type { RevocationEntry } from '@swarm-explorer/api-client';
 import { describe, expect, it, vi } from 'vitest';
 import type { HarnessRunResult, HarnessRunSpec, InstalledModel } from '../shared/node';
 import type { AuthManager } from './auth';
