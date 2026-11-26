@@ -5,7 +5,7 @@ import { parseManifest } from '@swarm-explorer/schema';
 
 export const VERSION = '0.1.0';
 
-const HELP = `swarm ${VERSION} (Swarm Explorer CLI)
+const HELP = `swarm ${VERSION} (Henge CLI)
 
 Usage:
   swarm swarms [--category <key>]   List listed swarms

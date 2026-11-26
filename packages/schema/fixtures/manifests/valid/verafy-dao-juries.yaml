@@ -6,7 +6,7 @@ name: Verafy DAO juries
 publisher: verafy.ai
 category: governance
 summary: Independent model panels rule on DAO disputes under each DAO's own rules
-harness: { name: verafy-juror, version: 0.1.0, hash: sha256-8ec2f9c5ddec7539363ccd0f13384282bfa538bf64a6754177c4cae584b311ee, runtime: wasm }
+harness: { name: verafy-juror, version: 0.1.0, hash: sha256-b3931f22480c10c33c0bf8294480f1a14fe1be5943cedd903639ceda57667c55, runtime: wasm }
 models:
   policy: diverse
   allowed_classes: [jury-panel-member]

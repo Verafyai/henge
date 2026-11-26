@@ -9,12 +9,12 @@ export type HeaderProps = {
 
 /** Website navigation is browse-only (SPEC 4.1): normal product actions happen in the desktop client. */
 const nav = [
-  { key: 'store', label: 'Swarms', href: '/' },
+  { key: 'store', label: 'Swarms', href: '/swarms' },
   { key: 'models', label: 'Models', href: '/models' },
   { key: 'download', label: 'Download', href: '/download' },
 ] as const;
 
-export function Header({ active = 'store', signedIn = false, searchAction = '/' }: HeaderProps) {
+export function Header({ active = 'store', signedIn = false, searchAction = '/swarms' }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-accent/40 bg-surface/90 backdrop-blur">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:rounded-btn focus:bg-brand focus:px-3 focus:py-2 focus:text-white">

@@ -6,3 +6,4 @@ export * from './proxy';
 export * from './bundle';
 export * from './broker';
 export * from './checks';
+export * from './prompt-guard';

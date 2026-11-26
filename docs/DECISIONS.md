@@ -1,8 +1,77 @@
-# Swarm Explorer decisions
+# Henge decisions
 
 Implementation decisions made while building from `docs/SWARM-EXPLORER-SPEC.md`. Items marked **Needs Rex** are open
 business or hosting choices that the spec leaves unapproved; the code keeps them as configuration or placeholders.
 SwarmStarter decisions are archived in `docs/history/swarmstarter/DECISIONS.md`.
+
+## henge.verafy.ai landing (2026-11-26)
+
+Workstream B2 of the "Henge spin-out v2" spec (section 5.2), branch `web/henge-landing`.
+
+- **Hosting: option B.** Rex chose that henge.verafy.ai is served by this repo's `apps/web` (the spec's option B), not
+  by testnet-demo. Nothing is deployed and no domain or DNS changed.
+- **Routes.** `/` is the 5.2 landing page (sections 0 to 8). The Henge web store that used to be `/` moved to
+  `/swarms` (search is `/swarms?q=`); the shared Header, Footer and Logo now link there. `/login`, `/models`,
+  `/swarms/<slug>`, `/authorize` and every `/v1` route are unchanged. New: `/download`, `/spec`, `/glyphs`, `/s`.
+  The app is split into route groups: `app/(henge)` (dark, Henge nav and footer) and `app/(web)` (light Henge web
+  pages with the shared Header and Footer). The root layout only loads fonts.
+- **Platform note:** Rex changed the hero note to "macOS first. Windows and Linux later. Not released yet."
+  (the spec table said "Windows, macOS and Linux."). Everything else is the spec copy, exactly, in
+  `apps/web/lib/henge-landing-copy.ts`; its test fails on U+2014, U+2013 and on any digit except 01 to 04 and the
+  example snippet's `"1.0"` and `@^1`.
+- **Hero and community images:** the client is not built, so both images are the spec mockups
+  (`01-client-main.png`, `13-community-chat.png`, in `apps/web/public/henge/`), each with a visible
+  "Design preview" label and a caption that the client is not built and that names and values are examples. They
+  are hidden below 720px, as in the mobile mockup. Replace them with real screenshots once the client ships.
+- **Fonts:** Chakra Petch 600/700 is added through `next/font/google` (self-hosted at build, like Inter and
+  JetBrains Mono already were). No font CDN at runtime.
+- **/download:** three disabled buttons (macOS "Not released yet", Windows and Linux "Later"), no links, no version
+  or size. It links to GitHub Releases only once a release exists.
+- **/spec:** spec sections 6 and 7 copied verbatim into `apps/web/content/henge-spec.md` and rendered by a small
+  parser (`apps/web/lib/mini-markdown.ts`) into React elements, with no HTML injection and no new dependency.
+- **/glyphs:** read-only list of the six built-in Glyphs from 7.1, with Runes labeled "Example Runes".
+- **/s:** a disabled ".henge link" field and a "Coming soon" button; the resolver ships in its own PR.
+- **Links:** "Start your own Henge" and "Read the .henge spec" go to `/spec`; nav "Docs" goes to `/spec`; the
+  four other nav links are in-page anchors.
+- **Needs Rex:**
+  - Privacy and Terms: verafy-website has no Privacy or Terms route in code (they are CMS fields, and its
+    `isPolicyUrl` rejects verafy.ai links), so the footer shows them as plain text, not links. Give the URLs.
+  - "See the henge-bench plan": `Verafyai/henge-bench` does not exist yet (checked 2026-11-26), so the button shows
+    "(Not published yet)" and links nowhere. Set `HENGE_BENCH_URL` once the repo exists. (`Verafyai/henge` is public,
+    so the GitHub links work.)
+  - The /spec page shows the spec's own headings ("6. Workstream C: ..."), which read as internal. Approve or
+    supply public wording.
+
+## Rex's finish-up brief (2026-11-25, later the same day)
+
+Rex's "Henge: finish-up brief" orders the remaining work: Part A (verafy.ai copy), Part B (M5 to M7, stop at G1),
+Part C (the Henge communities spec, a PR before any code) and Part D (questions for Rex). These calls govern over
+anything below.
+
+- **Identifiers are final:** appId `ai.verafy.henge`, URL scheme `henge://`, keychain service `ai.verafy.henge`
+  (`ai.verafy.henge.dev` for unpackaged runs), app origin `app://henge`. The code already used these; the M0 entry
+  below that names `ai.verafy.swarmexplorer` and `swarmexplorer://` is superseded. `apps/client/src/main/identifiers.test.ts`
+  fails if the builder config, the keychain default, the scheme or the origin drift apart. This must not change after
+  signing.
+- **Henge web:** the web view of the swarms is **Henge web**, not Swarm Explorer, because Swarm Explorer is already a
+  live Verafy product at swarm.verafy.ai. That product is untouched. The internal `@swarm-explorer/*` package scope
+  and the `SWARM_EXPLORER_*` environment variables stay. JSON Schema `$id`s move to `https://henge.verafy.ai/schemas/`.
+- **Domain:** Henge web lives at **henge.verafy.ai** (store, sign-in and the `/v1` API). Staging is a Vercel preview of
+  the same project. The website's Install, Browse Henges and download links move to Henge web once staging exists.
+- **Website claims (Part A, verafy-website #83):** the site says macOS first with Windows and Linux later, API keys
+  later, earning after a short trial, a 20% platform fee, "No member owns it" and "Verafy runs the court and publishes
+  how every jury is drawn". A site test (`HENGE_RELEASE`) mirrors this file: API mode off, Mac only. Change both
+  together.
+- **Mac alpha:** approved. The site's install button becomes "Join the Mac alpha": it signs in with the existing
+  Verafy account and stores the account id, platform and time. Nothing else. It gives way to the real download when
+  M7 ships a notarized build.
+- **Lineage:** the "Find a genealogy Henge" button stays removed until Lineage has a public site.
+- **Prompt Guard screening is decided** (see the 2026-11-25 Prompt Guard bullet below): the M6 "Screening (Needs Rex)"
+  entry is closed. `heuristic-v1` stays only until the vendored Prompt Guard lands in M7.
+- **Henge communities** (Constitution, Conclave, Judiciary, Treasury, founding a Henge) get their own spec,
+  `docs/HENGE-COMMUNITIES-SPEC.md`, reviewed by Rex before code. Its milestones C1 to C3 start after M7; C4 (Treasury
+  and paid access in dollars) waits for G2 and legal sign-off. This replaces the "after G2" note below.
+- **E2E databases:** each Playwright suite resets its own PGlite directory before it starts (Verafyai/henge #2).
 
 ## Rex's decisions (2026-11-25)
 
@@ -43,8 +112,8 @@ These settle the open items from M0 to M3. Where an earlier section below says *
   Windows and Linux jobs come back when those builds exist.
 - **Spec:** the current spec is "Swarm Explorer: product spec" (`docs/SWARM-EXPLORER-SPEC.md`). There is no newer
   addendum.
-- **Name:** the desktop app is **Henge by Verafy**. Swarm Explorer is the web view of the swarms. The app name and
-  bundle ID are settled before code signing.
+- **Name:** the desktop app is **Henge by Verafy**. The web view of the swarms is **Henge web** (renamed in the
+  finish-up brief above). The app name and bundle ID are settled before code signing.
   - Henge community features (constitutions, treasuries, the judiciary) are not part of M4 to M7; they come after
     G2.
 
@@ -104,7 +173,8 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 
 ### Desktop client
 - Rebranded: appId `ai.verafy.swarmexplorer`, scheme `swarmexplorer://`, keychain service
-  `ai.verafy.swarmexplorer` (`.dev` for unpackaged runs), app origin `app://swarm-explorer`.
+  `ai.verafy.swarmexplorer` (`.dev` for unpackaged runs), app origin `app://swarm-explorer`. **Superseded:** the
+  identifiers are now `ai.verafy.henge`, `henge://` and `app://henge` (finish-up brief, top of this file).
 - Deep links follow SPEC 4.4 exactly: `swarm`, `model`, `harness`, `result`, `join`, `publisher`, plus the auth
   callback. No link carries query parameters. `join` opens a review screen that cannot join. The legacy
   `swarmstarter://` scheme is **not** registered: the spec allows it only as a redirect after an approved
@@ -123,6 +193,19 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 ### CLI
 - The binary is `swarm`. M0 has `swarms`, `show` and `validate <manifest.yaml>`. `init`, `dev`, `verify`,
   `package` and `publish` exit 3 naming M11; `login` names M1 and `node` names M5.
+
+## M7 Prompt Guard (2026-11-25)
+
+- Prompt Guard from `Verafyai/prompt-guard` is vendored in `packages/prompt-guard` at commit `caae11c` (upstream
+  0.1.0, MIT, no release tags, so the pin is the commit). Files are byte-identical to upstream; `vendor/PIN.json`
+  holds their SHA-256 and the package test fails on any change. Updating is a documented copy and re-pin (VENDOR.md).
+- `promptGuardScreener` (`packages/sandbox/src/prompt-guard.ts`) replaces `heuristic-v1` in the node supervisor and
+  the sandbox self-checks. It scans every string in the task input and records each flagged rule with its JSON path.
+  The screener name in every run record is `prompt-guard/1@caae11c`, so a verdict always says which guard made it.
+- Flagged input still runs, as before: the sandbox's structural protections do not depend on the screen, and the
+  verdict travels to verifiers and juries. Juries will use the guard's `compile` and `renderGuarded` on evidence
+  (communities spec 5.7); that lands with the jury work, not here.
+- `heuristic-v1` stays in `broker.ts` only for its existing unit tests.
 
 ## M1 Node shell and first run (2026-11-24)
 
@@ -320,7 +403,7 @@ These settle the open items from M0 to M3. Where an earlier section below says *
   sends its own is refused.
 - **Output schema:** output must be JSON matching the bundle's output schema, so an answer that adds fields
   is rejected.
-- **Screening (Needs Rex):** task input is screened before model use and the verdict recorded. The screener is a
+- **Screening (decided 2026-11-25, Prompt Guard from M7):** task input is screened before model use and the verdict recorded. The screener is a
   labeled heuristic stand-in (`heuristic-v1`) until the Prompt Guard model runs as a host capability. Flagged
   input still runs, because the structural protections do not depend on the screen.
 
@@ -426,6 +509,9 @@ These settle the open items from M0 to M3. Where an earlier section below says *
   - `danger`;
   - `live`.
 - The app header shows the Henge mark with "HENGE // by Verafy".
-- **E2E prerequisite (unchanged):** the client suite needs a fresh local database each run:
-  `pnpm db:reset && pnpm --filter @swarm-explorer/client release:test`, then `pnpm e2e`. A later test publishes
-  a permission-changing release, so a second run against the same database fails.
+- **E2E databases (Rex, 2026-11-25):** each Playwright suite owns its database and resets it on every run.
+  - The client suite uses `.data/pglite-e2e-client`. Its webServer step wipes, migrates and seeds it, publishes
+    the test-signed update manifest (`release:test`), then starts the website.
+  - The web suite does the same with `.data/pglite-e2e-web`.
+  - Neither touches the dev database in `.data/pglite`, and neither reuses a running server. If port 3000 is
+    busy, stop the dev server first.

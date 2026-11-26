@@ -19,7 +19,7 @@ export default async function Login({ searchParams }: { searchParams: SP }) {
 
   return (
     <div className="mx-auto max-w-md px-4 py-16">
-      <h1 className="text-3xl font-bold tracking-tight text-ink">Sign in to Swarm Explorer</h1>
+      <h1 className="text-3xl font-bold tracking-tight text-ink">Sign in to Henge web</h1>
       <p className="mt-3 text-ink-2">
         Signing in here connects the Henge desktop app to your account. Joining swarms, running your node and your Wallet live in the client.
       </p>

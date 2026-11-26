@@ -9,14 +9,14 @@ export function VerafyMark({ className }: { className?: string }) {
   );
 }
 
-/** Verafy logo, thin divider, then the Swarm Explorer wordmark with Explorer in the brand teal (SPEC 4.3). */
-export function Logo({ className, href = '/' }: { className?: string; href?: string }) {
+/** Verafy logo, thin divider, then the Henge web wordmark with "web" in the brand color (SPEC 4.3; renamed per DECISIONS 2026-11-25). */
+export function Logo({ className, href = '/swarms' }: { className?: string; href?: string }) {
   return (
-    <a href={href} className={cn('flex shrink-0 items-center gap-3 whitespace-nowrap text-ink', className)} aria-label="Swarm Explorer by Verafy, home">
+    <a href={href} className={cn('flex shrink-0 items-center gap-3 whitespace-nowrap text-ink', className)} aria-label="Henge web by Verafy, home">
       <VerafyMark className="h-[18px] w-auto" />
       <span aria-hidden="true" className="h-5 w-px bg-zinc-300" />
       <span className="text-[17px] font-bold tracking-tight">
-        Swarm <span className="text-brand">Explorer</span>
+        Henge <span className="text-brand">web</span>
       </span>
     </a>
   );

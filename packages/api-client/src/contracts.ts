@@ -1,5 +1,5 @@
 /**
- * Wire contracts for the Swarm Explorer API (SPEC 13). Shared by the website's route
+ * Wire contracts for the Henge web API (SPEC 13). Shared by the website's route
  * handlers, the desktop client and the CLI, so both ends parse the same shapes.
  * All APIs are versioned under /v1 and errors are `{error:{code,message,details}}`.
  */
