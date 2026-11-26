@@ -10,6 +10,7 @@ import { installStagingBypass } from './staging-bypass';
 import { SCHEME, deepLinkFromArgv, parseDeepLink } from './deeplinks';
 import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
+import { revocationKeys } from './config';
 import { NodeController } from './node';
 import { TRAY_ICON_1X, TRAY_ICON_2X } from './tray-icon';
 import { KeyringStore } from './secrets';
@@ -219,6 +220,7 @@ void app.whenReady().then(async () => {
     userDataDir: app.getPath('userData'),
     appVersion: app.getVersion(),
     channel: CHANNEL,
+    revocationKeys: revocationKeys(),
     // Fixture hardware and a stand-in Ollama are test hooks for unpackaged runs only (SPEC 16.4 M1).
     testHooks: app.isPackaged
       ? null

@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 import type { Channel } from '../shared/bridge';
+import type { PlatformPublicKey } from '@swarm-explorer/schema/node';
+import { parsePinnedKeys } from './kill-switch';
 import { DEFAULT_KEYCHAIN_SERVICE } from './secrets';
 
 export const DEV_SERVER = process.env['ELECTRON_RENDERER_URL'] || undefined;
@@ -44,4 +46,14 @@ export function releasePublicKey(): string | null {
     dir = path.dirname(dir);
   }
   return null;
+}
+
+/**
+ * Revocation feed keys (kill switch, M7), pinned at build time as MAIN_VITE_REVOCATION_PUBKEYS
+ * (`key_id=spki_base64url,...`). No production key exists yet (Needs Rex), so a build without the
+ * variable trusts the keys the feed lists over its own connection: signatures are still checked, but
+ * the trust root is the API host. Internal test builds only.
+ */
+export function revocationKeys(): PlatformPublicKey[] | null {
+  return parsePinnedKeys(import.meta.env['MAIN_VITE_REVOCATION_PUBKEYS'] as string | undefined);
 }

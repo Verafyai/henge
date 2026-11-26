@@ -45,7 +45,7 @@ describe('/v1 catalog routes', () => {
 
   it('serves models, harness releases and the revocation feed', async () => {
     const m = modelListSchema.parse(await (await models()).json());
-    expect(m.items.find((x) => x.slug === 'qwen2.5-coder-7b')?.acceptedSwarms).toContain('challenge-vaults');
+    expect(m.items.find((x) => x.slug === 'phi4-14b')?.acceptedSwarms).toContain('challenge-vaults');
     const h = harnessReleaseSchema.parse(await (await harness(req('/harnesses/lean-prover/releases/1.4.0'), params({ name: 'lean-prover', version: '1.4.0' }))).json());
     expect(h.bundleHash).toMatch(/^sha256-[0-9a-f]{64}$/);
     expect(h.runtime).toBe('wasm');

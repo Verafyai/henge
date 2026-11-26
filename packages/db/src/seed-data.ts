@@ -1,12 +1,14 @@
 /**
- * Example seed data for local development and tests. Every account, model, size and
- * price here is example data. Swarm manifests come from packages/schema/fixtures.
+ * Seed data for local development and tests. Accounts, tasks and qualification answers are example
+ * data. The model catalog is the approved one (real pins, see `seedModels`). Swarm manifests come
+ * from packages/schema/fixtures.
  */
 
 export const seedAccounts = [
   { handle: 'demo', displayName: 'Demo Contributor', platformRole: 'none' },
   { handle: 'verafy-team', displayName: 'Verafy Team (example)', platformRole: 'none' },
   { handle: 'reviewer', displayName: 'Example Reviewer', platformRole: 'reviewer' },
+  { handle: 'admin', displayName: 'Example Admin', platformRole: 'admin' },
 ] as const;
 
 export const seedOauthClients = [
@@ -30,17 +32,23 @@ export const seedPublisher = {
 export const seedSwarmFiles = ['verafy-dao-juries.yaml', 'challenge-vaults.yaml', 'prompt-guard-red-team.yaml'] as const;
 
 /**
- * Example model catalog. Names follow the spec's examples (SPEC 2.1) and are not
- * recommendations. Sizes and context lengths are approximate illustrations. The content
- * hashes are fixture digests, not the real artifacts, so a node's hash check refuses them. Source
- * references point at the public names a real catalog would pin.
+ * The model catalog: the five models Rex approved on 2026-11-25. Every value here is copied from
+ * `docs/catalog/proposal-2026-11-25.json` (Verafyai/henge #5), which
+ * `packages/node-core/scripts/registry-digests.mjs` pulled from the public Ollama registry:
+ * - `contentHash` is the sha256 of the tag's registry manifest, the digest Ollama reports for the tag;
+ * - `sizeBytes` is the sum of the manifest's layers, what a pull downloads;
+ * - every tag pins an exact quantization, never a moving tag; licenses are MIT or Apache-2.0.
+ *
+ * The proposal records no context lengths, so none are claimed (null). Model classes are this seed's
+ * assignment so each launch manifest's policy matches at least one model, with three families for
+ * the diverse jury (phi, qwen, mistral); Rex has not reviewed the class names (DECISIONS M7).
  */
 export const seedModels = [
-  { slug: 'llama3.3-70b', source: 'ollama', family: 'llama', displayName: 'Llama 3.3 70B', modelClass: 'jury-panel-member', licenseId: 'llama3.3-community', artifact: { versionLabel: '70b-instruct-q4_K_M', sourceRef: 'llama3.3:70b-instruct-q4_K_M', sizeBytes: 42_500_000_000, contextLength: 131_072, quantization: 'Q4_K_M' } },
-  { slug: 'qwen2.5-72b', source: 'ollama', family: 'qwen', displayName: 'Qwen 2.5 72B', modelClass: 'jury-panel-member', licenseId: 'qwen', artifact: { versionLabel: '72b-instruct-q4_K_M', sourceRef: 'qwen2.5:72b-instruct-q4_K_M', sizeBytes: 47_400_000_000, contextLength: 32_768, quantization: 'Q4_K_M' } },
-  { slug: 'mistral-small-24b', source: 'ollama', family: 'mistral', displayName: 'Mistral Small 24B', modelClass: 'jury-panel-member', licenseId: 'apache-2.0', artifact: { versionLabel: '24b-instruct-q4_K_M', sourceRef: 'mistral-small:24b-instruct-2501-q4_K_M', sizeBytes: 14_300_000_000, contextLength: 32_768, quantization: 'Q4_K_M' } },
-  { slug: 'qwen2.5-coder-7b', source: 'ollama', family: 'qwen', displayName: 'Qwen 2.5 Coder 7B', modelClass: 'code-7b-plus', licenseId: 'apache-2.0', artifact: { versionLabel: '7b-instruct-q4_K_M', sourceRef: 'qwen2.5-coder:7b-instruct-q4_K_M', sizeBytes: 4_700_000_000, contextLength: 32_768, quantization: 'Q4_K_M' } },
-  { slug: 'llama3.1-8b-gguf', source: 'huggingface', family: 'llama', displayName: 'Llama 3.1 8B Instruct (GGUF)', modelClass: 'instruct-7b-plus', licenseId: 'llama3.1-community', artifact: { versionLabel: 'Q4_K_M.gguf', sourceRef: 'bartowski/Meta-Llama-3.1-8B-Instruct-GGUF@main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf', sizeBytes: 4_900_000_000, contextLength: 131_072, quantization: 'Q4_K_M' } },
+  { slug: 'phi4-mini-3.8b', source: 'ollama', family: 'phi', displayName: 'Phi-4 Mini 3.8B', modelClass: 'jury-panel-member', licenseId: 'mit', artifact: { versionLabel: '3.8b-q4_K_M', sourceRef: 'phi4-mini:3.8b-q4_K_M', contentHash: 'sha256-78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753', sizeBytes: 2_491_876_774, contextLength: null, quantization: 'Q4_K_M' } },
+  { slug: 'qwen2.5-7b', source: 'ollama', family: 'qwen', displayName: 'Qwen 2.5 7B Instruct', modelClass: 'jury-panel-member', licenseId: 'apache-2.0', artifact: { versionLabel: '7b-instruct-q4_K_M', sourceRef: 'qwen2.5:7b-instruct-q4_K_M', contentHash: 'sha256-845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e', sizeBytes: 4_683_087_332, contextLength: null, quantization: 'Q4_K_M' } },
+  { slug: 'mistral-nemo-12b', source: 'ollama', family: 'mistral', displayName: 'Mistral NeMo 12B Instruct', modelClass: 'jury-panel-member', licenseId: 'apache-2.0', artifact: { versionLabel: '12b-instruct-2407-q4_K_M', sourceRef: 'mistral-nemo:12b-instruct-2407-q4_K_M', contentHash: 'sha256-daf6737417121831e572a9c482e92a221ee0c33537f35f1f857c7b4f7191df55', sizeBytes: 7_477_217_229, contextLength: null, quantization: 'Q4_K_M' } },
+  { slug: 'phi4-14b', source: 'ollama', family: 'phi', displayName: 'Phi-4 14B', modelClass: 'code-7b-plus', licenseId: 'mit', artifact: { versionLabel: '14b-q4_K_M', sourceRef: 'phi4:14b-q4_K_M', contentHash: 'sha256-ac896e5b8b34a1f4efa7b14d7520725140d5512484457fab45d2a4ea14c69dba', sizeBytes: 9_053_116_391, contextLength: null, quantization: 'Q4_K_M' } },
+  { slug: 'mistral-small-24b', source: 'ollama', family: 'mistral', displayName: 'Mistral Small 24B Instruct', modelClass: 'jury-panel-member', licenseId: 'apache-2.0', artifact: { versionLabel: '24b-instruct-2501-q4_K_M', sourceRef: 'mistral-small:24b-instruct-2501-q4_K_M', contentHash: 'sha256-8039dd90c1138d772437a0779a33b7349efd5d9cca71edcd26e4dd463f90439d', sizeBytes: 14_333_921_662, contextLength: null, quantization: 'Q4_K_M' } },
 ] as const;
 
 /**

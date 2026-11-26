@@ -112,3 +112,7 @@ export function bundleIndex(root: string): BundleFile[] {
 export function bundleDigest(root: string): Digest {
   return sha256Digest(canonicalJson({ bundle_index_version: 1, files: bundleIndex(root) }));
 }
+
+/* Platform signed statements (M7): kill switch entries and contribution receipts. */
+export * from './signed';
+export * from './receipt';

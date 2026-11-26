@@ -77,6 +77,11 @@ export default async function SwarmPage({ params }: { params: Params }) {
               </ul>
             )}
             {q.note && <p className="mt-2 text-xs text-zinc-500">{q.note}</p>}
+            {q.id === 'outcomes' && (
+              <a href={`/swarms/${s.slug}/results`} className="mt-2 inline-block text-sm font-semibold text-brand hover:underline">
+                See verified results
+              </a>
+            )}
           </section>
         ))}
       </div>

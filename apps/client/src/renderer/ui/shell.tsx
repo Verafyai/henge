@@ -266,7 +266,11 @@ function NodeStatus({ online }: { online: boolean }) {
   const setup = o?.setup ?? null;
   const paused = o?.paused ?? false;
   const t = o?.tasks;
-  const state = paused
+  const kill = o?.kill;
+  const stopped = kill?.global ? `Verafy has stopped all work for now: ${kill.global.reason}` : kill?.swarms[0] ? `Verafy has stopped work for ${kill.swarms[0].swarm}: ${kill.swarms[0].reason}` : null;
+  const state = kill?.global
+    ? { label: 'Stopped by Verafy', tone: 'offline' as const, detail: stopped! }
+    : paused
     ? { label: 'Paused', tone: 'paused' as const, detail: 'nothing will run until you resume' }
     : t?.current
       ? { label: 'Running', tone: 'active' as const, detail: `a task for ${t.current.swarm} on ${t.current.model}` }

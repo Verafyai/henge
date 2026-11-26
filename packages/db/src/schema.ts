@@ -60,7 +60,7 @@ export const featuredStatus = pgEnum('featured_status', ['none', 'featured', 're
 export const reviewTarget = pgEnum('review_target', ['swarm_release', 'harness_release', 'model', 'publisher']);
 export const reviewOutcome = pgEnum('review_outcome', ['approved', 'rejected', 'changes_requested']);
 export const reportStatus = pgEnum('report_status', ['open', 'reviewing', 'actioned', 'dismissed']);
-export const revocationTarget = pgEnum('revocation_target', ['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version']);
+export const revocationTarget = pgEnum('revocation_target', ['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version', 'platform']);
 export const severity = pgEnum('severity', ['low', 'high', 'critical']);
 export const membershipStatus = pgEnum('membership_status', ['joining', 'qualifying', 'active', 'paused', 'reconsent_required', 'left']);
 export const qualificationOutcome = pgEnum('qualification_outcome', ['in_progress', 'passed', 'failed']);
@@ -272,7 +272,8 @@ export const modelArtifacts = pgTable(
     /** sha256-<hex>. Nodes verify this before first use and refuse mutable tag drift (SPEC 5.4). */
     contentHash: text('content_hash').notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    contextLength: integer('context_length').notNull(),
+    /** Null when the pinned catalog source does not record it (the approved catalog proposal has none). */
+    contextLength: integer('context_length'),
     quantization: text('quantization').notNull(),
     runtimeFormats: text('runtime_formats').array().notNull(),
     catalogVersion: integer('catalog_version').notNull(),
@@ -426,9 +427,52 @@ export const revocations = pgTable(
     severity: severity('severity').notNull(),
     signedPayload: text('signed_payload').notNull(),
     effectiveAt: ts('effective_at').notNull(),
+    /**
+     * Kill switch (SPEC 11.6, M7): `revoke` stops the target, `restore` lifts an earlier revoke. The
+     * newest entry per target decides. Older rows default to revoke.
+     */
+    action: text('action', { enum: ['revoke', 'restore'] }).notNull().default('revoke'),
+    /** `keyId:base64url` Ed25519 signature over `swarm-explorer-revocation-v1\n` + signed_payload. */
+    signature: text('signature'),
+    actorAccountId: uuid('actor_account_id').references(() => accounts.id),
+    idempotencyKey: text('idempotency_key'),
     createdAt: createdAt(),
   },
-  (t) => [index('revocations_effective_idx').on(t.effectiveAt)],
+  (t) => [index('revocations_effective_idx').on(t.effectiveAt), uniqueIndex('revocations_idempotency_idx').on(t.idempotencyKey)],
+);
+
+/**
+ * Platform signing keys (M7): the revocation feed key and the receipt key. Public halves only; the
+ * private halves come from the deployment's environment, or a per-process key in development.
+ */
+export const platformKeys = pgTable(
+  'platform_keys',
+  {
+    id: id(),
+    keyId: text('key_id').notNull(),
+    /** Ed25519 SPKI DER, base64url. */
+    publicKey: text('public_key').notNull(),
+    purpose: text('purpose', { enum: ['revocation', 'receipt'] }).notNull(),
+    status: keyStatus('status').notNull().default('active'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('platform_keys_key_id_idx').on(t.keyId)],
+);
+
+/**
+ * Signed contribution receipts (SPEC 4.2 Result/receipt, M7): one per settled result, issued once and
+ * kept, so a downloaded receipt never changes. The receipt is the signed JSON document itself.
+ */
+export const receipts = pgTable(
+  'receipts',
+  {
+    resultId: uuid('result_id').primaryKey().references(() => results.id),
+    accountId: uuid('account_id').notNull().references(() => accounts.id),
+    receiptJson: jsonb('receipt_json').notNull(),
+    keyId: text('key_id').notNull(),
+    issuedAt: createdAt(),
+  },
+  (t) => [index('receipts_account_idx').on(t.accountId)],
 );
 
 /* ----------------------------------------------------------------------------
@@ -573,6 +617,8 @@ export const leases = pgTable(
     settledAt: ts('settled_at'),
     rejectedAt: ts('rejected_at'),
     clawedBackAt: ts('clawed_back_at'),
+    /** Why the platform cancelled an open lease, for example `kill_switch` (M7). Null for node abandons. */
+    cancelReason: text('cancel_reason'),
     idempotencyKey: text('idempotency_key').notNull(),
   },
   (t) => [

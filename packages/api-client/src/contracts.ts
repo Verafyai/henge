@@ -103,7 +103,8 @@ export const modelArtifactSchema = z.object({
   versionLabel: z.string(),
   contentHash: digestSchema,
   sizeBytes: z.number().int().positive(),
-  contextLength: z.number().int().positive(),
+  /** Null when the pinned catalog source does not record it. */
+  contextLength: z.number().int().positive().nullable(),
   quantization: z.string(),
   runtimeFormats: z.array(z.string()),
   catalogVersion: z.number().int().nonnegative(),
@@ -187,14 +188,26 @@ export type HarnessReleaseInfo = z.infer<typeof harnessReleaseSchema>;
 
 export const revocationSchema = z.object({
   id: z.uuid(),
-  targetType: z.enum(['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version']),
+  targetType: z.enum(['swarm', 'swarm_release', 'harness_release', 'model_artifact', 'publisher_key', 'client_version', 'platform']),
   targetId: z.string(),
   reason: z.string(),
   severity: z.enum(['low', 'high', 'critical']),
   signedPayload: z.string(),
   effectiveAt: isoDate,
+  /** `revoke` stops the target; `restore` lifts an earlier revoke (kill switch, M7). Newest per target wins. */
+  action: z.enum(['revoke', 'restore']),
+  /** `keyId:base64url` over `swarm-explorer-revocation-v1\n` + signedPayload; null for unsigned legacy rows. */
+  signature: z.string().nullable(),
 });
-export const revocationFeedSchema = z.object({ items: z.array(revocationSchema), next: isoDate.nullable() });
+export type RevocationEntry = z.infer<typeof revocationSchema>;
+/** A platform public key (revocation feed or receipts): Ed25519 SPKI DER, base64url. */
+export const platformKeySchema = z.object({ key_id: z.string().min(1).max(120), public_key: z.string().min(40).max(200), status: z.enum(['active', 'revoked']) });
+export const revocationFeedSchema = z.object({
+  items: z.array(revocationSchema),
+  next: isoDate.nullable(),
+  /** Keys that sign the feed. Production clients pin these at build time; test builds may trust this list (M7). */
+  keys: z.array(platformKeySchema),
+});
 export const revocationsQuerySchema = z.object({ since: isoDate.optional() });
 
 /* ----------------------------------------------------------------------------
@@ -259,7 +272,7 @@ export const leaseStartedSchema = leaseInputSchema.extend({ status: z.literal('r
 export const leaseRenewedSchema = z.object({ lease_id: z.uuid(), deadline_at: isoDate, renewals: z.number().int().nonnegative() });
 
 /** POST /v1/leases/{id}/abandon: an immediate, unpaid return. */
-export const abandonReasonSchema = z.enum(['paused', 'left', 'run_rules', 'local_failure', 'signed_out', 'pin_mismatch']);
+export const abandonReasonSchema = z.enum(['paused', 'left', 'run_rules', 'local_failure', 'signed_out', 'pin_mismatch', 'kill_switch']);
 export type AbandonReason = z.infer<typeof abandonReasonSchema>;
 export const leaseAbandonSchema = z.object({ reason: abandonReasonSchema }).strict();
 export const leaseAbandonedSchema = z.object({ lease_id: z.uuid(), status: leaseStatusSchema, requeued: z.boolean() });
@@ -541,3 +554,57 @@ export const resultListSchema = z.object({ items: z.array(resultItemSchema) });
 export const clawbackSchema = z.object({ reason: z.string().min(3).max(500) }).strict();
 export const clawedBackSchema = z.object({ result_id: z.uuid(), status: z.literal('clawed_back'), duplicate: z.boolean() });
 
+
+/* ----------------------------------------------------------------------------
+ * Kill switch, public results and receipts (SPEC 4.2, 11.6, 13.3, 13.4), M7
+ * ------------------------------------------------------------------------- */
+
+/** POST /v1/admin/revocations: a platform admin stops all work or one swarm, or lifts a stop (Idempotency-Key). */
+export const killSwitchRequestSchema = z
+  .object({
+    target: z.enum(['platform', 'swarm']),
+    swarm: slugSchema.optional(),
+    action: z.enum(['revoke', 'restore']),
+    reason: z.string().trim().min(3).max(300),
+  })
+  .strict()
+  .refine((b) => (b.target === 'swarm') === Boolean(b.swarm), { message: 'Name the swarm for a swarm stop, and only then.' });
+export const killSwitchRecordedSchema = z.object({ revocation: revocationSchema, duplicate: z.boolean(), cancelled_leases: z.number().int().nonnegative() });
+
+/** One verified result as the public sees it: hashes, pins and verification, never inputs, outputs, nodes or accounts. */
+export const publicResultSchema = z.object({
+  result_id: z.uuid(),
+  swarm: slugSchema,
+  output_sha256: digestSchema,
+  harness: z.object({ name: z.string(), version: z.string(), hash: digestSchema }),
+  model_artifact_hash: digestSchema.nullable(),
+  verification: z.array(z.object({ method: verificationMethodSchema, outcome: z.literal('accepted'), verifier_version: z.string() })),
+  impact_units: z.number().int().nonnegative(),
+  settled_at: isoDate,
+});
+export type PublicResult = z.infer<typeof publicResultSchema>;
+
+/** GET /v1/swarms/{id}/results: public, unauthenticated. Settled results only, plus aggregate counts. */
+export const publicResultsSchema = z.object({
+  swarm: z.object({ slug: slugSchema, name: z.string(), funded: z.boolean() }),
+  counts: z.object({
+    settled: z.number().int().nonnegative(),
+    pending: z.number().int().nonnegative(),
+    in_verification: z.number().int().nonnegative(),
+    rejected: z.number().int().nonnegative(),
+    impact_settled: z.number().int().nonnegative(),
+  }),
+  items: z.array(publicResultSchema),
+});
+export type PublicResults = z.infer<typeof publicResultsSchema>;
+
+/** GET /v1/receipts/keys: the keys that sign contribution receipts, for offline verification. */
+export const receiptKeysSchema = z.object({ keys: z.array(platformKeySchema) });
+
+/**
+ * GET /v1/me/results/{id}/receipt: the signed receipt for one of the caller's settled results. The
+ * shape is checked here loosely; `verifyReceipt` in @swarm-explorer/schema/node checks it exactly.
+ */
+export const receiptEnvelopeSchema = z.object({
+  receipt: z.record(z.string(), z.unknown()).and(z.object({ receipt_version: z.literal(1), signature: z.string() })),
+});

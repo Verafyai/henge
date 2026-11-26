@@ -28,8 +28,9 @@ export default defineConfig({
       command:
         'pnpm --filter @swarm-explorer/db reset && pnpm --filter @swarm-explorer/client release:test && pnpm --filter @swarm-explorer/web start',
       // DEV_SIGN_IN enables the example-user sign in that stands in for real identity providers.
-      // An empty DATABASE_URL keeps every step on the embedded database.
-      env: { DEV_SIGN_IN: '1', PGLITE_DIR: E2E_DB, DATABASE_URL: '', VERIFIER_WORKER_KEYS: `${WORKER_KEY_ID}=${workerPublic}` },
+      // An empty DATABASE_URL keeps every step on the embedded database. SEED_TEST_MODELS adds the two
+      // labelled test-only catalog entries this suite needs (packages/db/src/seed-test-models.ts).
+      env: { DEV_SIGN_IN: '1', SEED_TEST_MODELS: '1', PGLITE_DIR: E2E_DB, DATABASE_URL: '', VERIFIER_WORKER_KEYS: `${WORKER_KEY_ID}=${workerPublic}` },
       url: 'http://localhost:3000/v1/health',
       reuseExistingServer: false,
       timeout: 180_000,

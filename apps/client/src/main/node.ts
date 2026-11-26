@@ -9,10 +9,12 @@ import { accessSync, chmodSync, constants, mkdirSync, readdirSync, rmSync } from
 import path from 'node:path';
 import { utilityProcess, type UtilityProcess } from 'electron';
 import { capabilitiesAcceptedSchema, createApiClient, registerInstallResponseSchema } from '@swarm-explorer/api-client';
+import type { PlatformPublicKey } from '@swarm-explorer/schema/node';
 import { describeRunRules, enforcementSupport, minimizeCapabilities, ollamaBaseUrl, recommendMode, type RunRules } from '@swarm-explorer/node-core';
 import { nodeSetupSchema, supervisorMessageSchema, type Detection, type HarnessRunResult, type HarnessRunSpec, type NodeOverview, type NodeSetup, type SandboxCheck, type SupervisorCommand, type SupervisorMessage } from '../shared/node';
 import type { AuthManager } from './auth';
 import type { EncryptedCache } from './cache';
+import { KillSwitchWatcher } from './kill-switch';
 import { MembershipManager } from './memberships';
 import { ModelManager } from './models';
 import { readSensors } from './sensors';
@@ -28,6 +30,8 @@ export type NodeControllerOpts = {
   userDataDir: string;
   appVersion: string;
   channel: string;
+  /** Revocation feed keys pinned at build time; null means trust the feed's keys (unpackaged test builds only). */
+  revocationKeys: PlatformPublicKey[] | null;
   /** Unpackaged test hooks; main passes them only when the app is not packaged. */
   testHooks: { hardwareFixture?: string; ollamaHost?: string; hfBase?: string; sensorFixture?: string } | null;
 };
@@ -63,6 +67,7 @@ export class NodeController extends EventEmitter {
   readonly models: ModelManager;
   readonly memberships: MembershipManager;
   readonly tasks: TaskRunner;
+  readonly kill: KillSwitchWatcher;
   private proxy: UtilityProcess | null = null;
   private proxyRestarts = 0;
   /** Session capability key shared by the supervisor (mints) and proxy (verifies). Never on disk. */
@@ -105,6 +110,11 @@ export class NodeController extends EventEmitter {
         remove: (runtime, location) => call({ type: 'remove', id: this.nextId++, runtime, location }, (m) => (m.type === 'removed' ? m.ok : undefined)),
       },
     });
+    this.kill = new KillSwitchWatcher({
+      fetchFeed: (signal) => createApiClient({ baseUrl: opts.apiBaseUrl, fetch: (u, init) => fetch(u, { ...init, signal }) }).revocations(),
+      pinnedKeys: opts.revocationKeys,
+      onChange: () => this.onKillChange(),
+    });
     this.memberships = new MembershipManager({
       auth: opts.auth,
       cache: opts.cache,
@@ -116,6 +126,7 @@ export class NodeController extends EventEmitter {
       changed: () => this.emit('changed'),
       run: (spec, signal) => this.runHarness(spec, signal),
       beforeLeave: (id) => this.tasks.onLeave(id),
+      kill: this.kill,
     });
     const support = () => enforcementSupport(this.detection?.hardware.os.platform ?? process.platform);
     this.tasks = new TaskRunner({
@@ -131,7 +142,24 @@ export class NodeController extends EventEmitter {
       },
       appVersion: opts.appVersion,
       changed: () => this.emit('changed'),
+      kill: this.kill,
     });
+  }
+
+  /**
+   * A stop or restore arrived on the signed feed (M7): stop the running task and qualification at
+   * once and show why; delete the cached harness of every stopped swarm (SPEC 15.2). A restore lets
+   * the next pass start work again.
+   */
+  private onKillChange() {
+    const why = this.kill.stoppedReason();
+    this.tasks.applyKill();
+    if (why) this.memberships.stopAll(why);
+    for (const swarm of this.kill.stoppedSwarms()) {
+      const reason = this.kill.stoppedReason(swarm)!;
+      this.memberships.stopSwarm(swarm, reason);
+    }
+    this.emit('changed');
   }
 
   /** A private 0700 socket folder (stale sockets cleared), or a named pipe on Windows (SPEC 11.2). */
@@ -234,10 +262,12 @@ export class NodeController extends EventEmitter {
     });
     if (this.paused) this.send({ type: 'pause' });
     this.send({ type: 'sandbox-config', key: this.capabilityKey, socketPath: this.socketPath });
+    this.kill.start();
     this.tasks.start();
   }
 
   stop() {
+    this.kill.stop();
     this.tasks.stop();
     this.restarts = Infinity;
     this.proxyRestarts = Infinity;
@@ -357,6 +387,7 @@ export class NodeController extends EventEmitter {
       models: this.models.overview(),
       memberships: this.memberships.overview(),
       tasks: this.tasks.overview(),
+      kill: this.kill.view((this.memberships.overview().home?.joined ?? []).map((m) => m.swarm)),
     };
   }
 

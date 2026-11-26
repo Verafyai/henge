@@ -1,6 +1,8 @@
 import type { ResultItem, ResultState } from '@swarm-explorer/api-client';
+import { useState } from 'react';
+import type { ReceiptView } from '../../shared/bridge';
 import { useResults } from '../api';
-import { Empty } from '../ui/bits';
+import { Btn, Empty } from '../ui/bits';
 
 /** The server's state for each result (SPEC 8). Never more than is real. */
 export const RESULT_STATE: Record<ResultState, string> = {
@@ -59,8 +61,61 @@ export function ResultsList({ limit, label = 'Results' }: { limit?: number; labe
               <li key={t.state}>{`${RESULT_STATE[t.state]} ${time.format(new Date(t.at))}`}</li>
             ))}
           </ol>
+          {r.state === 'settled' && <Receipt resultId={r.result_id} />}
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The signed receipt for a settled result (M7): fetched and checked in the main process, shown here,
+ * and saved as a file anyone can verify offline. Volunteer receipts show impact, never credits.
+ */
+function Receipt({ resultId }: { resultId: string }) {
+  const [view, setView] = useState<ReceiptView | null | 'loading' | 'missing'>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  if (view === null)
+    return (
+      <Btn
+        variant="quiet"
+        className="mt-2 px-2 py-1 text-xs"
+        onClick={() => {
+          setView('loading');
+          void window.swarm.account.receipt(resultId).then((v) => setView(v ?? 'missing'));
+        }}
+      >
+        View receipt
+      </Btn>
+    );
+  if (view === 'loading') return <p className="mt-2 text-xs text-zinc-500">Fetching the signed receipt</p>;
+  if (view === 'missing') return <p className="mt-2 text-xs text-zinc-500">The receipt could not be fetched right now.</p>;
+  const rc = view.receipt;
+  return (
+    <section aria-label="Receipt" data-testid="receipt" data-verified={String(view.verified)} className="mt-2 rounded border border-zinc-200 p-2 text-xs">
+      <p className="font-semibold">{view.verified ? 'Receipt, signature checked' : 'Receipt, not verified'}</p>
+      <p className="text-zinc-600">{view.detail}</p>
+      <dl className="mt-1 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-zinc-600">
+        <dt>Receipt</dt>
+        <dd className="font-mono break-all">{rc.receipt_id}</dd>
+        <dt>Settled</dt>
+        <dd>{time.format(new Date(rc.timeline.settled_at))}</dd>
+        <dt>Checked by</dt>
+        <dd>{rc.verification.map((v) => v.method).join(', ')}</dd>
+        <dt>Earned</dt>
+        <dd data-testid="receipt-earned">{rc.earned.credits === null ? `${rc.earned.impact_units} impact` : `${rc.earned.impact_units} impact, ${rc.earned.credits} credits`}</dd>
+        <dt>Output hash</dt>
+        <dd className="font-mono break-all">{rc.result.output_sha256}</dd>
+        <dt>Signed by</dt>
+        <dd className="font-mono break-all">{rc.signer.key_id}</dd>
+      </dl>
+      <div className="mt-2 flex items-center gap-2">
+        <Btn variant="quiet" className="px-2 py-1 text-xs" onClick={() => void window.swarm.account.saveReceipt(resultId).then((r) => setSaved(r.saved ? r.path : null))}>
+          Save receipt
+        </Btn>
+        {saved && <span data-testid="receipt-saved">{`Saved to ${saved}`}</span>}
+      </div>
+      <p className="mt-1 text-zinc-500">Anyone can check a saved receipt offline with: swarm receipt verify &lt;file&gt;</p>
+    </section>
   );
 }

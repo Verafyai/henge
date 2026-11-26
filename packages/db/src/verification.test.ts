@@ -41,7 +41,7 @@ let coderHash = '';
 
 type Device = { accountId: string; nodeId: string; key: KeyObject };
 
-async function device(accountId: string, model = 'qwen2.5-coder-7b'): Promise<Device> {
+async function device(accountId: string, model = 'phi4-14b'): Promise<Device> {
   const db = await getDb();
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   const [inst] = await db
@@ -73,7 +73,7 @@ function signedRun(d: Device, leaseId: string, output: object, harnessHash: stri
   const record = {
     lease_id: leaseId,
     node_id: d.nodeId,
-    model: { source: 'local', claimed_id: 'qwen2.5-coder-7b', artifact_hash: coderHash },
+    model: { source: 'local', claimed_id: 'phi4-14b', artifact_hash: coderHash },
     harness_hash: harnessHash,
     tokens: { input: 1, output: 2 },
     elapsed_ms: 3,
@@ -82,7 +82,7 @@ function signedRun(d: Device, leaseId: string, output: object, harnessHash: stri
     client_version: '0.2.0',
   };
   const signature = sign(null, Buffer.from(`swarm-explorer-run-record-v1\n${canonicalJson(record)}`), d.key).toString('base64url');
-  return { modelIdClaim: 'qwen2.5-coder-7b', modelArtifactHash: coderHash, provider: null, harnessHash, tokensIn: 1, tokensOut: 2, elapsedMs: 3, costUsdMicrosReported: null, signature, record: { ...record, signature } };
+  return { modelIdClaim: 'phi4-14b', modelArtifactHash: coderHash, provider: null, harnessHash, tokensIn: 1, tokensOut: 2, elapsedMs: 3, costUsdMicrosReported: null, signature, record: { ...record, signature } };
 }
 
 /** Leases, starts and submits one task on a qualified device. */
@@ -112,7 +112,7 @@ beforeAll(async () => {
   const rows = await db.select({ id: accounts.id, handle: accounts.handle }).from(accounts);
   demo = rows.find((r) => r.handle === 'demo')!.id;
   team = rows.find((r) => r.handle === 'verafy-team')!.id;
-  const [art] = await db.select({ hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'qwen2.5-coder-7b'));
+  const [art] = await db.select({ hash: modelArtifacts.contentHash }).from(modelArtifacts).innerJoin(models, eq(models.id, modelArtifacts.modelId)).where(eq(models.slug, 'phi4-14b'));
   coderHash = art!.hash;
 }, 60_000);
 

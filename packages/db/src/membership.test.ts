@@ -22,7 +22,7 @@ import { runMigrations, seed } from './testing';
 let demo = '';
 let reviewer = '';
 
-async function newNode(withModel: string | null = 'qwen2.5-coder-7b') {
+async function newNode(withModel: string | null = 'phi4-14b') {
   const db = await getDb();
   const [inst] = await db
     .insert(installs)

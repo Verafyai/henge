@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { app, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
-import { installListSchema, meSchema, resultListSchema, walletSchema, type ResultItem, type Wallet } from '@swarm-explorer/api-client';
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
+import { createApiClient, installListSchema, meSchema, receiptEnvelopeSchema, resultListSchema, walletSchema, type ResultItem, type Wallet } from '@swarm-explorer/api-client';
+import { verifyReceipt } from '@swarm-explorer/schema/node';
 import { z } from 'zod';
-import { IPC, type Account, type AppInfo, type Install } from '../shared/bridge';
+import { IPC, type Account, type AppInfo, type Install, type ReceiptView } from '../shared/bridge';
 import type { Route } from '../shared/routes';
 import { AuthError, type AuthManager } from './auth';
 import type { EncryptedCache } from './cache';
@@ -11,7 +14,7 @@ import { runRulesSchema } from '@swarm-explorer/node-core';
 import { modelInstallInputSchema, nodeSetupInputSchema, type MembershipResult, type ModelActionResult } from '../shared/node';
 import { API_BASE_URL, CHANNEL, DEV_SERVER, releasePublicKey } from './config';
 import { isAllowedExternal, isAppUrl } from './security';
-import { checkForUpdates } from './updates';
+import { checkForUpdates, downloadUpdate, mirrorBase } from './updates';
 
 /** Rejects IPC from anything other than our own top level app frame. */
 function trusted(e: IpcMainInvokeEvent): boolean {
@@ -94,6 +97,45 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
     }
   }, null);
 
+  /** Fetches a receipt and checks it here against the platform's published receipt keys. */
+  const fetchReceipt = async (id: string) => {
+    const res = await auth.authedFetch(`/v1/me/results/${id}/receipt`);
+    const parsed = receiptEnvelopeSchema.safeParse(await res.json());
+    if (!res.ok || !parsed.success) return null;
+    const keys = await createApiClient({ baseUrl: API_BASE_URL }).receiptKeys().then((k) => k.keys).catch(() => undefined);
+    return { raw: parsed.data.receipt, check: verifyReceipt(parsed.data.receipt, keys) };
+  };
+
+  handle(IPC.receipt, z.uuid(), async (id): Promise<ReceiptView | null> => {
+    try {
+      const r = await fetchReceipt(id);
+      if (!r) return null;
+      if (!r.check.ok) return { receipt: r.raw as unknown as ReceiptView['receipt'], verified: false, detail: `This receipt did not verify (${r.check.reason}).` };
+      return {
+        receipt: r.check.receipt,
+        verified: r.check.keyTrusted === true,
+        detail: r.check.keyTrusted ? 'Signature checked on this computer against Verafy’s published receipt key.' : 'The signature matches, but the receipt keys could not be fetched to confirm the signer.',
+      };
+    } catch {
+      return null;
+    }
+  }, null);
+
+  handle(IPC.saveReceipt, z.uuid(), async (id) => {
+    try {
+      const r = await fetchReceipt(id);
+      if (!r) return { saved: false, path: null };
+      const win = BrowserWindow.getFocusedWindow();
+      const opts = { title: 'Save receipt', defaultPath: path.join(app.getPath('downloads'), `henge-receipt-${id}.json`), filters: [{ name: 'JSON', extensions: ['json'] }] };
+      const pick = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+      if (pick.canceled || !pick.filePath) return { saved: false, path: null };
+      await writeFile(pick.filePath, `${JSON.stringify(r.raw, null, 2)}\n`, { mode: 0o600 });
+      return { saved: true, path: pick.filePath };
+    } catch {
+      return { saved: false, path: null };
+    }
+  }, { saved: false, path: null });
+
   handle(IPC.revokeInstall, z.uuid(), async (id) => {
     try {
       const res = await auth.authedFetch(`/v1/me/installs/${id}`, { method: 'DELETE', headers: { 'idempotency-key': randomUUID() } });
@@ -125,6 +167,22 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
       installId: auth.installId,
     }),
     null,
+  );
+
+  handle(IPC.updatesDownload, none, () =>
+    downloadUpdate({
+      apiBaseUrl: API_BASE_URL,
+      currentVersion: app.getVersion(),
+      channel: CHANNEL,
+      platform: process.platform,
+      arch: process.arch,
+      publicKey: releasePublicKey(),
+      installId: auth.installId,
+      stagingDir: path.join(app.getPath('userData'), 'updates'),
+      // Test hook for unpackaged runs only: a local mirror of the pinned test release host.
+      mirror: app.isPackaged ? null : mirrorBase(process.env['SWARM_EXPLORER_RELEASE_MIRROR']),
+    }),
+    { kind: 'error', message: 'The update could not be downloaded.' },
   );
 
   handle(IPC.nodeOverview, none, () => deps.node().overview(), null);

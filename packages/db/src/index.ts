@@ -9,3 +9,6 @@ export * from './ledger';
 export * from './reputation';
 export * from './verification';
 export * from './wallet';
+export * from './platform-keys';
+export * from './kill-switch';
+export * from './public-results';

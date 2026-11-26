@@ -82,4 +82,10 @@ name and **Team ID** change, which changes the app's signing identity:
 ## 7. Publisher signing keys (SPEC 6.4, 11.6)
 - [ ] Verafy's production publisher key for the launch swarms: generate on hardware-backed or OS secure storage,
       never commit it. Seeds generate a throwaway `verafy-local-test-*` key per run and discard the private half.
-- [ ] Platform key for the signed revocation feed (SPEC 11.6), kept offline like the release key.
+- [ ] Platform key for the signed revocation feed and kill switch (SPEC 11.6), kept offline like the release key.
+      Built in M7: entries are Ed25519 signed over `swarm-explorer-revocation-v1\n` plus canonical JSON, and
+      clients pin keys at build time (`MAIN_VITE_REVOCATION_PUBKEYS`). Until a production key exists, the server
+      uses `PLATFORM_REVOCATION_KEY` if set, else a throwaway per process dev key, and test builds trust the keys
+      the feed lists.
+- [ ] Platform key for contribution receipts (M7), separate from the revocation key. Same rules: `PLATFORM_RECEIPT_KEY`
+      if set, else a throwaway dev key; public keys are listed at `GET /v1/receipts/keys`.

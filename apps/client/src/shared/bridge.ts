@@ -37,6 +37,8 @@ export type Install = {
 
 export type UpdateStatus =
   | { kind: 'available'; version: string; channel: string; notes: string; message: string }
+  /** Downloaded and checked against the signed size and sha256; not installed. */
+  | { kind: 'staged'; version: string; path: string; message: string }
   | { kind: 'none' | 'rejected' | 'error' | 'unavailable'; message: string };
 
 export interface SwarmBridge {
@@ -58,13 +60,21 @@ export interface SwarmBridge {
     wallet(): Promise<Wallet | null>;
     /** Recent results with their real verification state (SPEC 8). Null when signed out or offline. */
     results(): Promise<ResultItem[] | null>;
+    /** The signed receipt for one settled result, checked on this computer (M7). Null when unavailable. */
+    receipt(resultId: string): Promise<ReceiptView | null>;
+    /** Saves that receipt as a JSON file the user picks. Anyone can verify it offline with `swarm receipt verify`. */
+    saveReceipt(resultId: string): Promise<{ saved: boolean; path: string | null }>;
   };
   /** Recently viewed swarms, kept in the encrypted local cache. */
   recent: {
     list(): Promise<string[]>;
     add(slug: string): Promise<string[]>;
   };
-  updates: { check(): Promise<UpdateStatus> };
+  updates: {
+    check(): Promise<UpdateStatus>;
+    /** Downloads the verified update and checks its hash against the signed manifest. Installs nothing. */
+    download(): Promise<UpdateStatus>;
+  };
   /** Node shell (SPEC 5.1). Hardware facts and choices only; no keys or tokens ever cross. */
   node: {
     overview(): Promise<NodeOverview>;
@@ -111,6 +121,23 @@ export interface SwarmBridge {
   onNotice(cb: (message: string) => void): () => void;
 }
 
+/** A contribution receipt as the main process received and checked it (M7). */
+export type ReceiptView = {
+  receipt: {
+    receipt_id: string;
+    issued_at: string;
+    result: { id: string; output_sha256: string };
+    swarm: { slug: string; funded: boolean };
+    verification: Array<{ method: string }>;
+    timeline: { settled_at: string };
+    earned: { impact_units: number; credits: number | null };
+    signer: { key_id: string };
+  };
+  /** True when the signature checks out against one of the platform's published receipt keys. */
+  verified: boolean;
+  detail: string;
+};
+
 /** IPC channel names. Kept in one place so main and preload cannot drift. */
 export const IPC = {
   appInfo: 'app:info',
@@ -124,9 +151,12 @@ export const IPC = {
   revokeInstall: 'account:revoke-install',
   wallet: 'account:wallet',
   results: 'account:results',
+  receipt: 'account:receipt',
+  saveReceipt: 'account:save-receipt',
   recentList: 'recent:list',
   recentAdd: 'recent:add',
   updatesCheck: 'updates:check',
+  updatesDownload: 'updates:download',
   nodeOverview: 'node:overview',
   nodeDetect: 'node:detect',
   nodeSaveSetup: 'node:save-setup',

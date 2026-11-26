@@ -11,8 +11,9 @@
 import { canTransitionLease, normalizeShares, sharesCustomized, TOTAL_SHARE_BP, type LeaseState } from '@swarm-explorer/core';
 import { canonicalJson, type ManifestV1 } from '@swarm-explorer/schema';
 import { sha256Digest } from '@swarm-explorer/schema/node';
-import { and, asc, count, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { getDb, type Db } from './client';
+import { assertWorkAllowed } from './kill-switch';
 import { releaseReservation } from './ledger';
 import { MembershipError } from './membership';
 import { recordReputation } from './reputation';
@@ -171,13 +172,19 @@ export type LeaseGrant = {
   reward: { funded: true; credits: number } | { funded: false; credits: null };
 };
 
+/**
+ * Release, harness and key revocations in force (SPEC 11.6). The newest entry per target decides, so
+ * a later `restore` lifts a revoke. Platform and swarm stops are the kill switch (kill-switch.ts).
+ */
 async function revoked(tx: Tx, ids: string[], now: Date) {
   const rows = await tx
-    .select({ id: revocations.id })
+    .select({ targetType: revocations.targetType, targetId: revocations.targetId, action: revocations.action })
     .from(revocations)
-    .where(and(inArray(revocations.targetId, ids), lt(revocations.effectiveAt, new Date(now.getTime() + 1))))
-    .limit(1);
-  return rows.length > 0;
+    .where(and(inArray(revocations.targetId, ids), lt(revocations.effectiveAt, new Date(now.getTime() + 1)), notInArray(revocations.targetType, ['platform', 'swarm'])))
+    .orderBy(asc(revocations.effectiveAt), asc(revocations.createdAt));
+  const latest = new Map<string, string>();
+  for (const r of rows) latest.set(`${r.targetType}:${r.targetId}`, r.action);
+  return [...latest.values()].includes('revoke');
 }
 
 /** Models on this node that the swarm's policy accepts, by pinned hash (SPEC 6.2). */
@@ -212,6 +219,8 @@ export async function requestLease(o: { accountId: string; nodeId: string; slug:
   const m = s.manifest;
   const db = await getDb();
   return db.transaction(async (tx) => {
+    // Kill switch first (SPEC 11.6): nothing in a stopped scope is leased.
+    await assertWorkAllowed(tx, { swarmSlug: s.swarm.slug }, now);
     if (await revoked(tx, [s.swarm.id, s.swarm.slug, s.release.id, s.harnessRelease.id, s.harnessRelease.bundleHash], now)) throw err(409, 'revoked', 'This swarm or its harness was revoked.');
     if (s.harnessRelease.reviewStatus !== 'approved' || s.harnessRelease.revokedAt) throw err(409, 'release_revoked', 'This harness release is not available.');
     if (s.harnessRelease.runtime !== 'wasm') throw err(409, 'runtime_unsupported', 'This harness needs isolation this version of Henge does not provide.');
@@ -356,8 +365,10 @@ export async function startLease(o: { accountId: string; leaseId: string; pins: 
   return db.transaction(async (tx) => {
     const lease = await fresh(tx, await ownedLease(tx, o.accountId, o.leaseId), now);
     if (lease.status === 'expired') throw err(409, 'lease_expired', 'This lease passed its deadline and went back to the queue.');
+    if (lease.status === 'abandoned' && lease.cancelReason === 'kill_switch') throw err(409, 'lease_cancelled', 'Verafy stopped this work, so the lease was cancelled. The task went back to the queue, unpaid.');
     if (lease.status === 'abandoned') throw err(409, 'lease_abandoned', 'This lease was abandoned.');
     const f = await leaseFacts(tx, lease);
+    await assertWorkAllowed(tx, { swarmId: f.task.swarmId }, now);
     if (lease.status === 'running') return { lease, input: f.task.inputJson as Record<string, unknown> | null, inputHash: f.task.inputHash };
     if (o.pins.harnessHash !== f.manifest.harness.hash || o.pins.permissionsHash !== f.release.permissionsHash)
       throw err(409, 'pin_mismatch', 'The harness or permissions on this node do not match this task.', { harness_hash: f.manifest.harness.hash, permissions_hash: f.release.permissionsHash });

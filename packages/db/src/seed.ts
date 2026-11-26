@@ -4,7 +4,7 @@ import path from 'node:path';
 import { canonicalJson, parseManifest, type ManifestV1 } from '@swarm-explorer/schema';
 import { bundleDigest, generatePublisherKey, sha256Digest, signManifestV1 } from '@swarm-explorer/schema/node';
 import { sql } from 'drizzle-orm';
-import { getDb, repoRoot } from './client';
+import { getDb, repoRoot, usingPglite } from './client';
 import {
   qualificationTasks,
   accounts,
@@ -26,6 +26,7 @@ import {
   verificationRules,
 } from './schema';
 import { seedAccounts, seedEconomicConfigV1, seedModels, seedOauthClients, seedPublisher, seedQualificationTasks, seedSwarmFiles, seedTasks } from './seed-data';
+import { testOnlyDigest, testOnlyModels } from './seed-test-models';
 
 export const FIXTURES = () => path.join(repoRoot(), 'packages', 'schema', 'fixtures');
 
@@ -34,7 +35,7 @@ const ALL_TABLES = [
   'outbox_events', 'device_nonces', 'license_acceptances', 'fit_calibrations', 'idempotency_records', 'client_releases', 'web_sessions', 'access_tokens', 'refresh_tokens', 'oauth_codes',
   'notifications', 'notification_prefs', 'share_cards', 'team_members', 'teams', 'account_badges', 'badges',
   'economic_configs', 'credit_purchases', 'ledger_entries', 'pools', 'credit_accounts',
-  'verifier_nonces', 'verifier_keys', 'verification_rules', 'task_known_answers',
+  'receipts', 'platform_keys', 'verifier_nonces', 'verifier_keys', 'verification_rules', 'task_known_answers',
   'impact_events', 'reputation_events', 'verification_records', 'results', 'run_records', 'deadline_misses', 'lease_rules', 'leases', 'tasks',
   'qualification_attempts', 'qualification_tasks', 'qualifications', 'permission_grants', 'memberships',
   'revocations', 'reports', 'reviews', 'swarm_releases', 'swarms', 'harness_releases', 'harnesses',
@@ -52,7 +53,13 @@ export function manifestHash(m: ManifestV1): string {
   return sha256Digest(canonicalJson(m));
 }
 
-export async function seed() {
+/**
+ * `testModels` adds the labelled test-only catalog entries (seed-test-models.ts) for the desktop e2e. It
+ * defaults to `SEED_TEST_MODELS=1` and is refused outside the embedded test database.
+ */
+export async function seed(opts: { testModels?: boolean } = {}) {
+  const testModels = opts.testModels ?? process.env['SEED_TEST_MODELS'] === '1';
+  if (testModels && !usingPglite()) throw new Error('Test-only models are seeded only into the embedded PGlite database.');
   const db = await getDb();
   await db.execute(sql.raw(`TRUNCATE ${ALL_TABLES.join(', ')} RESTART IDENTITY CASCADE`));
 
@@ -82,7 +89,12 @@ export async function seed() {
   const key = generatePublisherKey(`verafy-local-test-${Date.now()}`);
   await db.insert(publisherKeys).values({ publisherId: publisher.id, keyId: key.keyId, publicKey: key.publicKey });
 
-  for (const m of seedModels) {
+  // The approved catalog carries its real pins. Test-only entries get a fixture digest of their label.
+  const catalog = [
+    ...seedModels.map((m) => ({ ...m, artifact: { ...m.artifact } })),
+    ...(testModels ? testOnlyModels.map((m) => ({ ...m, artifact: { ...m.artifact, contentHash: sha256Digest(testOnlyDigest(m.slug, m.artifact.versionLabel)) } })) : []),
+  ];
+  for (const m of catalog) {
     const [row] = await db
       .insert(models)
       .values({ slug: m.slug, source: m.source, family: m.family, displayName: m.displayName, modelClass: m.modelClass, licenseId: m.licenseId, reviewStatus: 'approved' })
@@ -90,9 +102,8 @@ export async function seed() {
     await db.insert(modelArtifacts).values({
       modelId: row!.id,
       ...m.artifact,
-      contentHash: sha256Digest(`fixture-artifact:${m.slug}:${m.artifact.versionLabel}`),
       runtimeFormats: m.source === 'ollama' ? ['ollama'] : ['gguf'],
-      catalogVersion: 0,
+      catalogVersion: 1,
     });
   }
 
@@ -189,13 +200,13 @@ export async function seed() {
   }
 
   await db.insert(economicConfigs).values({ ...seedEconomicConfigV1, status: 'approved' });
-  return { accounts: acct.length, swarms: seedSwarmFiles.length, models: seedModels.length, publisherKeyId: key.keyId };
+  return { accounts: acct.length, swarms: seedSwarmFiles.length, models: catalog.length, publisherKeyId: key.keyId };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   seed()
     .then((r) => {
-      console.log(`Seeded ${r.accounts} example accounts, ${r.swarms} launch swarms and ${r.models} example models.`);
+      console.log(`Seeded ${r.accounts} example accounts, ${r.swarms} launch swarms and ${r.models} catalog models.`);
       process.exit(0);
     })
     .catch((err) => {

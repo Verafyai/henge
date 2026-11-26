@@ -22,7 +22,8 @@ let nodeId: string;
 
 beforeAll(async () => {
   await runMigrations();
-  await seed();
+  // The test-only entries add a model too large for the 32 GB fixture (seed-test-models.ts).
+  await seed({ testModels: true });
   demo = await signIn('demo');
   other = await signIn('reviewer');
 });
@@ -109,19 +110,19 @@ describe('M2: fit, benchmark and license acceptance', () => {
   };
 
   it('GET /v1/models/{id}/fit estimates per node from its capability report', async () => {
-    const path = `/v1/models/llama3.3-70b/fit?node_id=${nodeId}`;
-    const res = await getFit(signed(demo, 'GET', path, '', { idem: null }), params('llama3.3-70b'));
+    const path = `/v1/models/test-only-too-large/fit?node_id=${nodeId}`;
+    const res = await getFit(signed(demo, 'GET', path, '', { idem: null }), params('test-only-too-large'));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.artifacts[0]).toMatchObject({ fit_status: 'will_not_fit', basis: 'estimate' });
-    const small = await (await getFit(signed(demo, 'GET', `/v1/models/qwen2.5-coder-7b/fit?node_id=${nodeId}`, '', { idem: null }), params('qwen2.5-coder-7b'))).json();
+    const small = await (await getFit(signed(demo, 'GET', `/v1/models/phi4-14b/fit?node_id=${nodeId}`, '', { idem: null }), params('phi4-14b'))).json();
     expect(small.artifacts[0].fit_status).toBe('runs_well');
-    const theirs = await getFit(signed(other, 'GET', path, '', { idem: null }), params('llama3.3-70b'));
+    const theirs = await getFit(signed(other, 'GET', path, '', { idem: null }), params('test-only-too-large'));
     expect(theirs.status).toBe(404);
   });
 
   it('records a verified benchmark; the estimate stands without an approved calibration', async () => {
-    const { a } = await artifactOf('qwen2.5-coder-7b');
+    const { a } = await artifactOf('phi4-14b');
     const res = await bench(demo, a.contentHash, { verified_hash: a.contentHash, runtime: 'ollama', tokens_per_second: 32, estimated_fit: 'runs_well' });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ benchmark_tps: 32, fit_status: 'runs_well', basis: 'estimate', calibration_version: null });
@@ -131,7 +132,7 @@ describe('M2: fit, benchmark and license acceptance', () => {
   });
 
   it('uses only an approved calibration for benchmark-backed fit', async () => {
-    const { a } = await artifactOf('qwen2.5-coder-7b');
+    const { a } = await artifactOf('phi4-14b');
     const db = await getDb();
     await db.insert(fitCalibrations).values({ runtime: 'ollama', catalogVersion: a.catalogVersion, runsWellMinTps: 40, runsSlowlyMinTps: 10, status: 'in_review' });
     const draft = await (await bench(demo, a.contentHash, { verified_hash: a.contentHash, runtime: 'ollama', tokens_per_second: 32, estimated_fit: 'runs_well' })).json();
@@ -143,7 +144,7 @@ describe('M2: fit, benchmark and license acceptance', () => {
   });
 
   it('refuses a hash mismatch, a wrong runtime, extra fields and other accounts', async () => {
-    const { a } = await artifactOf('qwen2.5-coder-7b');
+    const { a } = await artifactOf('phi4-14b');
     const drifted = `sha256-${'0'.repeat(64)}`;
     const mismatch = await bench(demo, a.contentHash, { verified_hash: drifted, runtime: 'ollama', tokens_per_second: 32, estimated_fit: 'runs_well' });
     expect(mismatch.status).toBe(409);
@@ -155,15 +156,15 @@ describe('M2: fit, benchmark and license acceptance', () => {
   });
 
   it('records license acceptance per user and artifact, only for the listed license', async () => {
-    const { a, m } = await artifactOf('llama3.1-8b-gguf');
+    const { a, m } = await artifactOf('mistral-nemo-12b');
     const post = (d: Device, body: object) => acceptLicense(signed(d, 'POST', '/v1/me/license-acceptances', JSON.stringify(body)), undefined as never);
-    expect((await post(demo, { content_hash: a.contentHash, license_id: 'apache-2.0' })).status).toBe(409);
+    expect((await post(demo, { content_hash: a.contentHash, license_id: 'mit' })).status).toBe(409);
     const ok = await post(demo, { content_hash: a.contentHash, license_id: m.licenseId });
     expect(ok.status).toBe(200);
     expect((await post(demo, { content_hash: a.contentHash, license_id: m.licenseId })).status).toBe(200);
     const db = await getDb();
     const rows = await db.select().from(licenseAcceptances).where(eq(licenseAcceptances.modelArtifactId, a.id));
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.licenseId).toBe('llama3.1-community');
+    expect(rows[0]!.licenseId).toBe('apache-2.0');
   });
 });

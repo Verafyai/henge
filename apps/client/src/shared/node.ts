@@ -221,6 +221,16 @@ export type NodeOverview = {
   models: ModelsOverview;
   memberships: MembershipsOverview;
   tasks: TasksOverview;
+  /** The signed kill switch (M7): whether Verafy has stopped work, and why. */
+  kill: KillView;
+};
+
+export type KillView = {
+  /** stopped: the platform or a joined swarm is stopped. unchecked: the signed feed was not read in the last 60 seconds. */
+  status: 'ok' | 'stopped' | 'unchecked';
+  global: { reason: string; at: string } | null;
+  swarms: Array<{ swarm: string; reason: string; at: string }>;
+  checkedAt: number | null;
 };
 
 /** A local join or qualification in progress, for the Library and join screens. */

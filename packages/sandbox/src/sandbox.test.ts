@@ -131,7 +131,7 @@ describe('local model proxy (SPEC 11.1, 11.2)', () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'se-proxy-'));
     sock = process.platform === 'win32' ? `\\\\.\\pipe\\se-proxy-test-${process.pid}` : path.join(dir, 'p.sock');
     proxy = new ModelProxy({ key, socketPath: sock, ollamaBase: 'http://127.0.0.1:11434', fetch: fakeOllama });
-    await proxy.setModels([{ contentHash: H('a'), runtime: 'ollama', ref: 'qwen2.5-coder:7b-instruct-q4_K_M' }]);
+    await proxy.setModels([{ contentHash: H('a'), runtime: 'ollama', ref: 'phi4:14b-q4_K_M' }]);
     await proxy.start();
   });
   afterAll(async () => {
@@ -142,7 +142,7 @@ describe('local model proxy (SPEC 11.1, 11.2)', () => {
   it('answers with a valid capability and maps the pinned model to its runtime tag', async () => {
     const r = await proxyComplete(sock, cap(), ask);
     expect(r).toMatchObject({ status: 200, body: { usage: { output_tokens: 12 }, cost_usd_micros: 0 } });
-    expect(ollamaCalls.at(-1)).toMatchObject({ url: 'http://127.0.0.1:11434/api/chat', body: { model: 'qwen2.5-coder:7b-instruct-q4_K_M', options: { num_predict: 16 } } });
+    expect(ollamaCalls.at(-1)).toMatchObject({ url: 'http://127.0.0.1:11434/api/chat', body: { model: 'phi4:14b-q4_K_M', options: { num_predict: 16 } } });
   });
 
   it('refuses missing, forged and expired capabilities, unknown models and the token cap', async () => {
@@ -171,7 +171,7 @@ describe('local model proxy (SPEC 11.1, 11.2)', () => {
     expect(await proxy.setModels([{ contentHash: good, runtime: 'llama_cpp', ref: 'x', path: f }])).toEqual({ refused: [] });
     writeFileSync(f, 'tampered');
     expect(await proxy.setModels([{ contentHash: good, runtime: 'llama_cpp', ref: 'x', path: f }])).toEqual({ refused: [good] });
-    await proxy.setModels([{ contentHash: H('a'), runtime: 'ollama', ref: 'qwen2.5-coder:7b-instruct-q4_K_M' }]);
+    await proxy.setModels([{ contentHash: H('a'), runtime: 'ollama', ref: 'phi4:14b-q4_K_M' }]);
   });
 
   it('a harness reaches the model only through the proxy, with the bundle prompt first', async () => {

@@ -5,7 +5,7 @@ describe('parseDeepLink (SPEC 4.4)', () => {
   it.each([
     ['henge://swarm/challenge-vaults', { name: 'swarm', slug: 'challenge-vaults' }],
     ['henge://join/verafy-dao-juries', { name: 'join', slug: 'verafy-dao-juries' }],
-    ['henge://model/qwen2.5-coder-7b', { name: 'model', slug: 'qwen2.5-coder-7b' }],
+    ['henge://model/phi4-14b', { name: 'model', slug: 'phi4-14b' }],
     ['henge://harness/lean-prover', { name: 'harness', slug: 'lean-prover' }],
     ['henge://result/01936f3e-0000-7000-8000-000000000001', { name: 'result', id: '01936f3e-0000-7000-8000-000000000001' }],
     ['henge://publisher', { name: 'publisher' }],
@@ -24,7 +24,7 @@ describe('parseDeepLink (SPEC 4.4)', () => {
     'henge://join/challenge-vaults?confirm=1',
     'henge://join/challenge-vaults/now',
     'henge://swarm/challenge-vaults?token=abc',
-    'henge://model/qwen2.5-coder-7b?install=1',
+    'henge://model/phi4-14b?install=1',
     'henge://wallet',
     'henge://wallet/send?to=x',
     'henge://publisher/fund?credits=500',
