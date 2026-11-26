@@ -6,7 +6,8 @@
  */
 
 export const GITHUB_URL = 'https://github.com/Verafyai/henge';
-export const HENGE_BENCH_URL = 'https://github.com/Verafyai/henge-bench';
+/** henge-bench is not published yet (Verafyai/henge-bench does not exist), so its button links nowhere until it does. */
+export const HENGE_BENCH_URL: string | null = null;
 export const VERAFY_URL = 'https://www.verafy.ai';
 
 export type Link = { label: string; href: string };
@@ -115,7 +116,7 @@ export const science = {
     { title: 'Cost and durability', body: 'Cost per correct answer, and whether work finishes when nodes are killed.' },
   ],
   status: 'No results yet. The benchmark, data and scorer are public so anyone can rerun them.',
-  button: { label: 'See the henge-bench plan', href: HENGE_BENCH_URL } satisfies Link,
+  button: { label: 'See the henge-bench plan', href: HENGE_BENCH_URL, pendingNote: 'Not published yet' },
 } as const;
 
 export const finalCta = {

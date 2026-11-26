@@ -146,9 +146,15 @@ export default function Landing() {
           </ul>
           <div className="hg-card hg-status">
             <span>{science.status}</span>
-            <a href={science.button.href} className="hg-btn hg-btn-ghost">
-              {science.button.label}
-            </a>
+            {science.button.href ? (
+              <a href={science.button.href} className="hg-btn hg-btn-ghost">
+                {science.button.label}
+              </a>
+            ) : (
+              <span className="hg-btn hg-btn-ghost" aria-disabled="true" title={science.button.pendingNote}>
+                {science.button.label} ({science.button.pendingNote})
+              </span>
+            )}
           </div>
         </div>
       </section>
