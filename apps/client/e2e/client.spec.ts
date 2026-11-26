@@ -34,10 +34,10 @@ setSensors({ idleSeconds: 0, onBattery: false });
 // The seeded catalog carries the real approved pins (packages/db seed-data, from the 2026-11-25 catalog
 // proposal). The stand-in Ollama downloads nothing: it reports the digest a real pull of the tag reports.
 const PHI4_PIN = 'ac896e5b8b34a1f4efa7b14d7520725140d5512484457fab45d2a4ea14c69dba';
-// What the stand-in Ollama "pulls": the real pinned digest for Phi-4 14B, a drifted one for Mistral Small.
+// What the stand-in Ollama "pulls": the real pinned digest for Phi-4 14B, a drifted one for Mistral NeMo (small enough to fit the 20 GB test budget next to Phi-4 14B).
 const PULLS: Record<string, string> = {
   'phi4:14b-q4_K_M': PHI4_PIN,
-  'mistral-small:24b-instruct-2501-q4_K_M': 'd'.repeat(64),
+  'mistral-nemo:12b-instruct-2407-q4_K_M': 'd'.repeat(64),
 };
 
 // A stand-in Ollama. Discovery must only ever use GET; pulls, deletes and benchmarks happen only
@@ -460,7 +460,8 @@ test('the catalog shows fit for this machine before any download (SPEC 5.4)', as
   const coder = page.getByRole('listitem', { name: 'Phi-4 14B' });
   await expect(coder).toContainText('Fits in memory');
   await expect(coder).toContainText('mit');
-  await expect(coder).toContainText(`sha256-${PHI4_PIN}`);
+  // The pinned content hash, shortened on screen.
+  await expect(coder).toContainText(`sha256-${PHI4_PIN.slice(0, 12)}`);
   // The approved catalog records no context length, so none is claimed.
   await expect(coder).toContainText('Not recorded');
   // The user's own Ollama tag "phi4:14b" is a moving tag, so it is not claimed as installed.
@@ -491,9 +492,9 @@ test('one confirmed download: license and budget first, then the pinned hash is 
 });
 
 test('a drifted Ollama pull is blocked and removed again (M2 acceptance)', async () => {
-  const mistral = page.getByRole('listitem', { name: 'Mistral Small 24B Instruct' });
+  const mistral = page.getByRole('listitem', { name: 'Mistral NeMo 12B Instruct' });
   await mistral.getByRole('button', { name: 'Download' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Download Mistral Small 24B Instruct' });
+  const dialog = page.getByRole('dialog', { name: 'Download Mistral NeMo 12B Instruct' });
   await dialog.getByRole('checkbox', { name: /I accept/ }).check();
   await dialog.getByRole('button', { name: 'Download and verify' }).click();
   await expect(dialog.getByRole('alert')).toContainText('does not match the pinned hash');
@@ -501,7 +502,7 @@ test('a drifted Ollama pull is blocked and removed again (M2 acceptance)', async
   await expect(mistral.getByRole('alert')).toContainText('Blocked: hash mismatch');
   await expect(mistral).not.toContainText('Installed');
   expect(ollamaCalls).toContain('DELETE /api/delete');
-  expect(ollamaTags.map((t) => t.name)).not.toContain('mistral-small:24b-instruct-2501-q4_K_M');
+  expect(ollamaTags.map((t) => t.name)).not.toContain('mistral-nemo:12b-instruct-2407-q4_K_M');
 });
 
 test('a GGUF download that fails the hash check leaves nothing in the models folder', async () => {
