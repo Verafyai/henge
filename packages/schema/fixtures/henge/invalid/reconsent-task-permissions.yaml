@@ -1,0 +1,6 @@
+# 6.4: changing a field listed in rule_updates.member_reconsent_on pauses the node until the member re-confirms.
+check: update
+expect_reconsent: [task.permissions]
+set:
+  /version: 0.2.0
+  /task/permissions/network: [en.wikipedia.org, web.archive.org, archive.org]

@@ -1,0 +1,21 @@
+# EXAMPLE built-in Glyph manifest (spin-out spec v2, 7.1). Not a released Glyph. See README.md for where each value comes from.
+glyph: "1.0"
+id: verafy/learnings
+name: Learnings Glyph
+version: 1.0.0
+kind: learnings
+summary: Append-only memory with provenance. Promotes a learning only on held-out gain.
+publisher: { name: Verafy, url: https://verafy.ai }
+source: { repo: https://github.com/verafy/glyphs, commit: null, bundle_digest: null }
+runtime:
+  type: declarative
+  runs_on: coordinator
+permissions:
+  requests: [read:learnings, append:learnings, read:benchmarks, propose:henge_file]
+  never: [Edit or delete an existing learning, See held-out items, See member API keys]
+runes:
+  - { id: promotion.requires_heldout_gain, name: Promotion needs a held-out gain, type: boolean, default: true }
+  - { id: promotion.min_runs, name: Minimum runs before promotion, type: integer, min: 1, default: 3 }
+  - { id: context.max_tokens, name: Context budget, type: integer, min: 1, unit: tokens, default: 8000 }
+compat: { henge: ">=1.0 <2", min_client_version: 0.2.0 }
+signatures: []

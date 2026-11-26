@@ -1,0 +1,21 @@
+# EXAMPLE built-in Glyph manifest (spin-out spec v2, 7.1). Not a released Glyph. See README.md for where each value comes from.
+glyph: "1.0"
+id: verafy/treasury
+name: Treasury Glyph
+version: 1.0.0
+kind: treasury
+summary: Shared credit pool and spend rules. Credits only, no token.
+publisher: { name: Verafy, url: https://verafy.ai }
+source: { repo: https://github.com/verafy/glyphs, commit: null, bundle_digest: null }
+runtime:
+  type: declarative
+  runs_on: coordinator
+permissions:
+  requests: [treasury:hold, treasury:pay, post:channel:announcements]
+  never: [Issue or trade a token, See member API keys, Reach the network]
+runes:
+  - { id: unit, name: Unit, type: enum, options: [credits], default: credits }
+  - { id: payout.per_accepted_task, name: Payout per accepted task, type: integer, min: 1, unit: credits, default: null }
+  - { id: spend.requires_vote_over, name: Spend above this needs a vote, type: integer, min: 0, unit: credits, default: null }
+compat: { henge: ">=1.0 <2", min_client_version: 0.2.0 }
+signatures: []

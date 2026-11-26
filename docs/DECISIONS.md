@@ -4,6 +4,88 @@ Implementation decisions made while building from `docs/SWARM-EXPLORER-SPEC.md`.
 business or hosting choices that the spec leaves unapproved; the code keeps them as configuration or placeholders.
 SwarmStarter decisions are archived in `docs/history/swarmstarter/DECISIONS.md`.
 
+## henge file v1 and Glyphs (2026-11-26)
+
+Workstreams C and D (schemas only) of "Henge spin-out v2", in `packages/schema`. A Glyph is what other tools
+call a plugin; a Rune is one of its settings. `ManifestV1` and its validator are unchanged.
+
+- **Files:** `henge-v1.schema.json` (`$id` `https://henge.verafy.ai/schema/henge-v1.json`), `glyph-v1.schema.json`
+  (the spec bundle's schema, unchanged), `henge-v1.ts` (types), `henge-validate.ts`, `glyph-validate.ts`,
+  `henge-to-manifest.ts`, `henge-digest.ts`, `henge-resolve.ts`, `henge-archive.ts`, `henge-landing.ts`.
+  The new `$id`s use `/schema/` (singular) as the spin-out spec says; the older manifest and harness schemas keep
+  `/schemas/`.
+- **Platform:** digest, archive extraction and resolution use Web Crypto and `DecompressionStream`, so everything
+  is exported from the package index and no dependency was added. ZIP and tar are parsed by hand.
+- **Strictness:** like ManifestV1, unknown fields are refused at every object level unless named `x-`. The shape
+  follows `example.henge.yaml`, including fields the table does not list (`admission.review`, `capacity`, `leave`,
+  `schedule.windows_example`, `runtime.temporal.ui`, channel `agents`).
+- **Additions beyond the table:** optional `participation.models.class` (the `class` policy needs it) and optional
+  `runtime.harness.hash` (ManifestV1 needs a harness digest). All six roles in `governance.roles` are required.
+- **Static rules added beyond 6.4:** the scorer must live under `benchmarks/scorer/`; `governance.voting.glyph`
+  must be an added Glyph; channel `glyph_posts` must name an added Glyph; channel and default roles must exist in
+  `governance.roles`; compute ranges need min <= default <= max; the landing accent must reach WCAG AA for normal
+  text (4.5:1) on `#050506`, as the example's comment says; every update must bump `version`; a declared
+  `source.bundle_digest` must match the fetched bundle.
+- **Rules that need more than one file** have their own functions: `validateHengeBundle` (executables, text-only
+  strategies and learnings, bundle-local Glyphs), `checkHengeUpdate` (constitution, append-only learnings,
+  re-consent, vote-required fields), `checkJoinReadiness` (required caps), `checkGlyphGrant` (7.3 vote rule).
+- **Glyph manifests are looked up, not fetched:** `validateHenge` checks `glyphs[]` against manifests the caller
+  passes (built-ins, the bundle's `glyphs/`). An entry with no manifest is listed in `unchecked` rather than failing.
+- **Executables:** detected by extension, by magic bytes (ELF, PE, Mach-O, wasm, shebang) and by archive mode bits.
+  This also refuses a code Glyph's wasm module inside a `.henge` bundle's `glyphs/` folder.
+- **Re-consent paths:** `glyphs.add`, `glyphs.permissions` and `glyphs.runes` are views over `glyphs[]`. A path v1
+  does not define falls back to its nearest existing parent (so `participation.limits` means all of
+  `participation`). The previous and next versions' lists are combined, so removing a field from the list does not
+  skip re-consent for that same change.
+- **Vote-gated scopes:** `treasury:pay` and `moderate:ban` are checked when granted, not in the file, because the
+  file does not know the member count. "Owner is the only member" is `memberCount === 1`; the caller confirms that
+  member is the owner.
+- **Extra scope checks:** a `network:` scope must be one lowercase domain (no IP or single label) and not a model
+  provider domain, matching the 6.4 task network rule.
+- **Runes:** `null` means unset and always fits. `percent` is a fraction from 0 to 1. `duration` is a non-negative
+  number in the Rune's `unit`. `change_requires` defaults to `vote`; a cosmetic Rune skips the vote only when the
+  caller says the Henge exempts cosmetic Runes (`no_vote_needed_for: glyphs.runes.cosmetic`).
+- **Glyph `use` ranges:** exact, `^x.y.z` or `~x.y.z` only.
+- **Digest (6.6):** besides `signatures`, the digest also leaves out `source.bundle_digest` and `source.commit`,
+  because neither can be inside the content it describes. A single file is digested as a bundle holding only
+  `henge.yaml`. Paths are sorted by UTF-16 code units, as in `canonical.ts`.
+- **toManifestV1:** id `<publisher>/<swarm>` becomes `<publisher>--<swarm>`; `publisher` is the publisher slug;
+  `api_allowed` is `byo_api_key`; `scratch_disk_gb` is the range max; `api_spend_daily_usd` is the daily cap default
+  when the currency is USD; relative schema paths and the first leaderboard become https URLs from a caller base
+  URL. Category, impact weight, funding, urgent tasks and a wasm harness hash have no `.henge` field and come from
+  the caller; credits default to volunteer, urgent to false. The original id and version ride along as `x-henge`.
+- **The example fails one existing invariant:** converted verbatim, `example.henge.yaml` fails
+  `self_hosted_requires_url` and `self_hosted_requires_key` (self-hosted coordinator, both null). The fixture is
+  kept as given; the test shows it passes with a hosted coordinator.
+- **Resolver:** every hop is checked (https, no credentials, all DNS answers public, IANA special-purpose ranges
+  refused), redirects are followed by hand (at most 5, loops detected). Tree URLs take the first segment after
+  `tree/` as the ref, resolve it to a commit and walk the contents API; the whole folder is fetched, since the
+  digest and the executable rule cover every file. GitHub requests are unauthenticated.
+- **Sanitizer:** raw HTML is reduced to an allowlist of formatting tags and attributes; script, style, iframe,
+  form and similar elements are dropped with their contents; links may be https, mailto, anchors or bundle paths;
+  images must be bundle paths that exist. Code blocks are left as written.
+- **Built-in Glyphs** (`fixtures/glyphs/verafy/`) are example manifests. Rune defaults come from the example
+  files or are null; `benchmark_id` and `active_strategies` are null because they name one Henge's own items. See
+  that folder's README.
+
+**Needs Rex**
+
+- `example.henge.yaml` uses a self-hosted coordinator with no url or key, which the existing invariants refuse.
+  Should the example say `hosted`, or should `local_single_node` mode relax that rule?
+- `participation.limits` (in `vote_required_for` and `member_reconsent_on`) names no field. Which fields does it
+  mean? It is treated as all of `participation` for now.
+- `glyphs.runes.cosmetic` and channel `agents: reply_in_threads_only`: allowed values not defined.
+- Rune value formats: `duration` (number with unit, or text like `72h`?), and the full options for
+  `benchmark.schedule` and `moderation.link_filter`.
+- `inject:agent_context` counting against `learnings.max_context_tokens`, and "a Glyph never receives member API
+  keys or messages outside its channels", are runtime rules; nothing in the schema enforces them yet.
+- Code Glyphs inside a `.henge` bundle: the executable rule refuses their wasm. Allow them under `glyphs/`?
+- Funding, category and impact weight have no `.henge` field, so ManifestV1 gets them from the caller. Should
+  v1.1 add them (for example from the Treasury Glyph's Runes)?
+- DNS rebinding: the injected fetch must connect to the address the lookup approved. A Node implementation that
+  pins the socket is still to be written with the client.
+- `runtime.harness.runtime: container` in the example, while decision 2026-11-25 says nodes run no containers.
+
 ## henge.verafy.ai landing (2026-11-26)
 
 Workstream B2 of the "Henge spin-out v2" spec (section 5.2), branch `web/henge-landing`.

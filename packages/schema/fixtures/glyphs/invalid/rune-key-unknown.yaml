@@ -1,0 +1,5 @@
+# 7.4: every Rune key set by the Henge must exist in the Glyph manifest.
+check: henge
+expect: rune_unknown
+set:
+  /glyphs/1/runes/cadence: hourly

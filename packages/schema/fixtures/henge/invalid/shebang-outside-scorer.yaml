@@ -1,0 +1,5 @@
+# 6.4: a script with a shebang is executable whatever its extension.
+check: bundle
+expect: bundle_executable_file
+files:
+  strategies/base-rate-first.md: "#!/bin/sh\necho hidden script\n"

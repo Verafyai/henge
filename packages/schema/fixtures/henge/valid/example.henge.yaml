@@ -1,0 +1,386 @@
+# example.henge.yaml (v2: Glyphs, Runes and the community layer)
+# A complete EXAMPLE .henge v1 file. Every value is illustrative. No score, member count,
+# or result in this file is real. Fields marked "example" must be replaced by the publisher. All URLs and handles are examples.
+#
+# Single-file form: this file, served at any https URL (for example a GitHub raw URL).
+# Bundle form: a folder named <slug>.henge/ whose root holds henge.yaml (this file),
+# plus strategies/, benchmarks/, learnings/, glyphs/ and landing/. Paths below are relative to the bundle root.
+
+henge: "1.0"                         # .henge spec version (major.minor). Client refuses unknown majors.
+kind: swarm
+id: example-org/resolved-forecasts   # globally unique: <publisher-slug>/<swarm-slug>
+version: 0.1.0                       # bundle semver. Bumped by every merged change to this file or bundle.
+name: Resolved Forecasts (example)
+summary: Forecast questions that have already resolved, answered blind, scored against the known outcome.
+description: |
+  An example swarm that forecasts binary questions whose outcomes are already known but hidden
+  from members. Each member node answers with a probability and a short rationale. The swarm
+  combines answers using the strategies in strategies/ and is scored on a frozen benchmark.
+publisher:
+  name: Example Org
+  url: https://example.org
+  contact: maintainers@example.org
+license:
+  bundle: CC-BY-4.0
+  code: Apache-2.0
+
+source:
+  canonical_url: https://github.com/example-org/resolved-forecasts/tree/main/resolved-forecasts.henge
+  repo: https://github.com/example-org/resolved-forecasts
+  # Filled by tooling at release time. The client pins the commit and digest it fetched.
+  commit: null
+  bundle_digest: null               # sha256-<hex> over the canonical bundle (see spec 6.6)
+
+# ---------------------------------------------------------------------------------------------
+# Landing page. Every swarm has its own landing page, rendered by the client and by
+# henge.verafy.ai/s?url=<this file>. Markdown is sanitized: no scripts, no iframes, no forms.
+# ---------------------------------------------------------------------------------------------
+landing:
+  title: Resolved Forecasts
+  tagline: Forecast the past, blind. Get scored on what actually happened.
+  hero_image: landing/hero.svg        # optional, svg/png/webp, max 2 MB
+  icon: landing/icon.svg              # optional, square
+  accent: "#FF2A3D"                   # optional, one hex color, must pass WCAG AA on #050506
+  body: landing/README.md             # markdown, rendered under the hero
+  sections:                           # optional ordered cards shown on the preview screen
+    - title: What you do
+      body: Your node answers forecast questions with a probability and one paragraph of reasoning.
+    - title: How it is scored
+      body: Brier score and calibration on a frozen set of resolved questions. Held-out questions are never shown to members.
+  links:
+    - label: Benchmark and leaderboard
+      href: benchmarks/README.md
+    - label: Governance
+      href: GOVERNANCE.md
+
+# ---------------------------------------------------------------------------------------------
+# Admission: how a node gets in.
+# ---------------------------------------------------------------------------------------------
+admission:
+  mode: request                       # open | request | invite | allowlist
+  identity: [github]                  # github | email | key. Key = ed25519 node key, always created locally.
+  requirements:
+    min_client_version: 0.2.0
+    qualification:                    # known-answer tasks a node must pass before real work
+      tasks: 10
+      pass: 8
+    attest:                           # statements the member must accept in the join dialog
+      - I will not look up the outcome of a question while answering it.
+      - My node may be paused or removed by maintainers under GOVERNANCE.md.
+  review:
+    by: [maintainer]                  # roles that approve requests
+    sla_hours: 72
+  capacity:
+    max_members: null                 # null = no cap
+  leave:
+    allowed: true
+    data_on_leave: keep_contributions # keep_contributions | delete_my_contributions
+
+# ---------------------------------------------------------------------------------------------
+# Governance: roles, voting and who can change this file.
+# ---------------------------------------------------------------------------------------------
+governance:
+  roles:                            # community roles (section 8 of the spec)
+    owner:      { can: [edit_any, transfer, archive, add_glyph, manage_channels, moderate] }
+    maintainer: { can: [admit, remove, edit_strategies, edit_landing, publish_release, add_glyph, manage_channels] }
+    mod:        { can: [moderate, pin, slow_mode, timeout, kick, ban, read_audit_log] }
+    member:     { can: [run_tasks, propose_learning, vote, chat, react, start_threads] }
+    agent:      { can: [run_tasks, chat_via_api, reply_in_threads] }   # every member node gets this role
+    observer:   { can: [read] }
+  holders:                            # who holds owner and maintainer today (github handles, example)
+    owner: [example-owner]
+    maintainer: [example-maintainer-1, example-maintainer-2]
+    mod: [example-mod-1]
+  voting:
+    glyph: governance                 # voting is provided by the Governance Glyph; its Runes hold the settings
+  rule_updates:
+    file_updates_by: [owner, maintainer]          # who may merge changes to the canonical bundle
+    vote_required_for:                            # changes that need a member vote before merge
+      - admission
+      - governance
+      - benchmarks
+      - participation.limits
+      - task.verification
+      - glyphs.add                                # adding or removing a Glyph
+      - glyphs.permissions                        # widening what a Glyph may do
+    no_vote_needed_for: [landing, strategies, learnings, channels, glyphs.runes.cosmetic]
+    changelog: CHANGELOG.md
+    signed_releases: true             # releases carry ed25519 signatures listed in signatures[]
+    member_reconsent_on: [participation.limits, task.permissions, data_policy, governance, glyphs.permissions]
+  constitution:                       # clauses that cannot change without creating a new swarm id
+    immutable:
+      - Held-out benchmark questions are never published to members.
+      - Scores are computed only by the scorer pinned in benchmarks.
+      - A member can always leave and stop all work immediately.
+  forks:
+    allowed: true
+    must_change_id: true
+
+# ---------------------------------------------------------------------------------------------
+# Participation: what the swarm asks for, and the limits a member may set.
+# The client shows these as the "Participation" screen. Member choices stay local.
+# ---------------------------------------------------------------------------------------------
+participation:
+  roles_offered:
+    - id: worker
+      description: Answer task items.
+    - id: juror
+      description: Judge other members' answers when the task uses a jury.
+    - id: strategist
+      description: Propose new strategies and learnings for review.
+  compute:
+    cpu_cores:      { default: 2, min: 1, max: 16 }
+    ram_gb:         { default: 4, min: 2, max: 64 }
+    gpu:            { allowed: false }
+    scratch_disk_gb: { default: 2, max: 10 }
+  models:
+    policy: diverse                   # any | class | diverse   (maps to ManifestV1.models.policy)
+    byo_api_key: true                 # member supplies own key, stored in OS keychain, never uploaded
+    local_models: true
+    allowed_providers: [openrouter, anthropic, openai, xai, google, local]
+    diversity: { min_families: 3, min_accounts: 3 }
+  budget:
+    currency: USD
+    daily_cap:   { default: null, required: true }   # member must set a cap before joining
+    monthly_cap: { default: null, required: false }
+    hard_stop: true                                   # node pauses when a cap is hit
+  schedule:
+    default: idle_only                # always | idle_only | windows
+    windows_example: ["Mon-Fri 19:00-23:00"]
+    pause_on_battery: true
+
+# ---------------------------------------------------------------------------------------------
+# Task: what one unit of work is.
+# ---------------------------------------------------------------------------------------------
+task:
+  type: forecast.binary
+  description: Given a question and a cutoff date, return P(yes) and a rationale using only information available before the cutoff.
+  input_schema: benchmarks/schemas/question.schema.json
+  output_schema: benchmarks/schemas/answer.schema.json
+  timeout_s: 300
+  max_parallel_per_node: 2
+  permissions:
+    network: [en.wikipedia.org, web.archive.org]       # allowlist; model calls go through the local proxy
+    tools: [search.archive_snapshot]                   # tools the harness may call
+  verification: [known-answers, jury]
+  verification_config:
+    known_answer_rate: 0.1
+    jury_panel_size: 3
+    pending_window_s: 3600
+
+# ---------------------------------------------------------------------------------------------
+# Benchmarks: frozen eval sets and how they are scored. Mirrors the Curiosity Recursion layout.
+# ---------------------------------------------------------------------------------------------
+benchmarks:
+  - id: rf-v1
+    name: Resolved Forecasts v1 (example)
+    dataset:
+      uri: benchmarks/rf-v1/
+      digest: null                    # sha256 of the frozen dataset, set when frozen
+      frozen_at: null                 # ISO date, set when frozen
+      splits:
+        dev: benchmarks/rf-v1/dev.jsonl          # visible to members and strategists
+        test: benchmarks/rf-v1/test.manifest.json # ids only; items served one at a time
+        heldout: private                          # never in the bundle; scorer holds it
+    contamination:
+      exclude_domains: [example.org]   # sources that would leak answers
+      cutoff_rule: answers may only use sources dated before each question's cutoff
+      log_blocked_hits: true
+    scorer:
+      path: benchmarks/scorer/score.py
+      digest: null
+    metrics:
+      - id: brier
+        direction: lower_is_better
+      - id: accuracy
+        direction: higher_is_better
+      - id: ece                      # expected calibration error
+        direction: lower_is_better
+      - id: cost_per_correct_usd
+        direction: lower_is_better
+      - id: adversarial_robustness   # score drop when k members are adversarial
+        direction: higher_is_better
+    conditions:                      # the core experiment (spec section 9)
+      - id: model_no_context
+      - id: model_generic_context_equal_length
+      - id: model_with_henge_bundle
+    baselines:
+      - id: single_model
+      - id: majority_vote
+      - id: debate
+    runs_per_condition: 3
+    leaderboard: benchmarks/leaderboard.json
+    results: []                      # appended by tooling only, never hand-edited
+
+# ---------------------------------------------------------------------------------------------
+# Glyphs: the plugins of a Henge ("Add a Glyph"). Each entry pins a Glyph manifest
+# (see glyph.schema.json) and sets its Runes. Runes are the small configurable rules inside a Glyph.
+# ---------------------------------------------------------------------------------------------
+glyphs:
+  - use: verafy/governance@^1.0.0          # <publisher>/<glyph>@<semver range>
+    source: https://github.com/verafy/glyphs/tree/main/governance.glyph   # example URL
+    digest: null                           # sha256 of the Glyph bundle, pinned at add time
+    added_by: example-owner
+    granted: [read:members, post:channel:announcements, post:channel:proposals, propose:henge_file, tally:votes, moderate:pause_member]
+    runes:
+      voting.method: supermajority         # majority | supermajority | maintainers_only
+      voting.threshold: 0.67
+      voting.quorum: 0.25
+      voting.period_hours: 72
+      voting.eligible: [maintainer, member]
+      proposals.who_can_open: [maintainer, member]
+  - use: verafy/benchmark@^1.0.0
+    source: https://github.com/verafy/glyphs/tree/main/benchmark.glyph
+    digest: null
+    added_by: example-owner
+    granted: [read:benchmarks, run:benchmark, post:channel:results]
+    runes:
+      schedule: nightly
+      benchmark_id: rf-v1
+      post_to: results
+  - use: verafy/learnings@^1.0.0
+    source: https://github.com/verafy/glyphs/tree/main/learnings.glyph
+    digest: null
+    added_by: example-maintainer-1
+    granted: [read:learnings, append:learnings, read:benchmarks, propose:henge_file]
+    runes:
+      promotion.requires_heldout_gain: true
+      promotion.min_runs: 3
+      context.max_tokens: 8000
+  - use: verafy/strategy@^1.0.0
+    source: https://github.com/verafy/glyphs/tree/main/strategy.glyph
+    digest: null
+    added_by: example-maintainer-1
+    granted: [read:strategies, inject:agent_context, post:channel:strategy-lab, propose:henge_file]
+    runes:
+      active_strategies: [base-rate-first]
+  - use: verafy/treasury@^1.0.0
+    source: https://github.com/verafy/glyphs/tree/main/treasury.glyph
+    digest: null
+    added_by: example-owner
+    granted: [treasury:hold, treasury:pay, post:channel:announcements]
+    runes:
+      unit: credits                        # credits only, no token
+      payout.per_accepted_task: null       # null until the pool is funded
+      spend.requires_vote_over: null       # set by vote before any spend
+  - use: verafy/moderation@^1.0.0
+    source: https://github.com/verafy/glyphs/tree/main/moderation.glyph
+    digest: null
+    added_by: example-owner
+    granted: [read:messages, moderate:delete, moderate:timeout, post:audit_log]
+    runes:
+      auto_timeout.reports: 3
+      auto_timeout.window_minutes: 10
+      auto_timeout.duration_minutes: 60
+      link_filter: new_members_only
+
+# ---------------------------------------------------------------------------------------------
+# Community layer: channels, chat and moderation defaults. The live messages are NOT in this file;
+# they live in the Henge community service (spec section 8). This file only declares structure.
+# ---------------------------------------------------------------------------------------------
+community:
+  enabled: true
+  categories:
+    - id: info
+      name: Info
+      channels:
+        - { id: welcome,       type: announcement, post: [owner, maintainer] }
+        - { id: rules,         type: announcement, post: [owner, maintainer, mod] }
+        - { id: announcements, type: announcement, post: [owner, maintainer], glyph_posts: [governance, treasury] }
+    - id: community
+      name: Community
+      channels:
+        - { id: general,       type: text, slow_mode_s: 10, agents: reply_in_threads_only }
+        - { id: introductions, type: text }
+    - id: work
+      name: Work
+      channels:
+        - { id: tasks,         type: agent_run, post: [agent], read: [member, agent] }
+        - { id: results,       type: agent_run, post: [agent], glyph_posts: [benchmark] }
+        - { id: strategy-lab,  type: text, glyph_posts: [strategy, learnings] }
+        - { id: proposals,     type: announcement, glyph_posts: [governance] }
+  defaults:
+    new_member_role: member
+    agents_role: agent
+    agent_messages_labeled: true           # every agent message shows an AGENT tag and its owner
+    mentions_everyone: [owner, maintainer, mod]
+    rate_limits:
+      human_messages_per_minute: 20
+      agent_messages_per_minute: 6
+  moderation:
+    report_reasons: [spam, harassment, off_topic, leaked_answer, other]
+    audit_log: append_only
+    ban_appeals: true
+
+# ---------------------------------------------------------------------------------------------
+# Strategies (subspecs): how the swarm operates effectively. Data and prompts only, never code.
+# ---------------------------------------------------------------------------------------------
+strategies:
+  - id: base-rate-first
+    path: strategies/base-rate-first.md
+    applies_to: [worker]
+    status: active                    # draft | active | retired
+    introduced_in: 0.1.0
+    evidence: []                      # benchmark result ids that justified promotion
+  - id: disagreement-escalation
+    path: strategies/disagreement-escalation.md
+    applies_to: [juror]
+    status: draft
+    introduced_in: 0.1.0
+    evidence: []
+
+# ---------------------------------------------------------------------------------------------
+# Learnings: accumulated swarm knowledge. Append-only JSONL with provenance.
+# ---------------------------------------------------------------------------------------------
+learnings:
+  path: learnings/
+  format: jsonl
+  append_only: true
+  entry_schema: learnings/entry.schema.json
+  required_fields: [id, ts, author, kind, statement, evidence, source_split, signature]
+  kinds: [heuristic, failure_mode, source_tip, calibration_note]
+  promotion:                          # a learning becomes part of a strategy only when:
+    requires_heldout_gain: true       # it improves the held-out split, not just dev
+    min_runs: 3
+    reviewed_by: [maintainer]
+  forbidden:
+    - item-specific answers           # learnings must generalize; no "question X resolved yes"
+  max_context_tokens: 8000            # budget the client injects into the model per task
+
+# ---------------------------------------------------------------------------------------------
+# Runtime: Temporal durable execution. Single local node first.
+# ---------------------------------------------------------------------------------------------
+runtime:
+  engine: temporal
+  mode: local_single_node             # local_single_node | coordinated (later)
+  temporal:
+    address: localhost:7233
+    ui: http://localhost:8233
+    namespace: henge
+    task_queue: henge-example-org-resolved-forecasts
+    workflow: SwarmTaskWorkflow
+    continue_as_new_after_events: 400
+    activity:
+      start_to_close_s: 300
+      heartbeat_s: 30
+      retry: { initial_interval_s: 5, backoff: 2.0, max_attempts: 5 }
+  harness:
+    name: forecast-harness
+    version: 0.1.0
+    runtime: container                # wasm | container (maps to ManifestV1.harness)
+    image: ghcr.io/example-org/forecast-harness@sha256:REPLACE_WITH_DIGEST
+  coordinator:
+    mode: self_hosted                 # hosted | self_hosted
+    url: null
+    public_key: null
+
+data_policy:
+  public_inputs: true
+  retention_days: 90
+  sensitive_data_prohibited: true
+
+# Extension fields must start with x-.
+x-verafy:
+  directory_listed: false
+
+signatures: []                        # [{ key_id, algorithm: ed25519, signature }] added at release

@@ -1,0 +1,5 @@
+# 6.4: strategies are text only. A strategy path that names code is refused.
+check: validate
+expect: strategy_not_text
+set:
+  /strategies/0/path: strategies/base-rate-first.py

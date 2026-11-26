@@ -1,0 +1,5 @@
+# 6.2: the client refuses an unknown major version of the .henge spec.
+check: validate
+expect: henge_unknown_major
+set:
+  /henge: "2.0"

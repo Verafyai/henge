@@ -1,0 +1,7 @@
+# 7.3: moderate:ban needs a member vote to grant unless the Henge owner is the only member.
+check: grant
+base: moderation
+set:
+  /permissions/requests/4: moderate:ban
+expect: scope_requires_vote
+grant: { granted: [read:messages, moderate:ban], memberCount: 3, votePassed: false }

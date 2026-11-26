@@ -1,0 +1,6 @@
+# 7.3: network:* wildcards are refused in a Glyph's requests.
+check: manifest
+base: governance
+expect: scope_network_wildcard
+set:
+  /permissions/requests/6: "network:*"

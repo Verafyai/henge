@@ -1,0 +1,21 @@
+# EXAMPLE built-in Glyph manifest (spin-out spec v2, 7.1). Not a released Glyph. See README.md for where each value comes from.
+glyph: "1.0"
+id: verafy/strategy
+name: Strategy Glyph
+version: 1.0.0
+kind: strategy
+summary: Serves versioned subspecs from strategies/ into agent context.
+publisher: { name: Verafy, url: https://verafy.ai }
+source: { repo: https://github.com/verafy/glyphs, commit: null, bundle_digest: null }
+runtime:
+  type: declarative
+  runs_on: local_node
+permissions:
+  requests: [read:strategies, inject:agent_context, post:channel:strategy-lab, propose:henge_file]
+  never: [Run code from strategies, See member API keys, Reach the network]
+runes:
+  - { id: active_strategies, name: Active strategies, type: list, default: null }
+channels:
+  - { id: strategy-lab, type: text, category: work }
+compat: { henge: ">=1.0 <2", min_client_version: 0.2.0 }
+signatures: []

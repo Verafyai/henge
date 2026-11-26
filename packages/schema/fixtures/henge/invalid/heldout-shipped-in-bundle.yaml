@@ -1,0 +1,5 @@
+# 6.4: the held-out split must be "private" or a digest-only reference, never a file in the bundle.
+check: validate
+expect: heldout_not_private
+set:
+  /benchmarks/0/dataset/splits/heldout: benchmarks/rf-v1/heldout.jsonl

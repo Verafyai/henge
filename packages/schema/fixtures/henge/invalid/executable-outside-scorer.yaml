@@ -1,0 +1,6 @@
+# 6.4: any executable file outside benchmarks/scorer/ makes the bundle invalid.
+check: bundle
+expect: bundle_executable_file
+files:
+  benchmarks/scorer/score.py: "print('allowed here')\n"
+  strategies/helper.py: "print('not allowed here')\n"

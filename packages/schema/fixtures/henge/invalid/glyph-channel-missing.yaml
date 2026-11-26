@@ -1,0 +1,5 @@
+# 6.4: any channel a Glyph posts to must exist or be created by that Glyph. Here #announcements is removed.
+check: validate
+expect: glyph_channel_missing
+unset:
+  - /community/categories/0/channels/2

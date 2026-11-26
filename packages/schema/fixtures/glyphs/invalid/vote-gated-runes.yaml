@@ -1,0 +1,8 @@
+# 7.6: changing a vote-gated Rune opens a proposal; proposals.who_can_open needs a maintainer instead.
+check: runes
+base: governance
+changes:
+  voting.threshold: 0.75
+  proposals.who_can_open: [maintainer]
+expect_proposal: [voting.threshold]
+expect_direct: [proposals.who_can_open]

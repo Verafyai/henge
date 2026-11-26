@@ -1,0 +1,5 @@
+# 6.4: community channel ids are unique across all categories.
+check: validate
+expect: community_channel_duplicate
+set:
+  /community/categories/1/channels/1/id: general

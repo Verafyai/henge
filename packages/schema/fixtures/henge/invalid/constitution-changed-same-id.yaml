@@ -1,0 +1,6 @@
+# 6.4: governance.constitution.immutable can only change together with a new id.
+check: update
+expect: constitution_changed_without_new_id
+set:
+  /version: 0.2.0
+  /governance/constitution/immutable/0: Held-out benchmark questions may be published after a year.

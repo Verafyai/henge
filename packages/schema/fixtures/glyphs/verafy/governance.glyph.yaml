@@ -1,0 +1,34 @@
+# Example Glyph manifest (validates against glyph.schema.json). All values are examples.
+glyph: "1.0"
+id: verafy/governance
+name: Governance Glyph
+version: 1.0.0
+kind: governance
+summary: Proposals, votes and who can change the .henge file. Configured with Runes.
+icon: icon.svg
+publisher: { name: Verafy, url: https://verafy.ai }
+source: { repo: https://github.com/verafy/glyphs, commit: null, bundle_digest: null }
+runtime:
+  type: declarative
+  runs_on: coordinator
+  temporal:
+    workflows: [ProposalWorkflow, TallyWorkflow]
+    task_queue_suffix: governance
+permissions:
+  requests: [read:members, post:channel:announcements, post:channel:proposals, propose:henge_file, tally:votes, moderate:pause_member]
+  never: [Spend from the Treasury, Reach the network, See member API keys]
+runes:
+  - { id: voting.method, name: Voting method, type: enum, options: [majority, supermajority, maintainers_only], default: majority }
+  - { id: voting.threshold, name: Pass threshold, type: percent, min: 0.5, max: 1.0, default: 0.5 }
+  - { id: voting.quorum, name: Quorum, type: percent, min: 0, max: 1.0, default: 0.25 }
+  - { id: voting.period_hours, name: Voting period, type: integer, min: 1, max: 720, unit: hours, default: 72 }
+  - { id: voting.eligible, name: Who can vote, type: roles, default: [maintainer, member] }
+  - { id: proposals.who_can_open, name: Who can propose, type: roles, default: [maintainer, member], change_requires: maintainer }
+channels:
+  - { id: proposals, type: announcement, category: info }
+commands:
+  - { name: propose, description: Open a proposal to change a Rune or the .henge file, roles: [maintainer, member] }
+  - { name: vote, description: Vote on an open proposal, roles: [maintainer, member] }
+events: [proposal.created, proposal.closed, henge_file.updated, member.joined]
+compat: { henge: ">=1.0 <2", min_client_version: 0.2.0 }
+signatures: []
