@@ -312,22 +312,6 @@ describe('fixture task harness (SPEC 11.5)', () => {
   });
 });
 
-describe('cancellation (SPEC 3.2 leave, 5.2 pause)', () => {
-  it('an abort ends a running harness at once', async () => {
-    const r = await (async () => {
-      const ctl = new AbortController();
-      const { CHECK_WASM: W } = await import('./check-wasm');
-      const bundle = { dir: '', harness: { runtime: 'wasm', limits: { memory_mb: 16 } } as unknown as VerifiedBundle['harness'], bundleHash: H('0'), keyId: 'k', wasm: new Uint8Array(Buffer.from(W['spin']!, 'base64')), systemPrompt: 's', outputSchema: {} };
-      const started = Date.now();
-      setTimeout(() => ctl.abort(), 100);
-      const out = await runHarness({ bundle, input: {}, granted: new Set(), limits: { memoryMb: 16, wallMs: 10_000, maxModelCalls: 1, maxTokensPerCall: 1 }, host: { complete: null, fetch: null, scratch: null, screen: heuristicScreener }, signal: ctl.signal });
-      return { out, ms: Date.now() - started };
-    })();
-    expect(r.out).toMatchObject({ status: 'failed', reason: 'cancelled' });
-    expect(r.ms).toBeLessThan(2000);
-  });
-});
-
 describe('WebAssembly metering (meter/1)', () => {
   const FIX = path.join(import.meta.dirname, '..', '..', 'schema', 'fixtures', 'harnesses');
   const noHost = { complete: null, fetch: null, scratch: null, screen: heuristicScreener };
@@ -443,5 +427,21 @@ describe('WebAssembly metering (meter/1)', () => {
   it('no fuel budget is approved: metering counts but does not limit by default', () => {
     expect(APPROVED_FUEL_BUDGET).toBeNull();
     expect(METER_VERSION).toBe('meter/1');
+  });
+});
+
+describe('cancellation (SPEC 3.2 leave, 5.2 pause)', () => {
+  it('an abort ends a running harness at once', async () => {
+    const r = await (async () => {
+      const ctl = new AbortController();
+      const { CHECK_WASM: W } = await import('./check-wasm');
+      const bundle = { dir: '', harness: { runtime: 'wasm', limits: { memory_mb: 16 } } as unknown as VerifiedBundle['harness'], bundleHash: H('0'), keyId: 'k', wasm: new Uint8Array(Buffer.from(W['spin']!, 'base64')), systemPrompt: 's', outputSchema: {} };
+      const started = Date.now();
+      setTimeout(() => ctl.abort(), 100);
+      const out = await runHarness({ bundle, input: {}, granted: new Set(), limits: { memoryMb: 16, wallMs: 10_000, maxModelCalls: 1, maxTokensPerCall: 1 }, host: { complete: null, fetch: null, scratch: null, screen: heuristicScreener }, signal: ctl.signal });
+      return { out, ms: Date.now() - started };
+    })();
+    expect(r.out).toMatchObject({ status: 'failed', reason: 'cancelled' });
+    expect(r.ms).toBeLessThan(2000);
   });
 });
