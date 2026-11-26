@@ -258,7 +258,8 @@ export async function runHarness(o: { bundle: VerifiedBundle; input: unknown; gr
 }
 
 /**
- * Stand-in screener until the Prompt Guard model runs as a host capability: flags common
+ * The old stand-in screener, kept only for its unit tests. Henge screens with promptGuardScreener
+ * (prompt-guard.ts, DECISIONS 2026-11-25). Flags common
  * instruction-override and secret-extraction phrasing. Flagged input still runs, because the
  * structural protections above do not depend on the screen; the verdict is recorded.
  */
