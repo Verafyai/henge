@@ -71,3 +71,25 @@ test('the /v1 API answers with contracts and the error envelope', async ({ reque
   // The lease endpoints are live (M5) and refuse unsigned callers.
   expect((await request.post('/v1/coordinators/challenge-vaults/leases', { data: {} })).status()).toBe(401);
 });
+
+test('public results show settled work only, with counts, and anyone can fetch the receipt keys (M7)', async ({ page, request }) => {
+  await page.goto('/swarms/challenge-vaults');
+  await page.getByRole('link', { name: 'See verified results' }).click();
+  await expect(page).toHaveURL(/\/swarms\/challenge-vaults\/results$/);
+  await expect(page.getByRole('heading', { name: 'Verified results' })).toBeVisible();
+  await expect(page.getByTestId('counts-settled')).toHaveText(/^\d+$/);
+  const api = await request.get('/v1/swarms/challenge-vaults/results');
+  expect(api.status()).toBe(200);
+  const body = await api.json();
+  expect(Object.keys(body.counts).sort()).toEqual(['impact_settled', 'in_verification', 'pending', 'rejected', 'settled']);
+  await expect(page.getByTestId('public-result')).toHaveCount(body.items.length);
+  expect((await request.get('/v1/swarms/does-not-exist/results')).status()).toBe(404);
+  expect((await request.get('/v1/results/00000000-0000-7000-8000-000000000000')).status()).toBe(404);
+  const keys = await (await request.get('/v1/receipts/keys')).json();
+  expect(keys.keys.length).toBeGreaterThan(0);
+  // A receipt is the contributor's own; the kill switch is for admins.
+  expect((await request.get('/v1/me/results/00000000-0000-7000-8000-000000000000/receipt')).status()).toBe(401);
+  expect((await request.post('/v1/admin/revocations', { data: {} })).status()).toBe(401);
+  const feed = await (await request.get('/v1/revocations')).json();
+  expect(Array.isArray(feed.keys)).toBe(true);
+});

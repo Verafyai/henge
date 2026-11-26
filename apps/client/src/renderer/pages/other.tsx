@@ -250,6 +250,20 @@ export function SettingsPage() {
           >
             {checking ? 'Checking' : 'Check for updates'}
           </Btn>
+          {update?.kind === 'available' && (
+            <Btn
+              variant="quiet"
+              className="px-3 py-1.5 text-sm"
+              disabled={checking}
+              onClick={async () => {
+                setChecking(true);
+                setUpdate(await window.swarm.updates.download());
+                setChecking(false);
+              }}
+            >
+              Download and verify
+            </Btn>
+          )}
           {update && (
             <p role="status" data-testid="update-status" className={update.kind === 'rejected' || update.kind === 'error' ? 'text-sm text-red-700' : 'text-sm text-ink'}>
               {update.message}

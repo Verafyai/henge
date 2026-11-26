@@ -32,6 +32,16 @@ export function ActivityPage() {
       <p className="mt-2 text-zinc-600">What this node is doing, and why. Each result shows where it is in verification and what it really earned.</p>
       {!t ? null : (
         <div className="mt-6 space-y-4">
+          {o!.kill.status === 'stopped' && (
+            <section aria-label="Stopped by Verafy" role="alert" className="rounded-xl border border-red-300 bg-red-50 p-5" data-testid="kill-switch">
+              <h2 className="font-semibold text-red-900">Stopped by Verafy</h2>
+              {o!.kill.global && <p className="mt-1 text-sm text-red-900">{`All work is stopped: ${o!.kill.global.reason}`}</p>}
+              {o!.kill.swarms.map((s) => (
+                <p key={s.swarm} className="mt-1 text-sm text-red-900">{`${nameOf(s.swarm)} is stopped: ${s.reason}`}</p>
+              ))}
+              <p className="mt-1 text-xs text-red-800">The stop is signed by Verafy and was checked on this computer. Any running task went back to the queue, unpaid. Work starts again when the stop is lifted.</p>
+            </section>
+          )}
           <section aria-label="Now" className="rounded-xl border border-zinc-200 p-5">
             <div className="flex items-center justify-between gap-2">
               <h2 className="font-semibold">Now</h2>

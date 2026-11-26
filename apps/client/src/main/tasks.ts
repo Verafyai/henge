@@ -28,6 +28,7 @@ import { sha256Digest } from '@swarm-explorer/schema/node';
 import type { HarnessRunResult, HarnessRunSpec, InstalledModel, TaskHistoryItem, TaskRunView, TasksOverview } from '../shared/node';
 import type { AuthManager } from './auth';
 import type { EncryptedCache } from './cache';
+import type { KillSwitchWatcher } from './kill-switch';
 import type { MembershipManager, PreparedRun } from './memberships';
 
 type Deps = {
@@ -41,6 +42,8 @@ type Deps = {
   support: EnforcementSupport;
   appVersion: string;
   changed: () => void;
+  /** The signed kill switch (M7). Absent only in tests that do not cover it. */
+  kill?: Pick<KillSwitchWatcher, 'stoppedReason' | 'startBlock' | 'check'>;
   /** Engineering intervals, shortened in tests. */
   tickMs?: number;
 };
@@ -62,7 +65,11 @@ const STOP_DETAIL: Record<AbandonReason, string> = {
   local_failure: 'The task could not run here. It went back to the queue, unpaid.',
   signed_out: 'Signed out. The task went back to the queue, unpaid.',
   pin_mismatch: 'The harness or permissions did not match. The task went back to the queue, unpaid.',
+  kill_switch: 'Verafy stopped this work. The task went back to the queue, unpaid.',
 };
+
+/** Coordinator answers that mean a stop is in force: read the signed feed at once. */
+const KILL_CODES = new Set(['killed', 'swarm_killed', 'lease_cancelled']);
 
 async function errorOf(res: Response) {
   const e = apiErrorSchema.safeParse(await res.json().catch(() => null));
@@ -154,6 +161,19 @@ export class TaskRunner {
     void this.tick();
   }
 
+  /**
+   * The kill state changed (M7): stop the running task at once if its swarm, or everything, is now
+   * stopped, then let the next pass show why. Does not wait for a tick in progress.
+   */
+  applyKill() {
+    const c = this.current;
+    const why = c && this.d.kill?.stoppedReason(c.swarm);
+    if (why) this.stopCurrent('kill_switch', `${why} The task went back to the queue, unpaid.`);
+    const all = this.d.kill?.stoppedReason();
+    if (all && !this.current) this.set('blocked', all);
+    void this.tick();
+  }
+
   onLeave(membershipId: string) {
     if (this.current?.membershipId === membershipId) this.stopCurrent('left');
     this.scheduler.remove(membershipId);
@@ -183,19 +203,25 @@ export class TaskRunner {
       this.gate = gate;
       if (changed) this.d.changed();
       if (this.current) {
-        if (gate.mustStop) this.stopCurrent('run_rules', `${gate.blocks[0]!.detail} The task went back to the queue, unpaid.`);
+        const why = this.d.kill?.stoppedReason(this.current.swarm);
+        if (why) this.stopCurrent('kill_switch', `${why} The task went back to the queue, unpaid.`);
+        else if (gate.mustStop) this.stopCurrent('run_rules', `${gate.blocks[0]!.detail} The task went back to the queue, unpaid.`);
         else await this.maybeRenew();
         return;
       }
       if (!this.signedIn()) return this.set('off', 'Sign in to run tasks.');
       if (this.d.isPaused()) return this.set('paused', 'Paused. No new tasks until you resume.');
+      const block = this.d.kill?.startBlock();
+      if (block) return this.set('blocked', block);
       await this.recover();
       if (Date.now() - this.lastHome > HOME_REFRESH_MS) {
         this.lastHome = Date.now();
         await this.d.memberships.refresh();
       }
-      const active = (this.d.memberships.overview().home?.joined ?? []).filter((m) => m.status === 'active');
-      if (!active.length) return this.set('off', 'No qualified swarm yet. Tasks start after a swarm qualifies.');
+      const qualified = (this.d.memberships.overview().home?.joined ?? []).filter((m) => m.status === 'active');
+      if (!qualified.length) return this.set('off', 'No qualified swarm yet. Tasks start after a swarm qualifies.');
+      const active = qualified.filter((m) => !this.d.kill?.stoppedReason(m.swarm));
+      if (!active.length) return this.set('blocked', this.d.kill!.stoppedReason(qualified[0]!.swarm)!);
       if (!gate.canStart) return this.set('blocked', gate.blocks[0]!.detail);
       const now = Date.now();
       const order = this.scheduler.order(
@@ -250,6 +276,11 @@ export class TaskRunner {
       const res = await this.d.auth.signedFetch('POST', `/v1/coordinators/${m.swarm}/leases`, { node_id: this.d.nodeId(), mode: 'local', model_artifact_hash: model.contentHash, reputation_token: null, spend_reservation: null });
       if (!res.ok) {
         const e = await errorOf(res);
+        if (KILL_CODES.has(e.code)) {
+          await this.d.kill?.check();
+          this.set('blocked', e.message);
+          return false;
+        }
         this.skip(m.id);
         this.set('waiting', e.message);
         return false;
@@ -303,6 +334,10 @@ export class TaskRunner {
       const sres = await this.d.auth.signedFetch('POST', `/v1/leases/${lease.lease_id}/start`, { harness_hash: prepared.release.bundleHash, permissions_hash: m.permissions_hash, model_artifact_hash: model.contentHash });
       if (!sres.ok) {
         const e = await errorOf(sres);
+        if (KILL_CODES.has(e.code)) {
+          void this.d.kill?.check();
+          return finish({ outcome: 'abandoned', detail: e.message });
+        }
         await this.abandon(lease.lease_id, e.code === 'pin_mismatch' ? 'pin_mismatch' : 'local_failure');
         return finish({ outcome: 'abandoned', detail: e.message });
       }

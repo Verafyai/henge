@@ -26,12 +26,14 @@ const bridge: SwarmBridge = {
     revokeInstall: (id) => invoke(IPC.revokeInstall, String(id)),
     wallet: () => invoke(IPC.wallet),
     results: () => invoke(IPC.results),
+    receipt: (id) => invoke(IPC.receipt, String(id)),
+    saveReceipt: (id) => invoke(IPC.saveReceipt, String(id)),
   },
   recent: {
     list: () => invoke(IPC.recentList),
     add: (slug) => invoke(IPC.recentAdd, String(slug)),
   },
-  updates: { check: () => invoke(IPC.updatesCheck) },
+  updates: { check: () => invoke(IPC.updatesCheck), download: () => invoke(IPC.updatesDownload) },
   node: {
     overview: () => invoke(IPC.nodeOverview),
     detect: () => invoke(IPC.nodeDetect),

@@ -79,7 +79,7 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - The funded pool exists but is **empty**: no purchase is possible without approved pricing (SPEC 9.6A).
 - Economic values (credit price, take rate) are stored only as an `economic_configs` row with status `proposal`.
   **Needs Rex**: approve or replace them before M9.
-- Model artifact hashes are fixture digests, not real downloads, so the M2 hash check will block them by design.
+- Model artifact hashes are fixture digests, not real downloads, so the M2 hash check will block them by design. Superseded in M7: the seed now carries the five approved real pins.
 - Each seed run makes a throwaway `verafy-local-test-*` publisher key and discards the private half.
 
 ### API (SPEC 13)
@@ -207,6 +207,7 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - The server refuses a benchmark whose verified hash differs from the pin (409 `hash_mismatch`).
 - Seeded hashes are fixture digests, so real downloads of the seed catalog are blocked by design until a real
   catalog is approved. The e2e stand-in Ollama returns the seeded digest for one model to show the success path.
+  Superseded in M7: the seed carries the approved real pins, so real downloads of them verify.
 
 ### Fit (SPEC 5.4)
 - **Before download**, fit is a memory-size comparison and nothing more:
@@ -589,6 +590,84 @@ These settle the open items from M0 to M3. Where an earlier section below says *
 - **Real juries** and a publisher review queue.
 - **IP range evidence** for independence is not implemented; independence is by account only.
 - **Funded leasing and reservations** arrive with pools in M9.
+
+## M7 Release readiness (2026-11-25)
+
+### Catalog
+- The seed catalog is the five pins from the approved 2026-11-25 proposal: Phi-4 Mini 3.8B, Qwen2.5 7B Instruct,
+  Mistral NeMo 12B, Phi-4 14B and Mistral Small 24B, each an exact Ollama `q4_K_M` tag with its registry digest and
+  size. No moving tags, no Granite.
+- Context lengths are not in the proposal, so they are null and shown as "not recorded".
+- The two test-only models (a GGUF stand-in and a too-large entry) are seeded only with `SEED_TEST_MODELS=1` on the
+  embedded database, for the client e2e. They are labelled "Test only".
+
+### Kill switch (SPEC 11.6)
+- One signed feed: `revocations` rows gain `action` (`revoke` or `restore`), `signature`, actor and Idempotency-Key.
+  Targets `platform` (`*`) and `swarm` (slug). The newest entry per target wins; `effective_at` only moves forward.
+- Each entry is Ed25519 signed over `swarm-explorer-revocation-v1\n` plus RFC 8785 canonical JSON. The feed lists
+  its signing keys (`platform_keys`). Old keys stay listed so old entries still verify.
+- `POST /v1/admin/revocations`: platform admins only, Idempotency-Key per admin, refuses a second stop of the same
+  target (`already_stopped`) or a restore with nothing stopped (`not_stopped`).
+- A stop refuses new leases (`killed`, `swarm_killed`) and qualification, and cancels every open lease at once:
+  abandoned with `cancel_reason = kill_switch`, the task requeued unpaid, the reservation released. A late start
+  on a cancelled lease answers `lease_cancelled`.
+- The node polls the feed every 15 s with a 10 s timeout, so a stop reaches an idle node within 60 s. A lease
+  answer of `killed`, `swarm_killed` or `lease_cancelled` checks the feed at once.
+- Entries count only if their signature verifies. Builds pin keys with `MAIN_VITE_REVOCATION_PUBKEYS`; without it
+  the client trusts the keys the feed lists (signatures checked, trust root is the API host).
+- Fail closed for new work: if the feed was not read in the last 60 s, no new lease or qualification starts. A
+  running task is stopped by a verified stop, not by a missed poll.
+- A stop aborts the running task and qualification, deletes the stopped swarm's cached harness (SPEC 15.2), and
+  shows why in the status bar ("Stopped by Verafy") and on Activity, with the signed reason.
+- Dev only `POST /v1/dev/kill-switch` (behind `devSignInEnabled()` and `x-dev-tool`) uses the same function as the
+  seeded example admin, for the client e2e.
+
+### Public results and receipts
+- `GET /v1/swarms/{id}/results` and the page `/swarms/{id}/results` (linked from "What has it produced?") list
+  only Settled, on time results: output hash, harness and model pins, the methods that accepted it, impact and
+  settled time, plus counts (settled, pending, being verified, not accepted, impact settled). No inputs, outputs,
+  nodes, accounts or credit amounts.
+- `GET /v1/results/{id}` is built: public for settled results, 404 otherwise.
+- Receipts (`packages/schema` `receipt.ts`): JSON Schema plus `signReceipt` and `verifyReceipt`. Signed over
+  `swarm-explorer-receipt-v1\n` plus canonical JSON with a separate receipt key. The receipt names its signer
+  key, so it verifies offline; `--keys` or `--fetch-keys` also checks that key is one of the platform's.
+- A receipt holds result id and output hash, swarm, funded flag, release manifest hash, pins, accepting methods
+  with verifier versions and key ids, the Submitted, Pending and Settled times, earned impact, and the
+  contributor's account id. No node id.
+- Volunteer receipts always have `credits: null` (enforced by the schema). Funded receipts show credits only from a
+  real `settle` ledger entry.
+- Issued once on first request and stored in `receipts`, so a downloaded receipt never changes.
+- `GET /v1/me/results/{id}/receipt` (bearer, own results only) and `GET /v1/receipts/keys` (public).
+- Client: settled results have "View receipt", checked in the main process against the published keys, and "Save
+  receipt" to a file. CLI: `swarm receipt verify <file> [--keys <file> | --fetch-keys]`.
+
+### Installer and test updates
+- Identifiers stay `ai.verafy.henge` and `henge://`. Packages are ad-hoc or unsigned; nothing is notarized.
+- `release:test` also writes the payload to `.data/release-test/files/<url path>`.
+- The client can now download a verified update: bytes must match the signed size and sha256 before the file is
+  staged in `userData/updates/<version>/`. Installing (OS signature check and swap) is not built, because it
+  needs signed packages.
+- The only pinned release host is still the reserved `releases.swarm-explorer.test`. Unpackaged runs may set
+  `SWARM_EXPLORER_RELEASE_MIRROR` (local http only) to serve that host's files; the host pin and hash check are
+  unchanged. No release host is approved.
+
+### New endpoints and migration
+- `POST /v1/admin/revocations`, `GET /v1/swarms/{id}/results`, `GET /v1/results/{id}`,
+  `GET /v1/me/results/{id}/receipt`, `GET /v1/receipts/keys`, dev only `POST /v1/dev/kill-switch`. The feed adds
+  `action`, `signature` and `keys`. Added to SPEC 13.1, 13.3 and 13.4 and the api-client contracts.
+- Migration 0007: `platform_keys`, `receipts`, revocation columns, `leases.cancel_reason`, the `platform`
+  revocation target, nullable `model_artifacts.context_length`.
+
+### Needs Rex
+- **Model classes:** Phi-4 14B is `code-7b-plus` and the other four are `jury-panel-member`. My assignment, not in
+  the proposal.
+- **Context lengths** for the five pins.
+- **Platform key custody:** production revocation and receipt keys (`PLATFORM_REVOCATION_KEY`,
+  `PLATFORM_RECEIPT_KEY`) and the pinned client keys (`MAIN_VITE_REVOCATION_PUBKEYS`). Dev uses throwaway keys.
+- **Who may use the kill switch:** today any platform admin. A second approver or a break-glass process is open.
+- **Receipt contents:** whether the contributor's account id belongs in a receipt that may be shared.
+- **Release host** and production signing (Apple, Windows) before any real installer or update install.
+- **Kill switch bound:** 60 s with 15 s polling is my choice. Shorter means more feed traffic.
 
 ## Desktop app is dark only (Rex, 2026-11-25)
 - Henge SPEC 9.1: the app is dark only and matches the Henge pages on www.verafy.ai. There is no light mode.

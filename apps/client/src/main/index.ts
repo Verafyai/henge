@@ -5,7 +5,7 @@ import { IPC } from '../shared/bridge';
 import type { Route } from '../shared/routes';
 import { AuthManager } from './auth';
 import { EncryptedCache } from './cache';
-import { API_BASE_URL, CHANNEL, DEV_SERVER, KEYCHAIN_SERVICE, isDev } from './config';
+import { API_BASE_URL, CHANNEL, DEV_SERVER, KEYCHAIN_SERVICE, isDev, revocationKeys } from './config';
 import { SCHEME, deepLinkFromArgv, parseDeepLink } from './deeplinks';
 import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
@@ -215,6 +215,7 @@ void app.whenReady().then(async () => {
     userDataDir: app.getPath('userData'),
     appVersion: app.getVersion(),
     channel: CHANNEL,
+    revocationKeys: revocationKeys(),
     // Fixture hardware and a stand-in Ollama are test hooks for unpackaged runs only (SPEC 16.4 M1).
     testHooks: app.isPackaged
       ? null

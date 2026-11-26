@@ -17,6 +17,7 @@ import { chmodSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSyn
 import { createServer, request as httpRequest, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { verifyReceipt } from '@swarm-explorer/schema/node';
 import { proxySocketDir } from '../src/main/socket-path';
 import { _electron as electron, chromium, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
@@ -120,6 +121,7 @@ async function launch(opts: { args?: string[]; api?: string; fixture?: string; p
       SWARM_EXPLORER_OLLAMA_HOST: ollamaHost,
       SWARM_EXPLORER_HF_BASE: hfBase,
       SWARM_EXPLORER_SENSOR_FIXTURE: SENSORS,
+      SWARM_EXPLORER_RELEASE_MIRROR: mirrorBase,
       PATH: `${BIN}${path.delimiter}${process.env['PATH'] ?? ''}`,
     },
   });
@@ -178,6 +180,22 @@ function profileFiles(dir = PROFILE): string[] {
 
 test.describe.configure({ mode: 'serial' });
 
+// A local mirror of the pinned test release host (M7): serves what `release:test` wrote to
+// .data/release-test/files. `mirrorTamper` flips a byte so the hash check can be shown to refuse it.
+const RELEASE_FILES = path.resolve(__dirname, '../../..', '.data', 'release-test', 'files');
+let mirrorTamper = false;
+const mirrorCalls: string[] = [];
+const mirror = createServer((req, res) => {
+  mirrorCalls.push(req.url ?? '');
+  const rel = path.normalize(decodeURIComponent((req.url ?? '/').split('?')[0]!)).replace(/^([/\\])+/, '');
+  const file = path.join(RELEASE_FILES, rel);
+  if (!file.startsWith(RELEASE_FILES + path.sep) || !existsSync(file)) return void res.writeHead(404).end();
+  const body = readFileSync(file);
+  if (mirrorTamper) body[0] = body[0]! ^ 1;
+  res.writeHead(200, { 'content-type': 'application/zip', 'content-length': body.byteLength }).end(body);
+});
+let mirrorBase = '';
+
 let app: ElectronApplication;
 let page: Page;
 
@@ -186,6 +204,8 @@ test.beforeAll(async () => {
   ollamaHost = `127.0.0.1:${(ollama.address() as { port: number }).port}`;
   await new Promise<void>((r) => hf.listen(0, '127.0.0.1', r));
   hfBase = `http://127.0.0.1:${(hf.address() as { port: number }).port}`;
+  await new Promise<void>((r) => mirror.listen(0, '127.0.0.1', r));
+  mirrorBase = `http://127.0.0.1:${(mirror.address() as { port: number }).port}`;
   ({ app, page } = await launch());
 });
 
@@ -196,6 +216,7 @@ test.afterAll(async () => {
   rmSync(SENSOR_DIR, { recursive: true, force: true });
   ollama.close();
   hf.close();
+  mirror.close();
   rmSync(BIN, { recursive: true, force: true });
 });
 
@@ -409,6 +430,22 @@ test('settings lists this install and verifies a signed update manifest', async 
   await expect(page.getByTestId('node-registration')).toContainText('Hardware summary shared');
   await page.getByRole('button', { name: 'Check for updates' }).click();
   await expect(page.getByTestId('update-status')).toHaveText('Version 0.2.0-internal.1 is available (signature verified).');
+
+  // End to end against the local test release (M7): a tampered download is refused and nothing is
+  // staged; the real one matches its signed sha256 and is staged. Nothing is installed.
+  mirrorTamper = true;
+  await page.getByRole('button', { name: 'Download and verify' }).click();
+  await expect(page.getByTestId('update-status')).toHaveText('Update refused: the download does not match its signed hash.');
+  const staged = path.join(PROFILE, 'updates', '0.2.0-internal.1');
+  expect(existsSync(staged)).toBe(false);
+  mirrorTamper = false;
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await page.getByRole('button', { name: 'Download and verify' }).click();
+  await expect(page.getByTestId('update-status')).toContainText('Version 0.2.0-internal.1 was downloaded and matches its signed hash.');
+  expect(mirrorCalls.at(-1)).toMatch(/^\/internal\/0\.2\.0-internal\.1\/Henge-0\.2\.0-internal\.1-/);
+  const files = readdirSync(staged);
+  expect(files).toContain('manifest.json');
+  expect(files.some((f) => f.endsWith('.zip'))).toBe(true);
 });
 
 test('the catalog shows fit for this machine before any download (SPEC 5.4)', async () => {
@@ -626,6 +663,38 @@ test('tasks wait for the run rules, then lease, run in the sandbox and submit a 
   await expect(page.getByRole('region', { name: 'Timeshare this session' })).toContainText('Prompt Guard red team');
 });
 
+const killSwitch = (body: object) => fetch(`${API}/v1/dev/kill-switch`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-tool': '1' }, body: JSON.stringify(body) });
+
+test('a signed platform stop ends the running task within 60 seconds and says why; a restore lifts it (M7)', async () => {
+  test.setTimeout(180_000);
+  const held = chatBodies.filter(isTaskCall).at(-1)!;
+  const prompt = taskPrompt(held)!;
+  const status = page.getByTestId('task-status');
+  await expect(status).toContainText('Running a task for Prompt Guard red team');
+  const started = Date.now();
+  const res = await killSwitch({ target: 'platform', action: 'revoke', reason: 'Test stop from the e2e suite' });
+  expect(res.status).toBe(200);
+  expect(await res.json()).toMatchObject({ duplicate: false, cancelled_leases: 1, revocation: { targetType: 'platform', action: 'revoke' } });
+  const last = page.getByTestId('task-history').first();
+  await expect(last).toHaveAttribute('data-outcome', 'abandoned', { timeout: 60_000 });
+  expect(Date.now() - started).toBeLessThanOrEqual(60_000);
+  await expect(last).toContainText('Verafy has stopped all work for now: Test stop from the e2e suite');
+  // The sandbox stopped and the proxy hung up on the model call.
+  await expect.poll(() => chatAborted.some((b) => taskPrompt(b) === prompt)).toBe(true);
+  await expect(page.getByTestId('kill-switch')).toContainText('All work is stopped: Test stop from the e2e suite');
+  await expect(page.getByRole('status', { name: 'Node status' })).toContainText('Stopped by Verafy');
+  await expect(status).toContainText('Verafy has stopped all work for now');
+  const stoppedAt = chatBodies.length;
+  await page.waitForTimeout(3_000);
+  expect(chatBodies.slice(stoppedAt).filter(isTaskCall)).toHaveLength(0);
+
+  // Lift it: within the same bound the node takes work again (the next task is held on the model call).
+  expect((await killSwitch({ target: 'platform', action: 'restore', reason: 'Test restore' })).status).toBe(200);
+  await expect(page.getByTestId('kill-switch')).toHaveCount(0, { timeout: 60_000 });
+  await expect(status).toContainText('Running a task for Prompt Guard red team', { timeout: 30_000 });
+  await expect(page.getByRole('status', { name: 'Node status' })).toContainText('Running');
+});
+
 test('Pause mid-task cancels the model call and returns the task to the queue unpaid (M5)', async () => {
   const held = chatBodies.filter(isTaskCall).at(-1)!;
   const prompt = taskPrompt(held)!;
@@ -681,6 +750,30 @@ test('verified volunteer work settles when a review window closes and shows impa
   await expect(page.getByTestId('no-credits')).toContainText('earns impact, not credits');
   await expect(page.getByRole('region', { name: 'Credits' })).toHaveCount(0);
   await expect(page.locator('main')).not.toContainText(/\d+ credits/);
+
+  // A signed receipt per settled result (M7): checked on this computer, saved, and valid offline.
+  const first = wallet.getByTestId('result').first();
+  await first.getByRole('button', { name: 'View receipt' }).click();
+  const receipt = first.getByTestId('receipt');
+  await expect(receipt).toHaveAttribute('data-verified', 'true', { timeout: 15_000 });
+  await expect(receipt).toContainText('Signature checked on this computer');
+  await expect(receipt.getByTestId('receipt-earned')).toHaveText('1 impact');
+  const saveTo = path.join(mkdtempSync(path.join(tmpdir(), 'henge-receipt-')), 'receipt.json');
+  await app.evaluate(({ dialog }, file) => {
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath: file })) as unknown as typeof dialog.showSaveDialog;
+  }, saveTo);
+  await receipt.getByRole('button', { name: 'Save receipt' }).click();
+  await expect(receipt.getByTestId('receipt-saved')).toContainText(saveTo);
+  const keys = (await (await fetch(`${API}/v1/receipts/keys`)).json()) as { keys: Array<{ key_id: string; public_key: string; status: 'active' | 'revoked' }> };
+  const saved = JSON.parse(readFileSync(saveTo, 'utf8')) as Record<string, unknown>;
+  expect(verifyReceipt(saved, keys.keys)).toMatchObject({ ok: true, keyTrusted: true, receipt: { swarm: { funded: false }, earned: { credits: null } } });
+  expect(verifyReceipt({ ...saved, earned: { impact_units: 5, credits: null } }, keys.keys)).toMatchObject({ ok: false, reason: 'bad_signature' });
+  // The public results page lists it, with no account or node.
+  const pub = (await (await fetch(`${API}/v1/swarms/prompt-guard-red-team/results`)).json()) as { counts: { settled: number }; items: Array<{ result_id: string }> };
+  expect(pub.counts.settled).toBe(3);
+  expect(pub.items.map((i) => i.result_id)).toContain((saved['result'] as { id: string }).id);
+  expect(JSON.stringify(pub)).not.toContain((saved['contributor'] as { account_id: string }).account_id);
+
   await fetch(`${API}/v1/dev/verification-rules`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-tool': '1' }, body: JSON.stringify({ swarm: 'prompt-guard-red-team', review_window_s: null }) });
   chat.answer = NO_ATTACK;
 });

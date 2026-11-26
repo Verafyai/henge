@@ -8,6 +8,8 @@
  *
  * Without --artifact the manifest describes a small placeholder payload, which
  * is enough for the update check tests. `package:internal` passes the real zip.
+ * The payload is also written to .data/release-test/files/<url path>, so a local
+ * mirror (SWARM_EXPLORER_RELEASE_MIRROR, unpackaged runs only) can serve it.
  *
  * Stop the dev server first: the embedded database allows one process.
  */
@@ -57,6 +59,12 @@ const manifest: Manifest = {
   notes: 'Test-signed internal build (example).',
 };
 const signed = signManifest(manifest, privateKeyPem);
+
+// The artifact itself, at its URL path under .data/release-test/files, so a local mirror of the
+// pinned test host can serve it and the client can download and hash-check it end to end (M7).
+const filePath = path.join(dir, 'files', ...new URL(manifest.url).pathname.split('/').filter(Boolean));
+mkdirSync(path.dirname(filePath), { recursive: true });
+writeFileSync(filePath, payload);
 
 const db = await getDb();
 await db
