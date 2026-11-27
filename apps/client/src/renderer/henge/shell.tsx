@@ -163,6 +163,9 @@ export function UserPanel() {
   const name = profile?.displayName ?? (signedIn ? me.data!.handle : 'you');
   const paused = o?.paused ?? false;
   const model = o?.models.installed.find((m) => m.contentHash === o.models.storage.activeModel)?.displayName ?? 'none';
+  const usd = (micros: number) => `$${(micros / 1e6).toFixed(2)}`;
+  const b = o?.budget;
+  const spend = b ? `${usd(b.spentTodayUsdMicros)}${b.dailyCapUsdMicros !== null ? ` of ${usd(b.dailyCapUsdMicros)} cap` : ''}` : 'none';
   const signIn = async () => {
     qc.setQueryData(['auth'], { status: 'signing_in' });
     qc.setQueryData(['auth'], await window.swarm.auth.signIn());
@@ -192,7 +195,7 @@ export function UserPanel() {
           {state.label}
         </div>
         <span className="sr-only">
-          {`, ${state.detail}. Mode: ${o?.setup ? MODE_LABEL[o.setup.mode] : 'not chosen'}. Model: ${model}. API spend today: none.`}
+          {`, ${state.detail}. Mode: ${o?.setup ? MODE_LABEL[o.setup.mode] : 'not chosen'}. Model: ${model}. API spend today: ${spend}.`}
         </span>
       </div>
       <button type="button" className="hg-icon-btn" style={{ fontSize: 11.5 }} onClick={() => void actions.setPaused(!paused)}>

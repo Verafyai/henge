@@ -250,6 +250,8 @@ export class ApiCommunityStore implements CommunityStore {
   attachHenge(seed: HengeSeed) {
     this.local.attachHenge(seed);
     const had = this.spaces.get(seed.hengeId);
+    // Undefined: a file update that says nothing about the service, so the space stays. Null: not on it.
+    if (seed.communityId === undefined) return;
     if (!seed.communityId) {
       if (had) {
         void this.bridge.unwatch(had.communityId);

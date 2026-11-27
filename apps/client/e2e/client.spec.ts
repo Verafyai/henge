@@ -294,7 +294,7 @@ test('the renderer is served from app:// with no Node access and only named brid
   expect(probe).toEqual({
     require: 'undefined',
     process: 'undefined',
-    bridge: ['account', 'auth', 'getAppInfo', 'henges', 'models', 'node', 'onNavigate', 'onNotice', 'openExternal', 'recent', 'swarms', 'takeLaunchRoute', 'updates'],
+    bridge: ['account', 'auth', 'community', 'getAppInfo', 'henges', 'models', 'node', 'onNavigate', 'onNotice', 'openExternal', 'recent', 'swarms', 'takeLaunchRoute', 'updates'],
   });
   // The node bridge hands over facts and choices only: nothing key-like crosses it.
   const overview = await page.evaluate(() => window.swarm.node.overview());
