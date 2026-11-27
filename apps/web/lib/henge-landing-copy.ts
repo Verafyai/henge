@@ -216,8 +216,6 @@ export const pasteLink = {
   p: 'Paste a link to a .henge file to see that Henge before you join it.',
   label: '.henge link',
   placeholder: 'https://github.com/example-org/example.henge',
-  status: 'Coming soon',
-  note: 'The link preview is not available yet.',
 } as const;
 
 export const notFound = {
