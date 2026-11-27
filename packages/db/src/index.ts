@@ -12,3 +12,5 @@ export * from './wallet';
 export * from './platform-keys';
 export * from './kill-switch';
 export * from './public-results';
+export * from './community-schema';
+export * from './community';
