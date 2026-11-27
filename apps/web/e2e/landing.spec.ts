@@ -46,7 +46,7 @@ test('landing: no horizontal scroll at 390px, and the hero still has both button
 });
 
 test('download, spec, glyphs and the link preview answer 200', async ({ page }) => {
-  for (const path of ['/download', '/spec', '/glyphs', '/s', '/s?url=https%3A%2F%2Fexample.com%2Fa.henge']) {
+  for (const path of ['/download', '/spec', '/glyphs', '/s', '/s?url=https%3A%2F%2F10.0.0.1%2Fa.henge']) {
     const res = await page.goto(path);
     expect(res?.status(), path).toBe(200);
   }
@@ -72,8 +72,7 @@ test('spec renders sections 6 and 7; glyphs lists the six built-ins; /s is disab
   await expect(page.locator('[data-glyph]')).toHaveCount(6);
   for (const g of glyphDirectory.items) await expect(page.getByRole('heading', { level: 2, name: g.name })).toBeVisible();
   await page.goto('/s');
-  await expect(page.getByLabel(pasteLink.label)).toBeDisabled();
-  await expect(page.getByRole('button', { name: pasteLink.status })).toBeDisabled();
+  await expect(page.getByLabel(pasteLink.label)).toBeEnabled();
 });
 
 test('an unknown path is a 404 in the Henge style', async ({ page }) => {

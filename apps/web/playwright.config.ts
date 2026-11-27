@@ -14,7 +14,9 @@ export default defineConfig({
   webServer: {
     command: `pnpm --filter @swarm-explorer/db reset && pnpm start --port ${PORT}`,
     // DEV_SIGN_IN lets the community e2e sign in two example users through the real OAuth flow.
-    env: { PGLITE_DIR: E2E_DB, DATABASE_URL: '', DEV_SIGN_IN: '1' },
+    // HENGE_PREVIEW_ALLOW_LOCALHOST lets /s fetch the example from this test server over http. Test
+    // only: both are ignored whenever VERCEL is set.
+    env: { PGLITE_DIR: E2E_DB, DATABASE_URL: '', DEV_SIGN_IN: '1', HENGE_PREVIEW_ALLOW_LOCALHOST: '1' },
     url: `http://localhost:${PORT}/login`,
     reuseExistingServer: false,
     timeout: 120_000,

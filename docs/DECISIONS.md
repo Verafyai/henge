@@ -87,6 +87,41 @@ SPEC 13.6, and the typed client is `packages/api-client/src/community.ts`. No to
 **Not built:** request and review admission, attachments and images in messages, link previews, search, push or
 email notifications, and the desktop UI (another workstream). No blockers.
 
+## henge link preview (2026-11-26)
+
+Spin-out spec v2, 5.2 (`/s`), 5.5 B5 last bullet, 6.5 and 6.7. Branch `web/henge-preview`.
+
+- **Pinned fetch:** `createNodeResolveDeps` (`packages/schema/src/henge-fetch-node.ts`, exported from
+  `@swarm-explorer/schema/node` only) uses `node:http`/`node:https`, no new dependency. Each request resolves the host
+  itself, refuses it if any answer is not public (`isPublicAddress`), and gives the socket a `lookup` that returns only
+  the approved address (IPv4 first). The pre-check in `safeFetch` is kept, so a rebinding answer between the two is
+  refused. TLS still verifies the certificate for the host name. No redirects are followed in the transport
+  (`safeFetch` follows them and re-checks each hop), no keep-alive pool, `accept-encoding: identity`, a 15 second
+  whole-request timeout and a streamed byte cap.
+- **Test-only localhost:** `ResolveDeps.insecureLocalHosts` lets named hosts use http and requires them to resolve
+  to loopback. The web app sets it to `localhost` only when `HENGE_PREVIEW_ALLOW_LOCALHOST=1` and `VERCEL` is unset;
+  only `apps/web/playwright.config.ts` sets the flag. A unit test shows http is refused without it, and with it on
+  Vercel.
+- **/s:** a plain GET form (no client JS). The page fetches on the server during render, through the resolver, and
+  renders title, tagline, icon and hero (bundle images as data URLs: known type, matching magic bytes, within the 2 MB
+  asset cap; SVG only through `<img>`), the body sanitized by `sanitizeLandingMarkdown` and then rendered as React
+  elements (no HTML injection; leftover tags shown as text; links live only for https and mailto; bundle paths shown as
+  text), sections, links, the accent (re-checked against the AA rule), admission, Glyphs, the source URL, version,
+  pinned digest, commit and ETag, and "Open in Henge" (`henge://add?url=<encoded input URL>`). Errors are one calm
+  panel per cause; an invalid file shows its first five validation messages.
+- **Cache and limit:** results are cached in memory per instance by normalized URL for 60 seconds (successes and
+  errors that will not change on retry; network failures are not cached), and concurrent requests share one fetch.
+  Fetches are limited to 20 per minute per client IP (first `x-forwarded-for` hop); cache hits are free. Both are per
+  serverless instance, which is enough to stop casual abuse but is not a global limit.
+- **Glyphs on /s** are listed as written. Built-in Glyph manifests are not passed to the validator in the web app, so
+  each entry says its manifest was not fetched.
+- **Example:** `apps/web/public/examples/resolved-forecasts.henge.yaml` is a copy of the fixture; "Try the example"
+  links to it on the current host. Keep the two in sync when the fixture changes.
+- **Schemas:** `/schema/henge-v1.json` and `/schema/glyph-v1.json` are static route handlers that serve the package's
+  schema objects with `application/schema+json`, `Cache-Control: public, max-age=86400, s-maxage=604800,
+  stale-while-revalidate=86400` and CORS `*`.
+- `/h/<henge-id>` is not built (needs a registry). The landing hero already linked "Paste a .henge link" to `/s`.
+
 ## henge file v1 and Glyphs (2026-11-26)
 
 Workstreams C and D (schemas only) of "Henge spin-out v2", in `packages/schema`. A Glyph is what other tools
@@ -165,8 +200,7 @@ call a plugin; a Rune is one of its settings. `ManifestV1` and its validator are
 - Code Glyphs inside a `.henge` bundle: the executable rule refuses their wasm. Allow them under `glyphs/`?
 - Funding, category and impact weight have no `.henge` field, so ManifestV1 gets them from the caller. Should
   v1.1 add them (for example from the Treasury Glyph's Runes)?
-- DNS rebinding: the injected fetch must connect to the address the lookup approved. A Node implementation that
-  pins the socket is still to be written with the client.
+- DNS rebinding: done for Node in `henge-fetch-node.ts` (see "henge link preview").
 - `runtime.harness.runtime: container` in the example, while decision 2026-11-25 says nodes run no containers.
 
 ## henge.verafy.ai landing (2026-11-26)
@@ -201,9 +235,7 @@ Workstream B2 of the "Henge spin-out v2" spec (section 5.2), branch `web/henge-l
 - **Needs Rex:**
   - Privacy and Terms: verafy-website has no Privacy or Terms route in code (they are CMS fields, and its
     `isPolicyUrl` rejects verafy.ai links), so the footer shows them as plain text, not links. Give the URLs.
-  - "See the henge-bench plan": `Verafyai/henge-bench` does not exist yet (checked 2026-11-26), so the button shows
-    "(Not published yet)" and links nowhere. Set `HENGE_BENCH_URL` once the repo exists. (`Verafyai/henge` is public,
-    so the GitHub links work.)
+  - "See the henge-bench plan" links to the public `Verafyai/henge-bench` (published 2026-11-26).
   - The /spec page shows the spec's own headings ("6. Workstream C: ..."), which read as internal. Approve or
     supply public wording.
 

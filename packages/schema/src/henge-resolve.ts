@@ -10,7 +10,8 @@
  * - Caps: manifest 256 KB, each landing asset 2 MB, whole bundle 25 MB.
  *
  * Fetch and DNS lookup are injected (`ResolveDeps`). The caller's fetch must connect to an
- * address the lookup returned (pin the socket), or DNS rebinding can defeat the check.
+ * address it has checked itself (pin the socket), or DNS rebinding can defeat the check.
+ * `createNodeResolveDeps` in `henge-fetch-node.ts` (exported from `./node`) does that.
  */
 import { extractTar, extractZip, HengeArchiveError, inflate, rootArchive } from './henge-archive';
 import { hengeBundleDigest } from './henge-digest';
@@ -26,6 +27,11 @@ export const HENGE_MAX_REDIRECTS = 5;
 export interface ResolveDeps {
   fetch: (url: string, init: { method: 'GET'; redirect: 'manual'; headers: Record<string, string> }) => Promise<Response>;
   lookup: (hostname: string) => Promise<{ address: string; family: 4 | 6 }[]>;
+  /**
+   * Test only, never in production. Exact host names (for example `localhost`) that may be fetched
+   * over plain http. Such a host must resolve to loopback addresses only.
+   */
+  insecureLocalHosts?: readonly string[];
 }
 
 /** What the client stores when a member joins (6.5 step 5). */
@@ -118,17 +124,43 @@ export function isPublicAddress(ip: string): boolean {
   return (first & 0xe000) === 0x2000; // global unicast 2000::/3
 }
 
-async function checkHost(url: URL, deps: ResolveDeps) {
-  if (url.protocol !== 'https:') throw new HengeResolveError('not_https', `Only https URLs are allowed: ${url.protocol}//${url.host}`);
+/** True for 127.0.0.0/8, ::1 and IPv4-mapped loopback. Used only for test-only local hosts. */
+export function isLoopbackAddress(ip: string): boolean {
+  const v4 = parseV4(ip);
+  if (v4) return v4[0] === 127;
+  const g = parseV6(ip.replace(/^\[|\]$/g, ''));
+  if (!g) return false;
+  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true;
+  return g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff && g[6]! >> 8 === 127;
+}
+
+/** The URL's host without IPv6 brackets, lowercased. */
+export const urlHost = (url: URL) => url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+
+/** The address rule for one host: public addresses, or loopback only for a test-only local host. */
+export function addressRule(host: string, insecureLocalHosts: readonly string[] | undefined): { local: boolean; ok: (ip: string) => boolean } {
+  const local = !!insecureLocalHosts?.includes(host);
+  return { local, ok: local ? isLoopbackAddress : isPublicAddress };
+}
+
+/** https only (or http for a test-only local host), and no credentials in the URL. */
+export function checkUrlShape(url: URL, insecureLocalHosts?: readonly string[]): void {
+  const { local } = addressRule(urlHost(url), insecureLocalHosts);
+  if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) throw new HengeResolveError('not_https', `Only https URLs are allowed: ${url.protocol}//${url.host}`);
   if (url.username || url.password) throw new HengeResolveError('url_credentials', 'URLs with embedded credentials are refused.');
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost')) throw new HengeResolveError('private_address', `${host} is a loopback name.`);
+}
+
+async function checkHost(url: URL, deps: ResolveDeps) {
+  checkUrlShape(url, deps.insecureLocalHosts);
+  const host = urlHost(url);
+  const rule = addressRule(host, deps.insecureLocalHosts);
+  if (!rule.local && (host === 'localhost' || host.endsWith('.localhost'))) throw new HengeResolveError('private_address', `${host} is a loopback name.`);
   const literal = parseV4(host) || host.includes(':') ? [{ address: host }] : null;
   const addrs = literal ?? (await deps.lookup(host).catch((err: unknown) => {
     throw new HengeResolveError('dns_failed', `Could not resolve ${host}: ${String(err)}`);
   }));
   if (!addrs.length) throw new HengeResolveError('dns_failed', `${host} has no address.`);
-  const bad = addrs.find((a) => !isPublicAddress(a.address));
+  const bad = addrs.find((a) => !rule.ok(a.address));
   if (bad) throw new HengeResolveError('private_address', `${host} resolves to ${bad.address}, which is not a public address.`);
 }
 
