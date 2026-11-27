@@ -10,6 +10,10 @@
         "!.next/cache/**",
         "dist/**",
         "out/**"
+      ],
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "DATABASE_URL_UNPOOLED"
       ]
     },
     "lint": {},
