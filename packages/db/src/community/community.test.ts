@@ -361,7 +361,7 @@ describe('moderation and the audit log', () => {
     const src = readFileSync(path.join(repoRoot(), 'packages/schema/fixtures/glyphs/verafy/moderation.glyph.yaml'), 'utf8');
     const g = parseGlyph(src);
     if (!g.ok) throw new Error('glyph fixture');
-    const defaults = Object.fromEntries(g.glyph.runes.map((r) => [r.id, r.default]));
+    const defaults = Object.fromEntries((g.glyph.runes ?? []).map((r) => [r.id, r.default]));
     expect(defaults).toEqual(MODERATION_RUNE_DEFAULTS);
   });
 });

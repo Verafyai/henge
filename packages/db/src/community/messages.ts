@@ -122,7 +122,6 @@ export async function messageDtos(db: Exec, rows: CommunityMessage[], viewerId: 
 
 export function cleanBody(raw: unknown): string {
   if (typeof raw !== 'string') throw invalid('body_required', 'Write a message.');
-  // eslint-disable-next-line no-control-regex
   const body = raw.normalize('NFC').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trimEnd();
   if (!body.trim()) throw invalid('body_required', 'Write a message.');
   if ([...body].length > MESSAGE_MAX_CHARS) throw invalid('body_too_long', `Messages are at most ${MESSAGE_MAX_CHARS} characters.`);

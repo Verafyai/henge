@@ -413,6 +413,13 @@ export async function listChannels(acc: Access, opts: { includeArchived?: boolea
     byChannel.set(o.channelId, m);
   }
   const showArchived = opts.includeArchived && can(acc, 'manage_channels');
+  const catPos = new Map(cats.map((c) => [c.id, c.position]));
+  const sortKey = (c: CommunityChannel) => [c.categoryId ? (catPos.get(c.categoryId) ?? 0) : -1, c.position] as const;
+  chans.sort((a, b) => {
+    const [ca, pa] = sortKey(a);
+    const [cb, pb] = sortKey(b);
+    return ca - cb || pa - pb;
+  });
   const visible = chans
     .filter((c) => showArchived || c.archivedAt === null)
     .map((c) => ({ c, perms: permsIn(acc, c, byChannel.get(c.id) ?? new Map()) }))

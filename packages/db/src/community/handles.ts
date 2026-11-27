@@ -46,7 +46,6 @@ export function handleKey(raw: string): string {
 
 export function checkHandle(raw: string): HandleCheck {
   const handle = raw.normalize('NFKC').trim();
-  // eslint-disable-next-line no-control-regex
   if (/[^\x00-\x7f]/.test(handle)) {
     return scriptsIn(handle).size > 1
       ? { ok: false, reason: 'confusable', message: 'That handle mixes alphabets, so it could be mistaken for another one.' }

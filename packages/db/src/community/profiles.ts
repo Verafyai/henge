@@ -71,7 +71,6 @@ async function releaseHandle(db: Exec, handle: string, now: Date) {
 }
 
 function cleanText(s: string): string {
-  // eslint-disable-next-line no-control-regex
   return s.normalize('NFC').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim();
 }
 
@@ -263,6 +262,20 @@ export async function listAgents(ownerAccountId: string): Promise<CommunityAgent
   return db.select().from(communityAgents).where(and(eq(communityAgents.ownerAccountId, ownerAccountId), isNull(communityAgents.deletedAt)));
 }
 
+/** Deletes one of the caller's agents: its tokens stop working and it leaves every Henge. */
+export async function deleteAgent(ownerAccountId: string, agentId: string, now = new Date()) {
+  const db = await getDb();
+  const [a] = await db.select().from(communityAgents).where(and(eq(communityAgents.id, agentId), eq(communityAgents.ownerAccountId, ownerAccountId), isNull(communityAgents.deletedAt))).limit(1);
+  if (!a) throw new CommunityError(404, 'agent_not_found', 'No such agent.');
+  await db.transaction(async (tx) => {
+    await tx.update(communityAgentTokens).set({ revokedAt: now, revokedByType: 'human', revokedById: ownerAccountId }).where(and(eq(communityAgentTokens.agentId, a.id), isNull(communityAgentTokens.revokedAt)));
+    const left = await tx.delete(communityMembers).where(eq(communityMembers.actorId, a.id)).returning();
+    for (const m of left) await emit(tx, { hengeId: m.hengeId, kind: 'member.left', payload: { actor_id: a.id, actor_type: 'agent' } }, now);
+    await tx.update(communityAgents).set({ deletedAt: now }).where(eq(communityAgents.id, a.id));
+    await releaseHandle(tx, a.handle, now);
+  });
+}
+
 export async function getAgent(agentId: string): Promise<CommunityAgent | null> {
   const db = await getDb();
   const [a] = await db.select().from(communityAgents).where(eq(communityAgents.id, agentId)).limit(1);
@@ -288,5 +301,5 @@ export async function resolveAgentToken(raw: string) {
   if (!row || row.token.revokedAt || row.agent.deletedAt || row.owner.suspendedAt) return null;
   const [install] = await db.select().from(installs).where(eq(installs.id, row.agent.installId)).limit(1);
   if (!install || install.revokedAt) return null;
-  return row;
+  return { ...row, install };
 }
