@@ -10,6 +10,7 @@ import { HarnessPage } from './pages/harness';
 import { LibraryPage } from './pages/library';
 import { JoinReview, ReconsentPage, SwarmPage } from './pages/swarm';
 import { Shell } from './ui/shell';
+import { HengeApp } from './henge/app';
 
 function View() {
   const { route } = useNav();
@@ -46,10 +47,14 @@ function View() {
       return <PlaceholderPage {...PLANNED_PAGES[route.name]} />;
     case 'settings':
       return <SettingsPage />;
+    default:
+      // Henge layout routes (flag off): fall back to the Store.
+      return <StorePage />;
   }
 }
 
-export function App() {
+export function App({ community = false }: { community?: boolean }) {
+  if (community) return <HengeApp />;
   return (
     <Shell>
       <View />

@@ -7,12 +7,16 @@ import './styles.css';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } });
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider>
-        <App />
-      </RouterProvider>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+// HENGE_COMMUNITY_LAYOUT comes from the main process; the Henge layout starts at Home, v1 at the Store.
+void window.swarm.getAppInfo().then((info) => {
+  const community = info?.communityLayout === true;
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider initial={community ? { name: 'home' } : { name: 'store' }}>
+          <App community={community} />
+        </RouterProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+});

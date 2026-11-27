@@ -931,3 +931,52 @@ Closes the "Before G3" item in Rex's decisions: the sandbox now counts work done
 - The protection-bypass secret (approved by Rex) is read from `HENGE_VERCEL_BYPASS` in unpackaged runs only and sent
   as `x-vercel-protection-bypass` only to the API's own origin (`apps/client/src/main/staging-bypass.ts`). Packaged
   builds never read it, it is never in git or a build, and a plain-http API URL disables it.
+
+## Henge client layout (2026-11-26)
+
+Spin-out spec v2, Workstream F (sections 9.1 to 9.5, 7.5 and 7.6). Branch `client/henge-layout`.
+
+- **Flag:** `HENGE_COMMUNITY_LAYOUT`. Unpackaged runs (dev and tests) default to on; `HENGE_COMMUNITY_LAYOUT=0`
+  brings back the v1 page set unchanged. Packaged builds are on only when built with
+  `MAIN_VITE_HENGE_COMMUNITY_LAYOUT=1`. Main reports it in `getAppInfo().communityLayout`; the renderer picks
+  `HengeApp` or the v1 `Shell` at startup.
+- **Community data:** every community call goes through the renderer `CommunityStore` interface
+  (`apps/client/src/renderer/community/store.ts`). This branch ships only `InMemoryCommunityStore`
+  (profiles, presence, messages, threads, reactions, pins, unread, proposals and votes, reports, moderation,
+  audit log, channel permissions). Nothing persists across restarts. The swap point for the community server
+  API (`packages/api-client/src/community.ts`, branch `community/server`) is `createCommunityStore()` in
+  `renderer/henge/data.tsx`. Votes are recorded, not tallied; proposals never apply themselves.
+- **`.henge` files live in main** (`apps/client/src/main/henges.ts`): main resolves links with the schema resolver
+  (https and public addresses only), pins the bundle digest, checks `checkJoinReadiness`, the attested rules, the
+  offered role and the core range, and stores `<userData>/henges/<owner>--<name>.henge.yaml` plus `index.json`
+  with atomic writes. The renderer imports schema types only (the CSP has no `unsafe-eval`, so ajv cannot run
+  there). Glyph grants (`checkGlyphGrant`) and Rune plans (`planRunes`) are decided in main.
+- **Test hook:** unpackaged runs with `HENGE_TEST_FILE_URLS=1` also accept `file://` `.henge` links, so the e2e
+  can join `packages/schema/fixtures/henge/valid/example.henge.yaml`. Packaged builds never do.
+- **Links:** `henge://add?url=<https url>` opens the join card. Invite links (`henge.verafy.ai/i/<code>`) say the
+  community service is not connected yet.
+- **Participation maps onto run rules:** "When to run" sets `rules.when` (Always, Idle 5 minutes, or the file's
+  windows), and CPU cores set `maxLoadPct` as a share of this machine's cores. Role, model, daily cap and
+  re-consent are stored with the local membership in `index.json`. A joined Henge with `admission.mode` other
+  than `open` is "Awaiting admission" and nothing runs for it.
+- **Roles:** creating a Henge makes you `owner`; joining makes you `member`. Adding a Glyph is direct only for an
+  owner when `glyphs.add` is not vote-gated; otherwise the modal says "Propose adding this Glyph" and opens a
+  proposal in #proposals. Rune changes with `change_requires: vote` (or not cosmetic-exempt) always become a
+  proposal; maintainer and owner Runes apply directly and bump the patch version.
+- **Create a Henge:** one template (forecasting, built from the example file) with name, icon letters, tagline,
+  first channels and default Glyphs (Governance and Moderation preselected). Channels named by granted
+  `post:channel:<id>` scopes are created as announcement channels. The file keeps the example's example.org
+  URLs until GitHub storage exists (shown as "Later").
+- **Sign in:** "Continue with GitHub" is the existing system-browser sign in; email and phone show "Later".
+  "Run locally without an account" is remembered per profile. Chat, proposals and reports need sign in and a
+  community profile; a signed-in user without one is asked once and may skip.
+- **v1 pages (9.4):** Store, Library, Activity and Wallet stay in the Home column (and in User settings) under
+  `navigation "Main"`, the rail has "Discover swarms" and a User settings gear. User settings holds My profile,
+  Account, node and updates (the v1 Settings page: kill switch, updates, run rules, sign out), Models and keys,
+  and Harness logs. Pause and the node state sit in the user panel at the bottom of every channel column.
+- **No invented numbers:** member counts say "not connected", the member list holds you, your agent and the
+  holders named in the file, and unread counts come from the store.
+- **Copy:** `apps/client/src/renderer/copy.test.ts` fails on U+2014, U+2013, dash entities, "plugin", "bot",
+  "Swarm Explorer" and "SwarmStarter" anywhere in renderer source outside comments and import paths.
+- **Fonts:** Chakra Petch (headings, `@fontsource/chakra-petch`), Inter (body) and JetBrains Mono, all bundled.
+  Glyph icons are our own SVG.

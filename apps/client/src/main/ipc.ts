@@ -12,9 +12,13 @@ import type { EncryptedCache } from './cache';
 import type { NodeController } from './node';
 import { runRulesSchema } from '@swarm-explorer/node-core';
 import { modelInstallInputSchema, nodeSetupInputSchema, type MembershipResult, type ModelActionResult } from '../shared/node';
-import { API_BASE_URL, CHANNEL, DEV_SERVER, releasePublicKey } from './config';
+import { API_BASE_URL, CHANNEL, COMMUNITY_LAYOUT, DEV_SERVER, releasePublicKey } from './config';
 import { isAllowedExternal, isAppUrl } from './security';
 import { checkForUpdates, downloadUpdate, mirrorBase } from './updates';
+import { DEFAULT_RUN_RULES, type RunRules } from '@swarm-explorer/node-core';
+import { createInputSchema, glyphAddInputSchema, joinInputSchema, runeInputSchema, type Participation } from '../shared/henge';
+import { builtinGlyphs, HengeLibrary, hengeDir } from './henges';
+import type { HengeV1 } from '@swarm-explorer/schema';
 
 /** Rejects IPC from anything other than our own top level app frame. */
 function trusted(e: IpcMainInvokeEvent): boolean {
@@ -37,7 +41,7 @@ const slug = z.string().regex(/^[a-z0-9][a-z0-9.-]{0,62}$/);
 export function registerIpc(deps: { auth: AuthManager; node: () => NodeController; cache: () => EncryptedCache; takeLaunchRoute: () => Route | null }) {
   const { auth } = deps;
 
-  handle(IPC.appInfo, none, (): AppInfo => ({ version: app.getVersion(), platform: process.platform, arch: process.arch, channel: CHANNEL, apiBaseUrl: API_BASE_URL, isPackaged: app.isPackaged }), null);
+  handle(IPC.appInfo, none, (): AppInfo => ({ version: app.getVersion(), platform: process.platform, arch: process.arch, channel: CHANNEL, apiBaseUrl: API_BASE_URL, isPackaged: app.isPackaged, communityLayout: COMMUNITY_LAYOUT }), null);
 
   handle(IPC.openExternal, z.string().max(2048), async (url) => {
     if (!isAllowedExternal(url)) return false;
@@ -239,4 +243,39 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
   }, refusedJoin);
 
   handle(IPC.launchRoute, none, () => deps.takeLaunchRoute(), null);
+
+  // Henges (spin-out spec v2, 9.2). The file:// hook exists only for unpackaged test runs.
+  let library: HengeLibrary | null = null;
+  const henges = () =>
+    (library ??= new HengeLibrary({ dir: hengeDir(app.getPath('userData')), allowFileUrls: !app.isPackaged && process.env['HENGE_TEST_FILE_URLS'] === '1' }));
+  const key = z.string().regex(/^[a-z0-9-]+--[a-z0-9-]+$/);
+  const refusedIssues = { ok: false as const, issues: [{ code: 'refused', path: '', message: 'That request was refused.' }] };
+  handle(IPC.hengesList, none, () => henges().list(), []);
+  handle(IPC.hengesResolve, z.string().max(2048), (link) => henges().resolve(link), { ok: false, code: 'refused', message: 'That request was refused.', issues: [] });
+  handle(IPC.hengesJoin, joinInputSchema, (input) => {
+    const r = henges().join(input);
+    // Participation maps onto this node's run rules (one set per computer today).
+    if (r.ok) applyParticipation(r.henge.henge, input.participation);
+    return r;
+  }, refusedIssues);
+  handle(IPC.hengesCreate, createInputSchema, (input) => henges().create(input), refusedIssues);
+  handle(IPC.hengesLeave, key, (k) => henges().leave(k), false);
+  handle(IPC.hengesSource, key, (k) => henges().source(k), null);
+  handle(IPC.hengesGlyphCatalog, none, () => builtinGlyphs(), []);
+  handle(IPC.hengesPlanGlyphAdd, glyphAddInputSchema, (i) => henges().planGlyphAdd(i), { mode: 'none' as const, reason: 'That request was refused.', issues: [] });
+  handle(IPC.hengesAddGlyph, glyphAddInputSchema, (i) => henges().addGlyph(i), refusedIssues);
+  handle(IPC.hengesPlanRunes, runeInputSchema, (i) => henges().planRunes(i), null);
+  handle(IPC.hengesApplyRunes, runeInputSchema, (i) => henges().applyRunes(i), refusedIssues);
+
+  /** When to run and how much CPU: the participation step writes the node's run rules (SPEC 7.2). */
+  function applyParticipation(h: HengeV1, p: Participation) {
+    const o = deps.node().overview();
+    const rules: RunRules = structuredClone(o.rules);
+    if (p.schedule === 'always') rules.when = { kind: 'always' };
+    else if (p.schedule === 'idle_only') rules.when = o.rules.when.kind === 'idle' ? o.rules.when : DEFAULT_RUN_RULES.when;
+    else if (p.schedule === 'windows' && o.rules.when.kind !== 'schedule' && !h.participation.schedule.windows?.length) rules.when = o.rules.when;
+    const total = o.detection?.hardware.cpu.cores ?? 0;
+    if (total > 0) rules.maxLoadPct = Math.max(5, Math.min(100, Math.round((Math.min(p.cpuCores, total) / total) * 100)));
+    deps.node().setRunRules(rules);
+  }
 }

@@ -13,8 +13,8 @@ type Nav = {
 const NavContext = createContext<Nav | null>(null);
 
 /** In-memory history with back and forward, like a launcher. Deep links push onto it. */
-export function RouterProvider({ children }: { children: ReactNode }) {
-  const [h, setH] = useState<{ stack: Route[]; i: number }>({ stack: [{ name: 'store' }], i: 0 });
+export function RouterProvider({ children, initial = { name: 'store' } }: { children: ReactNode; initial?: Route }) {
+  const [h, setH] = useState<{ stack: Route[]; i: number }>({ stack: [initial], i: 0 });
 
   const go = useCallback((r: Route) => {
     setH((cur) => {

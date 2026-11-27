@@ -42,6 +42,18 @@ export function parseDeepLink(raw: string): Parsed | null {
   }
   const [head, a, ...rest] = parts;
   if (head === 'auth') return a === 'callback' && rest.length === 0 && onlyKeys(u, ['code', 'state', 'error']) ? { kind: 'auth-callback', url: raw } : null;
+  // henge://add?url=<https .henge link> opens the join card for that link (spin-out spec v2, 9.2). It never joins.
+  if (head === 'add') {
+    const target = u.searchParams.get('url');
+    if (a !== undefined || !onlyKeys(u, ['url']) || u.searchParams.getAll('url').length !== 1 || !target || target.length > 2048) return null;
+    try {
+      const t = new URL(target);
+      if (t.protocol !== 'https:' || t.username || t.password) return null;
+    } catch {
+      return null;
+    }
+    return nav({ name: 'add-henge', url: target });
+  }
   if (rest.length || !onlyKeys(u, [])) return null;
 
   switch (head) {

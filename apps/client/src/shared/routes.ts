@@ -21,4 +21,19 @@ export type Route =
   | { name: 'wallet' }
   | { name: 'settings' }
   /** Pick a cause (SPEC 3.1). Shown on first run and from Settings > Node. */
-  | { name: 'setup' };
+  | { name: 'setup' }
+  /* Henge layout (spin-out spec v2, 9). */
+  /** The Henge mark: your Henges, or the empty state when you have none. */
+  | { name: 'home' }
+  /** One joined or created Henge, at a channel. */
+  | { name: 'henge'; key: string; channel?: string }
+  /** Henge settings: overview, channels, roles, members, the .henge file, a Glyph's Runes, moderation. */
+  | { name: 'henge-settings'; key: string; section: HengeSettingsSection; glyph?: string; channel?: string }
+  /** Join by link: paste, invite card, participation. From "+" or henge://add?url=. Never joins by itself. */
+  | { name: 'add-henge'; url?: string }
+  | { name: 'create-henge' }
+  /** User settings: account and node, profile, models and keys, harness logs. */
+  | { name: 'user-settings'; section?: UserSettingsSection };
+
+export type HengeSettingsSection = 'overview' | 'channels' | 'roles' | 'members' | 'invites' | 'file' | 'glyph' | 'channel' | 'reports' | 'audit' | 'bans';
+export type UserSettingsSection = 'account' | 'profile' | 'models' | 'harness';
