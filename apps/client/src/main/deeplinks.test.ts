@@ -37,6 +37,21 @@ describe('parseDeepLink (SPEC 4.4)', () => {
     expect(parseDeepLink(url)).toBeNull();
   });
 
+  it('henge://add?url= opens the join card for an https .henge link and nothing else', () => {
+    const url = 'https://github.com/example-org/resolved-forecasts/blob/main/resolved-forecasts.henge.yaml';
+    expect(parseDeepLink(`henge://add?url=${encodeURIComponent(url)}`)).toEqual({ kind: 'navigate', route: { name: 'add-henge', url } });
+    for (const bad of [
+      'henge://add',
+      'henge://add?url=http%3A%2F%2Fexample.org%2Fa.henge',
+      'henge://add?url=file%3A%2F%2F%2Fetc%2Fpasswd',
+      `henge://add?url=${encodeURIComponent(url)}&join=1`,
+      `henge://add?url=${encodeURIComponent(url)}&url=${encodeURIComponent(url)}`,
+      `henge://add/now?url=${encodeURIComponent(url)}`,
+      'henge://add?url=https%3A%2F%2Fu%3Ap%40example.org%2Fa.henge',
+    ])
+      expect(parseDeepLink(bad)).toBeNull();
+  });
+
   it('finds a link in argv', () => {
     expect(deepLinkFromArgv(['/app', '--flag', 'henge://publisher'])).toBe('henge://publisher');
     expect(deepLinkFromArgv(['/app', 'swarmstarter://wallet'])).toBeNull();

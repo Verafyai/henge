@@ -246,6 +246,7 @@ void app.whenReady().then(async () => {
   node.start();
   registerIpc({
     auth,
+    secrets,
     node: () => node!,
     cache: () => cache!,
     takeLaunchRoute: () => {

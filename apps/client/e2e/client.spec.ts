@@ -128,7 +128,30 @@ async function launch(opts: { args?: string[]; api?: string; fixture?: string; p
   });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
+  await enterHenge(page);
   return { app, page };
+}
+
+/**
+ * The Henge layout opens on "Welcome to Henge" for a new profile. This suite
+ * covers the v1 node flows, so it continues without an account; the choice is remembered per profile.
+ * A signed-in profile without a community profile is asked to set one up first; the suite skips it.
+ */
+async function enterHenge(p: Page) {
+  const welcome = p.getByRole('heading', { name: 'Welcome to Henge' });
+  const profile = p.getByRole('heading', { name: 'Set up your profile' });
+  const ready = p.getByRole('navigation', { name: 'Henges' });
+  await expect(welcome.or(profile).or(ready).first()).toBeVisible({ timeout: 15_000 });
+  if (await welcome.isVisible()) await p.getByRole('button', { name: 'Run locally without an account' }).click();
+  if (await profile.isVisible()) await p.getByRole('button', { name: 'Skip for now' }).click();
+  await expect(ready).toBeVisible();
+}
+
+/** Activity sits in the Home column, which the empty state (no Henge yet) does not show. */
+async function openActivity() {
+  const main = page.getByRole('navigation', { name: 'Main' });
+  if (!(await main.isVisible())) await page.getByRole('navigation', { name: 'Henges' }).getByRole('button', { name: 'Discover swarms' }).click();
+  await main.getByRole('button', { name: 'Activity', exact: true }).click();
 }
 
 // Keychain items are readable without a prompt only by the binary that created them (the Electron
@@ -278,7 +301,7 @@ test('the renderer is served from app:// with no Node access and only named brid
   expect(probe).toEqual({
     require: 'undefined',
     process: 'undefined',
-    bridge: ['account', 'auth', 'getAppInfo', 'models', 'node', 'onNavigate', 'onNotice', 'openExternal', 'recent', 'swarms', 'takeLaunchRoute', 'updates'],
+    bridge: ['account', 'auth', 'community', 'getAppInfo', 'henges', 'models', 'node', 'onNavigate', 'onNotice', 'openExternal', 'recent', 'swarms', 'takeLaunchRoute', 'updates'],
   });
   // The node bridge hands over facts and choices only: nothing key-like crosses it.
   const overview = await page.evaluate(() => window.swarm.node.overview());
@@ -309,6 +332,9 @@ test('the model proxy is its own process on a private socket, not a TCP port (SP
 });
 
 test('first run opens Pick a cause, detects the fixture and preselects Local (M1 acceptance)', async () => {
+  // The Henge layout starts on the empty state; the v1 Store (and first run) is one click away on the rail.
+  await expect(page.getByRole('heading', { name: 'Add your first Henge' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Henges' }).getByRole('button', { name: 'Discover swarms' }).click();
   await expect(page.getByRole('heading', { name: 'Pick a cause', level: 1 })).toBeVisible();
   const causes = page.getByRole('region', { name: 'Causes' });
   await expect(causes.getByRole('button', { name: /Gaming/ })).toBeDisabled(); // No listed swarm: coming soon, not invented.
@@ -411,6 +437,9 @@ test('sign in through the system browser with PKCE; tokens only in the keychain'
   await expect(web.getByRole('heading', { name: 'You are signed in' })).toBeVisible();
   await browser.close();
 
+  // Signed in, the Henge layout asks for a community profile; this suite skips it (henge.spec.ts sets one up).
+  await expect(page.getByRole('heading', { name: 'Set up your profile' })).toBeVisible();
+  await page.getByRole('button', { name: 'Skip for now' }).click();
   await expect(page.getByRole('button', { name: 'Account menu' })).toContainText('demo');
   const session = JSON.parse((await keychain('session'))!);
   expect(session.refreshToken).toMatch(/^sxr_/);
@@ -426,7 +455,7 @@ test('sign in through the system browser with PKCE; tokens only in the keychain'
 
 test('settings lists this install and verifies a signed update manifest', async () => {
   await openAccountMenu();
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByText('This computer', { exact: true })).toBeVisible();
   // Signed in, the node registered itself and shared its minimized hardware summary (SPEC 13.1).
   await expect(page.getByTestId('node-registration')).toContainText('Hardware summary shared');
@@ -523,7 +552,7 @@ test('a GGUF download that fails the hash check leaves nothing in the models fol
 
 test('the active model is never evicted to make room (M2 acceptance)', async () => {
   await openAccountMenu();
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const storage = page.getByRole('group', { name: 'Storage' });
   await expect(storage).toContainText('Disk budget 20 GB');
   await storage.getByRole('spinbutton').fill('8');
@@ -551,7 +580,7 @@ test('the active model is never evicted to make room (M2 acceptance)', async () 
 
 test('sandbox checks pass on this computer, through the real proxy (M3 acceptance)', async () => {
   await openAccountMenu();
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const box = page.getByRole('group', { name: 'Sandbox' });
   await box.getByRole('button', { name: 'Run sandbox checks' }).click();
   await expect(box.getByRole('status', { name: 'Sandbox result' })).toHaveText('All 17 checks passed.', { timeout: 30_000 });
@@ -867,7 +896,7 @@ test('kill the node mid-task: on restart the task resumes and is submitted exact
     }
   };
   await expect.poll(async () => (await page.evaluate(() => window.swarm.node.overview())).engine, { timeout: 60_000, message: engineLog() }).toMatchObject({ name: 'temporal', status: 'ready' });
-  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await openActivity(); // A fresh launch with no Henge opens on the empty state.
   const first = page.getByTestId('task-history').first();
   try {
     await expect(first).toHaveAttribute('data-outcome', 'submitted', { timeout: 90_000 });
@@ -905,7 +934,7 @@ test('a $0.01 daily cap pauses the node and shows "Paused: daily cap reached" (s
   expect((await devTasks('capped', 2)).status).toBe(200);
   chat.delayMs = 0;
   setSensors({ idleSeconds: 600, onBattery: false });
-  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await openActivity();
   const nodeStatus = page.getByRole('status', { name: 'Node status' });
   await expect(nodeStatus).toContainText('Paused: daily cap reached', { timeout: 60_000 });
   await expect(page.getByTestId('task-status')).toContainText('Paused: daily cap reached');
@@ -949,7 +978,7 @@ test('leave cancels at once: the running task stops and its working space is del
 
 test('sign out revokes the install and clears the keychain', async () => {
   await openAccountMenu();
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('region', { name: 'Account' }).getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('button', { name: 'Sign in' }).first()).toBeVisible();
   expect(await keychain('session')).toBeNull();
@@ -959,6 +988,8 @@ test('sign out revokes the install and clears the keychain', async () => {
 test('recently viewed survives a restart (encrypted local cache)', async () => {
   await app.close();
   ({ app, page } = await launch());
+  // The Henge layout opens on Home; the Store keeps the recently viewed list.
+  await page.getByRole('navigation', { name: 'Henges' }).getByRole('button', { name: 'Discover swarms' }).click();
   await expect(page.getByRole('complementary', { name: 'Your node' })).toContainText('challenge-vaults');
 });
 
@@ -979,7 +1010,8 @@ test('deep links outside the allowlist and the legacy scheme are ignored', async
   for (const link of ['henge://join/challenge-vaults?confirm=1', 'swarmstarter://p/owr-remake']) {
     await app.close();
     ({ app, page } = await launch({ args: [link] }));
-    await expect(page.getByRole('region', { name: 'Featured swarms' })).toBeVisible();
+    // Ignored links leave the app on its start page: Home in the Henge layout.
+    await expect(page.getByRole('heading', { name: 'Add your first Henge' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Review before joining' })).toHaveCount(0);
   }
 });
@@ -988,6 +1020,7 @@ test('hardware without a supported GPU does not preselect Local and says why', a
   const profile = mkdtempSync(path.join(tmpdir(), 'se-client-e2e-nogpu-'));
   await app.close();
   ({ app, page } = await launch({ fixture: 'windows-integrated-only', profile }));
+  await page.getByRole('navigation', { name: 'Henges' }).getByRole('button', { name: 'Discover swarms' }).click();
   await page.getByRole('region', { name: 'Causes' }).getByRole('button', { name: /Mathematics/ }).click();
   await page.getByRole('region', { name: 'Featured cause' }).getByRole('button', { name: 'Choose this cause' }).click();
   const modes = page.getByRole('group', { name: 'Compute mode' });

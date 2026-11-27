@@ -7,6 +7,7 @@ import type { JoinStarted, ResultItem, SwarmDetail, Wallet } from '@swarm-explor
 import type { RunRules } from '@swarm-explorer/node-core';
 import type { MembershipResult, MembershipsOverview, ModelActionResult, ModelInstallInput, NodeOverview, NodeSetup, Permissions, SandboxCheck } from './node';
 import type { Route } from './routes';
+import type { CommunityCallResult, CommunityConnectResult, CommunityEventView, CreateInput, GlyphAddInput, GlyphAddPlan, GlyphAddResult, GlyphCatalogItem, HengeResolveView, IssueView, JoinInput, LocalHenge, RuneApplyResult, RuneInput, RunePlanView } from './henge';
 
 export type Channel = 'stable' | 'beta' | 'internal' | 'dev';
 
@@ -119,6 +120,38 @@ export interface SwarmBridge {
     /** Keeps customized shares after a join; the new swarm only borrows lent time. */
     keepShares(): Promise<MembershipResult>;
   };
+  /**
+   * Henges on this computer (spin-out spec v2, 9.2). Main resolves links with the schema resolver,
+   * stores the `.henge` files and re-checks every join, Glyph and Rune change.
+   */
+  henges: {
+    list(): Promise<LocalHenge[]>;
+    resolve(link: string): Promise<HengeResolveView>;
+    join(input: JoinInput): Promise<{ ok: true; henge: LocalHenge } | { ok: false; issues: IssueView[] }>;
+    create(input: CreateInput): Promise<{ ok: true; henge: LocalHenge } | { ok: false; issues: IssueView[] }>;
+    leave(key: string): Promise<boolean>;
+    /** The stored `.henge` file text. */
+    source(key: string): Promise<string | null>;
+    glyphCatalog(): Promise<GlyphCatalogItem[]>;
+    planGlyphAdd(input: GlyphAddInput): Promise<GlyphAddPlan>;
+    addGlyph(input: GlyphAddInput): Promise<GlyphAddResult>;
+    planRunes(input: RuneInput): Promise<RunePlanView | null>;
+    applyRunes(input: RuneInput): Promise<RuneApplyResult>;
+    /** Creates or joins the Henge on the community service (signed in, with a profile). */
+    connect(key: string): Promise<CommunityConnectResult>;
+  };
+  /**
+   * The community service (spin-out spec v2, 8). Main holds the token and calls an allowlisted
+   * operation of the community client; the renderer sees data or a plain error.
+   */
+  community: {
+    call<T = unknown>(op: string, ...args: unknown[]): Promise<CommunityCallResult<T>>;
+    uploadAvatar(bytes: Uint8Array, type: 'image/png' | 'image/jpeg' | 'image/webp'): Promise<CommunityCallResult>;
+    createAgent(handle: string, displayName: string): Promise<CommunityCallResult>;
+    watch(hengeId: string): Promise<boolean>;
+    unwatch(hengeId: string): Promise<boolean>;
+    onEvent(cb: (e: CommunityEventView) => void): () => void;
+  };
   /** Deep links and menu commands. Navigation only, never a write. */
   onNavigate(cb: (route: Route) => void): () => void;
   /** A deep link that launched the app before the UI was listening, consumed once. */
@@ -188,6 +221,24 @@ export const IPC = {
   swarmsSetShares: 'swarms:set-shares',
   swarmsEqualize: 'swarms:equalize',
   swarmsKeepShares: 'swarms:keep-shares',
+  hengesList: 'henges:list',
+  hengesResolve: 'henges:resolve',
+  hengesJoin: 'henges:join',
+  hengesCreate: 'henges:create',
+  hengesLeave: 'henges:leave',
+  hengesSource: 'henges:source',
+  hengesGlyphCatalog: 'henges:glyph-catalog',
+  hengesPlanGlyphAdd: 'henges:plan-glyph-add',
+  hengesAddGlyph: 'henges:add-glyph',
+  hengesPlanRunes: 'henges:plan-runes',
+  hengesApplyRunes: 'henges:apply-runes',
+  hengesConnect: 'henges:connect',
+  communityCall: 'community:call',
+  communityAvatar: 'community:avatar',
+  communityCreateAgent: 'community:create-agent',
+  communityWatch: 'community:watch',
+  communityUnwatch: 'community:unwatch',
+  communityEvent: 'community:event',
   navigate: 'nav:navigate',
   launchRoute: 'nav:launch-route',
   notice: 'nav:notice',

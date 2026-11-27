@@ -18,6 +18,7 @@ export const API_BASE_URL =
   (import.meta.env['MAIN_VITE_API_URL'] as string | undefined) ||
   'http://localhost:3000';
 
+
 /** Packaged builds are test-signed internal builds until Beta exists (SPEC 15.1). Unpackaged runs are "dev". */
 export const CHANNEL: Channel = app.isPackaged ? 'internal' : 'dev';
 
