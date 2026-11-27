@@ -147,6 +147,13 @@ async function enterHenge(p: Page) {
   await expect(ready).toBeVisible();
 }
 
+/** Activity sits in the Home column, which the empty state (no Henge yet) does not show. */
+async function openActivity() {
+  const main = page.getByRole('navigation', { name: 'Main' });
+  if (!(await main.isVisible())) await page.getByRole('navigation', { name: 'Henges' }).getByRole('button', { name: 'Discover swarms' }).click();
+  await main.getByRole('button', { name: 'Activity', exact: true }).click();
+}
+
 // Keychain items are readable without a prompt only by the binary that created them (the Electron
 // app), so reads and cleanup run inside the app's main process, never in the test runner.
 const KEYRING = require.resolve('@napi-rs/keyring');
@@ -889,7 +896,7 @@ test('kill the node mid-task: on restart the task resumes and is submitted exact
     }
   };
   await expect.poll(async () => (await page.evaluate(() => window.swarm.node.overview())).engine, { timeout: 60_000, message: engineLog() }).toMatchObject({ name: 'temporal', status: 'ready' });
-  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await openActivity(); // A fresh launch with no Henge opens on the empty state.
   const first = page.getByTestId('task-history').first();
   try {
     await expect(first).toHaveAttribute('data-outcome', 'submitted', { timeout: 90_000 });
@@ -927,7 +934,7 @@ test('a $0.01 daily cap pauses the node and shows "Paused: daily cap reached" (s
   expect((await devTasks('capped', 2)).status).toBe(200);
   chat.delayMs = 0;
   setSensors({ idleSeconds: 600, onBattery: false });
-  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await openActivity();
   const nodeStatus = page.getByRole('status', { name: 'Node status' });
   await expect(nodeStatus).toContainText('Paused: daily cap reached', { timeout: 60_000 });
   await expect(page.getByTestId('task-status')).toContainText('Paused: daily cap reached');
