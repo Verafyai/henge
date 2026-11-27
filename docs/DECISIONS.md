@@ -1120,6 +1120,14 @@ Spin-out spec v2, Workstream F (sections 9.1 to 9.5, 7.5 and 7.6). Branch `clien
 - **Fonts:** Chakra Petch (headings, `@fontsource/chakra-petch`), Inter (body) and JetBrains Mono, all bundled.
   Glyph icons are our own SVG.
 
+## Production migrations (2026-11-26)
+
+- Production deploys of Henge web now apply database migrations before `next build`
+  (`apps/web/scripts/migrate-on-deploy.mjs`). Before this, no build ran them, so routes added since M5 returned 500 on
+  henge.verafy.ai. Only `VERCEL_ENV=production` migrates; previews and local builds skip it so an unmerged branch can
+  never change the production database. It uses `DATABASE_URL_UNPOOLED` when present (migrations need a direct
+  connection) and fails the build, leaving the live deployment in place, if a production deploy has no database URL.
+
 ## Temporal in the node (2026-11-26)
 
 Rex decided on 2026-11-26 that durability lives inside the node (spin-out spec v2, 9.3). The coordinator still talks
