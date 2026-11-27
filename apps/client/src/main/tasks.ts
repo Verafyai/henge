@@ -14,7 +14,8 @@
  *
  * Submitted results wait for verification (M6). Volunteer work earns impact only.
  */
-import { evaluateRunRules, FairShareScheduler, planRecovery, runRulesSchema, DEFAULT_RUN_RULES, DAILY_CAP_PAUSED, type CapDecision, type EnforcementSupport, type GateDecision, type RunRules, type Sensors } from '@swarm-explorer/node-core';
+import { evaluateRunRules, FairShareScheduler, runRulesSchema, DEFAULT_RUN_RULES, DAILY_CAP_PAUSED, type CapDecision, type EnforcementSupport, type GateDecision, type RunRules, type Sensors } from '@swarm-explorer/node-core';
+import { planRecovery } from '@swarm-explorer/node-core/recovery';
 import type { AbandonReason, MembershipView } from '@swarm-explorer/api-client';
 import type { HarnessRunResult, HarnessRunSpec, TaskHistoryItem, TaskRunView, TasksOverview } from '../shared/node';
 import type { AuthManager } from './auth';

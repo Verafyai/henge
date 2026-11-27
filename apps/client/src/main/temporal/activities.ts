@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto';
 import { Context } from '@temporalio/activity';
 import { apiErrorSchema, leaseRenewedSchema, leaseResponseSchema, leaseStartedSchema, resultSubmittedSchema, runRecordMessage } from '@swarm-explorer/api-client';
-import { leaseRequestKey, resultSubmitKey, resumeDecision } from '@swarm-explorer/node-core';
+import { leaseRequestKey, resultSubmitKey, resumeDecision } from '@swarm-explorer/node-core/recovery';
 import { canonicalJson, checkHengeUpdate, checkJoinReadiness, type HengeResolveResult, type HengeV1 } from '@swarm-explorer/schema';
 import { sha256Digest } from '@swarm-explorer/schema/node';
 import type { HarnessRunResult, HarnessRunSpec } from '../../shared/node';
