@@ -6,8 +6,8 @@
  */
 
 export const GITHUB_URL = 'https://github.com/Verafyai/henge';
-/** henge-bench is not published yet (Verafyai/henge-bench does not exist), so its button links nowhere until it does. */
-export const HENGE_BENCH_URL: string | null = null;
+/** henge-bench: the public benchmark repo (published 2026-11-26). */
+export const HENGE_BENCH_URL: string | null = 'https://github.com/Verafyai/henge-bench';
 export const VERAFY_URL = 'https://www.verafy.ai';
 
 export type Link = { label: string; href: string };

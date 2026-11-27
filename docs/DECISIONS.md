@@ -152,9 +152,7 @@ Workstream B2 of the "Henge spin-out v2" spec (section 5.2), branch `web/henge-l
 - **Needs Rex:**
   - Privacy and Terms: verafy-website has no Privacy or Terms route in code (they are CMS fields, and its
     `isPolicyUrl` rejects verafy.ai links), so the footer shows them as plain text, not links. Give the URLs.
-  - "See the henge-bench plan": `Verafyai/henge-bench` does not exist yet (checked 2026-11-26), so the button shows
-    "(Not published yet)" and links nowhere. Set `HENGE_BENCH_URL` once the repo exists. (`Verafyai/henge` is public,
-    so the GitHub links work.)
+  - "See the henge-bench plan" links to the public `Verafyai/henge-bench` (published 2026-11-26).
   - The /spec page shows the spec's own headings ("6. Workstream C: ..."), which read as internal. Approve or
     supply public wording.
 
