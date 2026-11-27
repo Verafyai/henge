@@ -206,8 +206,15 @@ function ParticipationStep({ r, onBack }: { r: Resolved; onBack: () => void }) {
       attested: h.admission.requirements.attest ?? [],
       participation: { role, model: model || null, dailyCapCents: capCents, cpuCores: cpu, schedule, reconsent },
     });
+    if (!res.ok) {
+      setBusy(false);
+      return setIssues(res.issues);
+    }
+    // The node's budget guard and its JoinWorkflow (spin-out 6.4, 9.3). The node resolves https links only.
+    const usd = capCents === null ? null : (capCents / 100).toFixed(2);
+    if (usd !== null) await window.swarm.node.setDailyCap(usd);
+    if (r.url.startsWith('https://')) void window.swarm.node.joinHenge(r.url, usd);
     setBusy(false);
-    if (!res.ok) return setIssues(res.issues);
     setHenge(res.henge);
     store.attachHenge({ hengeId: res.henge.key, henge: res.henge.henge, myRole: myRoleIn(res.henge) });
     go({ name: 'henge', key: res.henge.key });

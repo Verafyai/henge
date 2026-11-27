@@ -214,6 +214,14 @@ export type NodeOverview = {
   support: EnforcementSupport;
   setup: NodeSetup | null;
   paused: boolean;
+  /** What the status shows while paused, for example "Paused: daily cap reached". Null when running. */
+  pausedLabel: string | null;
+  /** The daily cap and today's spend in USD micros (spin-out 6.4). Local models report no cost. */
+  budget: { dailyCapUsdMicros: number | null; spentTodayUsdMicros: number; capReached: boolean };
+  /** The durable workflow engine (spin-out 9.3): Temporal in the node, or in-process when it could not start. */
+  engine: EngineView;
+  /** Henges joined from `.henge` files, with any update waiting for re-consent. */
+  henges: Array<{ id: string; name: string; version: string; status: 'joined' | 'awaiting_admission' | 'awaiting_reconsent'; pending: { version: string; fields: string[] } | null }>;
   /** Server-side registration (SPEC 13.1), when signed in. */
   registration: { nodeId: string; capabilitiesReportedAt: number | null } | null;
   /** Smallest catalog artifact used for the GPU check, or null when the catalog was offline. */
@@ -224,6 +232,8 @@ export type NodeOverview = {
   /** The signed kill switch (M7): whether Verafy has stopped work, and why. */
   kill: KillView;
 };
+
+export type EngineView = { name: string; status: 'starting' | 'ready' | 'failed' | 'off'; detail: string };
 
 export type KillView = {
   /** stopped: the platform or a joined swarm is stopped. unchecked: the signed feed was not read in the last 60 seconds. */

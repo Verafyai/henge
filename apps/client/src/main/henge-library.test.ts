@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { builtinGlyphs, buildFromTemplate, HengeLibrary, hengeLinkTarget } from './henges';
+import { builtinGlyphs, buildFromTemplate, HengeLibrary, hengeLinkTarget } from './henge-library';
 import type { Participation } from '../shared/henge';
 
 const EXAMPLE = path.resolve(__dirname, '../../../../packages/schema/fixtures/henge/valid/example.henge.yaml');

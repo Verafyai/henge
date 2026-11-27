@@ -139,7 +139,7 @@ export function useNodeState() {
   const kill = o?.kill;
   if (kill?.global) return { label: 'Stopped by Verafy', detail: kill.global.reason, tone: 'var(--hg-accent)' };
   if (kill?.swarms[0]) return { label: 'Stopped by Verafy', detail: `work for ${kill.swarms[0].swarm}: ${kill.swarms[0].reason}`, tone: 'var(--hg-accent)' };
-  if (o?.paused) return { label: 'Paused', detail: 'nothing will run until you resume', tone: 'var(--hg-pending)' };
+  if (o?.paused) return { label: o.pausedLabel ?? 'Paused', detail: 'nothing will run until you resume', tone: 'var(--hg-pending)' };
   if (t?.current) return { label: 'Running', detail: `a task for ${t.current.swarm} on ${t.current.model}`, tone: 'var(--hg-ok)' };
   if (t && t.phase !== 'off') return { label: t.phase === 'blocked' ? 'Waiting' : 'Ready', detail: t.detail, tone: online ? 'var(--hg-ok)' : '#55575d' };
   if (o?.setup) return { label: 'Set up', detail: 'no swarm joined yet', tone: online ? 'var(--hg-ok)' : '#55575d' };
@@ -253,6 +253,10 @@ export function HengeColumn({ h, channelId, preview = false }: { h: LocalHenge; 
   const qc = useQueryClient();
   const [menu, setMenu] = useState(false);
   const ref = useDismiss<HTMLDivElement>(menu, () => setMenu(false));
+  const node = useNode();
+  // The node's own record of this Henge (its JoinWorkflow and update checks), when it joined through the node.
+  const nodePin = node.data?.henges?.find((x) => x.id === h.henge.id) ?? null;
+  const [confirming, setConfirming] = useState(false);
   const channels = store.channels(h.key);
   const cats: Array<{ id: string; name: string; channels: Channel[] }> = [];
   for (const c of channels) {
@@ -319,6 +323,24 @@ export function HengeColumn({ h, channelId, preview = false }: { h: LocalHenge; 
               : p
                 ? `Your node: ${p.role}, ${SCHEDULE_LABEL[p.schedule]}`
                 : 'Your node: not taking part'}
+          {nodePin?.status === 'awaiting_reconsent' && nodePin.pending && (
+            <div role="alert" style={{ marginTop: 8 }}>
+              Version {nodePin.pending.version} changed {nodePin.pending.fields.join(', ')}. Nothing runs for this Henge until you confirm.
+              <button
+                type="button"
+                className="hg-btn primary sm"
+                style={{ marginTop: 6 }}
+                disabled={confirming}
+                onClick={async () => {
+                  setConfirming(true);
+                  await window.swarm.node.confirmHengeUpdate(nodePin.id, nodePin.pending!.version);
+                  setConfirming(false);
+                }}
+              >
+                Confirm version {nodePin.pending.version}
+              </button>
+            </div>
+          )}
         </div>
         {cats.map((cat) => (
           <div key={cat.id} role="group" aria-label={cat.name}>

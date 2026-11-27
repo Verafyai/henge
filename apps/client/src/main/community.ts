@@ -8,7 +8,7 @@ import { ApiError, createCommunityClient, type CommunityClient, type Subscriptio
 import { ipcMain, type WebContents } from 'electron';
 import { z } from 'zod';
 import type { AuthManager } from './auth';
-import type { HengeLibrary } from './henges';
+import type { HengeLibrary } from './henge-library';
 import type { SecretStore } from './secrets';
 import { IPC } from '../shared/bridge';
 import type { CommunityCallResult, CommunityConnectResult } from '../shared/henge';

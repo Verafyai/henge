@@ -29,10 +29,12 @@ const run = (cmd: string, args: string[], env: Record<string, string> = {}) =>
 if (!existsSync(pubPath)) run('pnpm', ['release:test']); // Creates the TEST key pair.
 const publicKey = readFileSync(pubPath, 'utf8').trim();
 
+run('pnpm', ['exec', 'tsx', 'scripts/fetch-temporal.mts']); // Pinned, checksum-verified Temporal CLI (spin-out 9.3).
 run('pnpm', ['exec', 'electron-vite', 'build'], {
   MAIN_VITE_RELEASE_PUBKEY: publicKey,
   MAIN_VITE_API_URL: arg('api', 'http://localhost:3000'),
 });
+run('pnpm', ['exec', 'tsx', 'scripts/bundle-workflows.mts']);
 run('pnpm', ['exec', 'electron-builder', '--config', 'electron-builder.yml', '--publish', 'never', `-c.extraMetadata.version=${version}`], {
   CSC_IDENTITY_AUTO_DISCOVERY: 'false',
 });

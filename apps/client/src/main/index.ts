@@ -12,11 +12,15 @@ import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
 import { revocationKeys } from './config';
 import { NodeController } from './node';
+import { temporalBinaryPath } from './temporal/server';
 import { TRAY_ICON_1X, TRAY_ICON_2X } from './tray-icon';
 import { KeyringStore } from './secrets';
 import { APP_ORIGIN, APP_SCHEME, SECURE_WEB_PREFERENCES, contentSecurityPolicy, isAllowedExternal, isAppUrl, resolveAppFile } from './security';
 
 const RENDERER_ROOT = path.join(__dirname, '../renderer');
+
+/** Unpackaged test hooks: a positive integer, or undefined. */
+const positiveInt = (v: string | undefined) => (v && /^\d{1,9}$/.test(v) && Number(v) > 0 ? Number(v) : undefined);
 const CSP = contentSecurityPolicy(API_BASE_URL, isDev);
 
 // Local crash dumps only. Uploading (Sentry, opt in) needs a DSN and lands later.
@@ -224,7 +228,16 @@ void app.whenReady().then(async () => {
     // Fixture hardware and a stand-in Ollama are test hooks for unpackaged runs only (SPEC 16.4 M1).
     testHooks: app.isPackaged
       ? null
-      : { hardwareFixture: process.env['SWARM_EXPLORER_HARDWARE_FIXTURE'] || undefined, ollamaHost: process.env['SWARM_EXPLORER_OLLAMA_HOST'] || undefined, hfBase: process.env['SWARM_EXPLORER_HF_BASE'] || undefined, sensorFixture: process.env['SWARM_EXPLORER_SENSOR_FIXTURE'] || undefined },
+      : {
+          hardwareFixture: process.env['SWARM_EXPLORER_HARDWARE_FIXTURE'] || undefined,
+          ollamaHost: process.env['SWARM_EXPLORER_OLLAMA_HOST'] || undefined,
+          hfBase: process.env['SWARM_EXPLORER_HF_BASE'] || undefined,
+          sensorFixture: process.env['SWARM_EXPLORER_SENSOR_FIXTURE'] || undefined,
+          callCostUsdMicros: positiveInt(process.env['SWARM_EXPLORER_TEST_CALL_COST_USD_MICROS']),
+          temporalPort: positiveInt(process.env['SWARM_EXPLORER_TEMPORAL_PORT']),
+        },
+    // The Temporal CLI is a build-time resource (scripts/fetch-temporal.mts); nothing is downloaded at run time.
+    temporal: { binary: temporalBinaryPath({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: app.getAppPath() }), workflowBundle: path.join(__dirname, 'workflow-bundle.js') },
   });
   node.on('changed', () => {
     send(IPC.nodeChanged, node!.overview());

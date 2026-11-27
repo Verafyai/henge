@@ -10,7 +10,7 @@ import type { Route } from '../shared/routes';
 import { AuthError, type AuthManager } from './auth';
 import type { EncryptedCache } from './cache';
 import type { NodeController } from './node';
-import { runRulesSchema } from '@swarm-explorer/node-core';
+import { parseUsd, runRulesSchema } from '@swarm-explorer/node-core';
 import { modelInstallInputSchema, nodeSetupInputSchema, type MembershipResult, type ModelActionResult } from '../shared/node';
 import { API_BASE_URL, CHANNEL, DEV_SERVER, releasePublicKey } from './config';
 import { registerCommunity } from './community';
@@ -19,7 +19,7 @@ import { isAllowedExternal, isAppUrl } from './security';
 import { checkForUpdates, downloadUpdate, mirrorBase } from './updates';
 import { DEFAULT_RUN_RULES, type RunRules } from '@swarm-explorer/node-core';
 import { createInputSchema, glyphAddInputSchema, joinInputSchema, runeInputSchema, type Participation } from '../shared/henge';
-import { builtinGlyphs, HengeLibrary, hengeDir } from './henges';
+import { builtinGlyphs, HengeLibrary, hengeDir } from './henge-library';
 import type { HengeV1 } from '@swarm-explorer/schema';
 
 /** Rejects IPC from anything other than our own top level app frame. */
@@ -214,6 +214,30 @@ export function registerIpc(deps: { auth: AuthManager; secrets: SecretStore; nod
   }, null);
   handle(IPC.nodeSetRunRules, runRulesSchema, (r) => {
     deps.node().setRunRules(r);
+    return deps.node().overview();
+  }, null);
+  // The member's daily cap in dollars as typed ("0.50"), or null to clear it (spin-out 6.4).
+  handle(IPC.nodeSetDailyCap, z.string().max(20).nullable(), (usd) => {
+    let micros: number | null;
+    try {
+      micros = usd === null ? null : parseUsd(usd);
+    } catch {
+      return null;
+    }
+    deps.node().setDailyCap(micros);
+    return deps.node().overview();
+  }, null);
+  handle(IPC.nodeJoinHenge, z.object({ url: z.string().url().max(2048), dailyCapUsd: z.string().max(20).nullable() }).strict(), async ({ url, dailyCapUsd }) => {
+    let cap: number | null;
+    try {
+      cap = dailyCapUsd === null ? null : parseUsd(dailyCapUsd);
+    } catch (e) {
+      return { ok: false as const, issues: [{ code: 'invalid_cap', message: e instanceof Error ? e.message : 'Enter an amount in dollars.' }] };
+    }
+    return deps.node().joinHenge(url, cap);
+  }, { ok: false as const, issues: [{ code: 'refused', message: 'That request was refused.' }] });
+  handle(IPC.nodeConfirmHengeUpdate, z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}\/[a-z0-9][a-z0-9-]{0,63}$/), version: z.string().max(64) }).strict(), async ({ id, version }) => {
+    await deps.node().confirmHengeUpdate(id, version);
     return deps.node().overview();
   }, null);
 
