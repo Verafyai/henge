@@ -16,3 +16,4 @@ release
 
 # Historical spec bundles (the extracted documents are in docs/history)
 *.zip
+apps/client/resources/temporal

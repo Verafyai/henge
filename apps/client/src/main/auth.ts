@@ -288,12 +288,13 @@ export class AuthManager extends EventEmitter<{ changed: [AuthState] }> {
   /**
    * A node request (SPEC 13): bearer token plus a device signature over method, path, body hash,
    * timestamp and nonce. Each attempt is signed afresh, so the 401 retry never reuses a nonce.
-   * Writes carry one Idempotency-Key across attempts.
+   * Writes carry one Idempotency-Key across attempts. A durable caller (a workflow step retried
+   * after a kill) passes its own key derived from a durable id, so the retry replays the first answer.
    */
-  async signedFetch(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Response> {
+  async signedFetch(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown, idempotencyKey?: string): Promise<Response> {
     const url = new URL(path, this.opts.apiBaseUrl);
     const text = body === undefined ? '' : JSON.stringify(body);
-    const idem = method === 'GET' ? null : randomBytes(18).toString('base64url');
+    const idem = method === 'GET' ? null : (idempotencyKey ?? randomBytes(18).toString('base64url'));
     const attempt = async (token: string) => {
       const { priv } = await this.deviceKey();
       const ts = this.now();

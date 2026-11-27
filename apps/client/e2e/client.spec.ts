@@ -109,7 +109,7 @@ const BIN = mkdtempSync(path.join(tmpdir(), 'se-client-e2e-bin-'));
 writeFileSync(path.join(BIN, 'llama-server'), '#!/bin/sh\nexit 1\n');
 chmodSync(path.join(BIN, 'llama-server'), 0o755);
 
-async function launch(opts: { args?: string[]; api?: string; fixture?: string; profile?: string } = {}) {
+async function launch(opts: { args?: string[]; api?: string; fixture?: string; profile?: string; env?: Record<string, string> } = {}) {
   const app = await electron.launch({
     args: [path.join(__dirname, '..'), `--user-data-dir=${opts.profile ?? PROFILE}`, ...(opts.args ?? [])],
     env: {
@@ -123,6 +123,7 @@ async function launch(opts: { args?: string[]; api?: string; fixture?: string; p
       SWARM_EXPLORER_SENSOR_FIXTURE: SENSORS,
       SWARM_EXPLORER_RELEASE_MIRROR: mirrorBase,
       PATH: `${BIN}${path.delimiter}${process.env['PATH'] ?? ''}`,
+      ...opts.env,
     },
   });
   const page = await app.firstWindow();
@@ -212,6 +213,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await clearKeychain().catch(() => undefined);
   await app?.close().catch(() => undefined);
+  stopTemporalLeftOver();
   rmSync(PROFILE, { recursive: true, force: true });
   rmSync(SENSOR_DIR, { recursive: true, force: true });
   ollama.close();
@@ -795,6 +797,131 @@ test('a release that changes permissions stops work until you approve it again (
   await expect(page.getByRole('region', { name: 'New permissions' })).toContainText('Up to 1 GB of working space (new)');
   await page.getByRole('button', { name: 'Approve new permissions' }).click();
   await expect(library().getByRole('listitem', { name: 'Prompt Guard red team' })).toContainText('Joined, no tasks yet');
+});
+
+/* ---------------------------------------------------------------------------------------------
+ * Temporal in the node (spin-out spec v2, 9.3 and 9.6): a task survives the node being killed, and
+ * a $0.01 daily cap pauses the node.
+ * ------------------------------------------------------------------------------------------- */
+
+const TEMPORAL_DIR = path.join(PROFILE, 'temporal');
+const devTasks = (prefix: string, count: number) =>
+  fetch(`${API}/v1/dev/tasks`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-tool': '1' }, body: JSON.stringify({ swarm: 'prompt-guard-red-team', prefix, count }) });
+type DevTask = { coordinator_task_id: string; status: string; leases: Array<{ id: string; status: string }>; results: number };
+const devTaskCounts = async (prefix: string) => ((await (await fetch(`${API}/v1/dev/tasks?swarm=prompt-guard-red-team&prefix=${prefix}`, { headers: { 'x-dev-tool': '1' } })).json()) as { items: DevTask[] }).items;
+const callsFor = (text: string) => chatBodies.filter((b) => isTaskCall(b) && b.messages.some((m) => m.content.includes(text)));
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const temporalPid = () => {
+  try {
+    return Number(readFileSync(path.join(TEMPORAL_DIR, 'server.pid'), 'utf8').trim()) || null;
+  } catch {
+    return null;
+  }
+};
+/** The workflow server this suite's app started, if a failed test left it running. */
+function stopTemporalLeftOver() {
+  const pid = temporalPid();
+  if (pid && alive(pid)) process.kill(pid, 'SIGKILL');
+}
+
+test('kill the node mid-task: on restart the task resumes and is submitted exactly once (spin-out 9.6)', async () => {
+  test.setTimeout(180_000);
+  // Tasks run on Temporal in the node, not on the in-process fallback.
+  await expect.poll(async () => (await page.evaluate(() => window.swarm.node.overview())).engine).toMatchObject({ name: 'temporal', status: 'ready' });
+  expect((await devTasks('durable', 1)).status).toBe(200);
+  // The model call is held, so the node is killed while the harness runs.
+  chat.delayMs = 60_000;
+  setSensors({ idleSeconds: 600, onBattery: false });
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await expect(page.getByTestId('task-status')).toContainText('Running a task for Prompt Guard red team', { timeout: 30_000 });
+  await expect.poll(() => callsFor('durable task 1').length, { timeout: 30_000 }).toBe(1);
+  const leased = await devTaskCounts('durable');
+  expect(leased).toHaveLength(1);
+  expect(leased[0]!.leases).toHaveLength(1);
+  const leaseId = leased[0]!.leases[0]!.id;
+
+  // Kill the whole node at once: the Electron main process (worker and activities) and the local
+  // Temporal server. Nothing gets a chance to abandon the lease or say goodbye.
+  const server = temporalPid();
+  expect(server).not.toBeNull();
+  const killedAt = Date.now();
+  app.process().kill('SIGKILL');
+  process.kill(server!, 'SIGKILL');
+  await expect.poll(() => alive(server!)).toBe(false);
+  expect((await devTaskCounts('durable'))[0]).toMatchObject({ results: 0, leases: [{ id: leaseId, status: 'running' }] });
+
+  chat.delayMs = 0;
+  ({ app, page } = await launch());
+  const engineLog = () => {
+    try {
+      return readFileSync(path.join(TEMPORAL_DIR, 'engine.log'), 'utf8').slice(-4000);
+    } catch {
+      return '(no engine log)';
+    }
+  };
+  await expect.poll(async () => (await page.evaluate(() => window.swarm.node.overview())).engine, { timeout: 60_000, message: engineLog() }).toMatchObject({ name: 'temporal', status: 'ready' });
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  const first = page.getByTestId('task-history').first();
+  try {
+    await expect(first).toHaveAttribute('data-outcome', 'submitted', { timeout: 90_000 });
+  } catch (e) {
+    console.log(`engine log:\n${engineLog()}\nserver state: ${JSON.stringify(await devTaskCounts('durable'))}\noverview: ${JSON.stringify((await page.evaluate(() => window.swarm.node.overview())).tasks).slice(0, 2000)}`);
+    throw e;
+  }
+  const killToSubmittedMs = Date.now() - killedAt;
+  // Exactly once: the same lease (resumed, not abandoned and leased again) holds the one stored result.
+  const after = await devTaskCounts('durable');
+  expect(after).toHaveLength(1);
+  expect(after[0]!.results).toBe(1);
+  expect(after[0]!.leases.map((l) => l.id)).toEqual([leaseId]);
+  expect(['abandoned', 'expired']).not.toContain(after[0]!.leases[0]!.status);
+  // The run step was retried once on the new worker: one more model call, no more.
+  expect(callsFor('durable task 1')).toHaveLength(2);
+  console.log(`e2e durability: kill to submitted ${killToSubmittedMs} ms, stored results 1, leases 1`);
+  // Payloads at rest are encrypted: no task text or swarm in the local server database.
+  const db = readdirSync(TEMPORAL_DIR)
+    .filter((f) => f.startsWith('temporal.sqlite'))
+    .map((f) => readFileSync(path.join(TEMPORAL_DIR, f)).toString('latin1'))
+    .join('');
+  expect(db.length).toBeGreaterThan(0);
+  for (const plain of ['durable task 1', 'prompt-guard-red-team', 'guarded_prompt']) expect(db).not.toContain(plain);
+  setSensors({ idleSeconds: 0, onBattery: false });
+});
+
+test('a $0.01 daily cap pauses the node and shows "Paused: daily cap reached" (spin-out 9.6)', async () => {
+  test.setTimeout(180_000);
+  // Local models cost nothing, so this run uses a test-only hook: each task model call reports one cent.
+  await app.close();
+  ({ app, page } = await launch({ env: { SWARM_EXPLORER_TEST_CALL_COST_USD_MICROS: '10000' } }));
+  await expect.poll(async () => (await page.evaluate(() => window.swarm.node.overview())).engine.status).toBe('ready');
+  expect(await page.evaluate(() => window.swarm.node.setDailyCap('0.01'))).toMatchObject({ paused: false, budget: { dailyCapUsdMicros: 10_000, spentTodayUsdMicros: 0, capReached: false } });
+  expect((await devTasks('capped', 2)).status).toBe(200);
+  chat.delayMs = 0;
+  setSensors({ idleSeconds: 600, onBattery: false });
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  const nodeStatus = page.getByRole('status', { name: 'Node status' });
+  await expect(nodeStatus).toContainText('Paused: daily cap reached', { timeout: 60_000 });
+  await expect(page.getByTestId('task-status')).toContainText('Paused: daily cap reached');
+  expect(await page.evaluate(() => window.swarm.node.overview())).toMatchObject({ paused: true, pausedLabel: 'Paused: daily cap reached', budget: { spentTodayUsdMicros: 10_000, capReached: true } });
+  // One task ran within the cap; the guard stopped everything after it before any further model call.
+  await page.waitForTimeout(3_000);
+  const capped = await devTaskCounts('capped');
+  expect(capped.reduce((n, t) => n + t.results, 0)).toBe(1);
+  expect(callsFor('capped task')).toHaveLength(1);
+  // Resume cannot lift a cap that is still reached.
+  await nodeStatus.getByRole('button', { name: 'Resume' }).click();
+  await expect(nodeStatus).toContainText('Paused: daily cap reached');
+  // Clearing the cap lifts the pause and the second task runs.
+  await page.evaluate(() => window.swarm.node.setDailyCap(null));
+  await expect.poll(async () => (await devTaskCounts('capped')).reduce((n, t) => n + t.results, 0), { timeout: 60_000 }).toBe(2);
+  setSensors({ idleSeconds: 0, onBattery: false });
 });
 
 test('leave cancels at once: the running task stops and its working space is deleted (M4 acceptance)', async () => {

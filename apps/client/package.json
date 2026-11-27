@@ -6,18 +6,24 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "tsx scripts/fetch-temporal.mts && electron-vite build && tsx scripts/bundle-workflows.mts",
     "start": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "tsx scripts/fetch-temporal.mts && vitest run",
     "e2e": "playwright test",
     "release:test": "tsx scripts/test-release.mts",
-    "package:dev": "electron-vite build && electron-builder --dir --config electron-builder.yml",
-    "package:internal": "tsx scripts/package-internal.mts"
+    "package:dev": "pnpm build && electron-builder --dir --config electron-builder.yml",
+    "package:internal": "tsx scripts/package-internal.mts",
+    "fetch:temporal": "tsx scripts/fetch-temporal.mts"
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",
+    "@temporalio/activity": "1.25.0",
+    "@temporalio/client": "1.25.0",
+    "@temporalio/common": "1.25.0",
+    "@temporalio/worker": "1.25.0",
+    "@temporalio/workflow": "1.25.0",
     "ajv": "8.20.0",
     "yaml": "2.9.1",
     "zod": "4.6.7"

@@ -10,6 +10,13 @@ files:
   - out/**
   - package.json
 asar: true
+# Temporal (spin-out 9.3): the native core bridge and the worker's thread entry must be real files.
+asarUnpack:
+  - node_modules/@temporalio/**
+# The Temporal CLI (MIT) fetched and checksum-verified at build time by scripts/fetch-temporal.mts.
+extraResources:
+  - from: resources/temporal/${platform}-${arch}
+    to: temporal
 artifactName: Henge-${version}-${os}-${arch}.${ext}
 protocols:
   - name: Henge

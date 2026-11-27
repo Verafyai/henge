@@ -1,5 +1,5 @@
 import { runRecordMessage, runRecordSchema, type MembershipView, type StoreHome } from '@swarm-explorer/api-client';
-import { DEFAULT_RUN_RULES, enforcementSupport, type Sensors } from '@swarm-explorer/node-core';
+import { DAILY_CAP_PAUSED, DEFAULT_RUN_RULES, enforcementSupport, type Sensors } from '@swarm-explorer/node-core';
 import { canonicalJson } from '@swarm-explorer/schema';
 import { REVOCATION_PREFIX, revocationCanonical, sha256Digest, signStatement } from '@swarm-explorer/schema/node';
 import { createPublicKey, generateKeyPairSync } from 'node:crypto';
@@ -11,6 +11,8 @@ import type { EncryptedCache } from './cache';
 import type { MembershipManager, PreparedRun } from './memberships';
 import { KILL_BOUND_MS, KillSwitchWatcher } from './kill-switch';
 import { TaskRunner } from './tasks';
+import type { WorkflowEngine } from './temporal/engine';
+import type { TaskOutcome } from './temporal/types';
 
 const H = (c: string) => `sha256-${c.repeat(64)}`;
 const NODE = '00000000-0000-7000-8000-000000000001';
@@ -39,7 +41,8 @@ function lease(n: number, over: Record<string, unknown> = {}) {
   };
 }
 
-function setup(o: { sensors?: Sensors; run?: (spec: HarnessRunSpec, signal: AbortSignal) => Promise<HarnessRunResult>; leases?: Array<ReturnType<typeof lease>>; kill?: ConstructorParameters<typeof TaskRunner>[0]['kill'] } = {}) {
+type RunnerDeps = ConstructorParameters<typeof TaskRunner>[0];
+function setup(o: { sensors?: Sensors; run?: (spec: HarnessRunSpec, signal: AbortSignal) => Promise<HarnessRunResult>; leases?: Array<ReturnType<typeof lease>>; kill?: RunnerDeps['kill']; budget?: RunnerDeps['budget']; onCapReached?: () => void; engine?: RunnerDeps['engine']; openLeases?: Array<{ id: string; status: string; deadline_at: string; swarm: string }> } = {}) {
   const calls: Array<{ method: string; path: string; body: unknown }> = [];
   const leases = [...(o.leases ?? [lease(1), lease(2)])];
   let paused = false;
@@ -60,7 +63,7 @@ function setup(o: { sensors?: Sensors; run?: (spec: HarnessRunSpec, signal: Abor
       return json({ error: { code: 'not_found', message: 'no' } }, 404);
     },
   } as unknown as AuthManager;
-  const home = { joined: [membership], node: { open_leases: [] } } as unknown as StoreHome;
+  const home = { joined: [membership], node: { open_leases: o.openLeases ?? [] } } as unknown as StoreHome;
   const prepared = { release: { bundleHash: H('d') }, accepted: [model.contentHash] } as unknown as PreparedRun;
   const memberships = {
     overview: () => ({ home, jobs: [], granted: {}, error: null, askEqualize: [] }),
@@ -85,7 +88,11 @@ function setup(o: { sensors?: Sensors; run?: (spec: HarnessRunSpec, signal: Abor
     changed: () => undefined,
     tickMs: 60_000,
     ...(o.kill ? { kill: o.kill } : {}),
+    ...(o.budget ? { budget: o.budget } : {}),
+    ...(o.onCapReached ? { onCapReached: o.onCapReached } : {}),
+    ...(o.engine ? { engine: o.engine } : {}),
   });
+  if (o.engine) runner.setEngine(o.engine(runner.activities));
   return {
     runner,
     calls,
@@ -255,3 +262,76 @@ describe('kill switch in the task runner (SPEC 11.6, M7)', () => {
     }
   });
 });
+
+describe('durable engine recovery and the daily cap (spin-out 9.3, 9.6)', () => {
+  it('after a kill, a lease owned by an open task workflow is resumed, not abandoned; an orphan is returned', async () => {
+    const owned = lease(1).lease_id;
+    const orphan = lease(2).lease_id;
+    let resolveResult: (o: TaskOutcome) => void = () => {};
+    const result = new Promise<TaskOutcome>((r) => (resolveResult = r));
+    const engine = (): WorkflowEngine => ({
+      name: 'test',
+      start: async () => {},
+      stop: async () => {},
+      startTask: async () => {
+        throw new Error('no new task while one resumes');
+      },
+      openTasks: async () => [
+        {
+          workflowId: 'swarm-task-resumed',
+          input: { nodeId: NODE, membershipId: MEM, swarm: membership.swarm, permissionsHash: H('b'), harnessHash: H('d'), model: { contentHash: model.contentHash, slug: model.slug, displayName: model.displayName }, timeoutS: 300 },
+          progress: { leaseId: owned, phase: 'running', deadlineAt: new Date(Date.now() + 60_000).toISOString(), urgent: false },
+          result,
+        },
+      ],
+      joinHenge: async () => {
+        throw new Error('unused');
+      },
+      confirmReconsent: async () => {},
+      admitted: async () => {},
+    });
+    const deadline = new Date(Date.now() + 60_000).toISOString();
+    const t = setup({ engine, openLeases: [{ id: owned, status: 'running', deadline_at: deadline, swarm: membership.swarm }, { id: orphan, status: 'running', deadline_at: deadline, swarm: membership.swarm }] });
+    await t.runner.tick();
+    await expect.poll(() => t.runner.overview().phase).toBe('running');
+    expect(t.calls.filter((c) => c.path.endsWith('/abandon')).map((c) => c.path)).toEqual([`/v1/leases/${orphan}/abandon`]);
+    expect(t.runner.overview()).toMatchObject({ phase: 'running', current: { leaseId: owned, phase: 'running', swarm: membership.swarm } });
+    expect(t.runner.leasedModel()).toBe(model.contentHash);
+    resolveResult({ outcome: 'submitted', detail: 'Submitted. It waits for the swarm to verify it.', leaseId: owned, duplicate: true });
+    await expect.poll(() => t.runner.overview().history[0]).toMatchObject({ outcome: 'submitted', leaseId: owned });
+    expect(t.calls.some((c) => c.path === `/v1/leases/${owned}/abandon`)).toBe(false);
+  });
+
+  it('a reached daily cap pauses the node before any lease and says "Paused: daily cap reached"', async () => {
+    let capped = false;
+    let reached = 0;
+    const t = setup({ budget: { check: () => (capped ? { ok: false, code: 'daily_cap_reached', detail: DAILY_CAP_PAUSED } : { ok: true, remainingUsdMicros: 1 }) }, onCapReached: () => reached++, leases: [lease(1)] });
+    await t.runner.tick();
+    await expect.poll(() => t.runner.overview().history.length).toBe(1);
+    capped = true;
+    const n = t.calls.length;
+    await t.runner.tick();
+    expect(t.calls.length).toBe(n);
+    expect(reached).toBeGreaterThanOrEqual(1);
+    expect(t.runner.overview()).toMatchObject({ phase: 'paused', detail: 'Paused: daily cap reached' });
+  });
+
+  it('the guard refuses a run once the cap is reached, so the workflow abandons the lease unpaid', async () => {
+    let capped = false;
+    const t = setup({
+      budget: { check: () => (capped ? { ok: false, code: 'daily_cap_reached', detail: DAILY_CAP_PAUSED } : { ok: true, remainingUsdMicros: 1 }) },
+      onCapReached: () => {},
+      leases: [lease(1)],
+      run: async () => {
+        capped = true; // The proxy refused the model call because the cap was reached.
+        return { status: 'failed', output: null, detail: 'The model call was refused.', screen: null, modelCalls: 0 };
+      },
+    });
+    await t.runner.tick();
+    await expect.poll(() => t.runner.overview().history.length).toBe(1);
+    expect(t.runner.overview().history[0]).toMatchObject({ outcome: 'abandoned', detail: 'Paused: daily cap reached. The task went back to the queue, unpaid.' });
+    expect(t.calls.find((c) => c.path.endsWith('/abandon'))?.body).toEqual({ reason: 'paused' });
+    expect(t.calls.some((c) => c.path.endsWith('/results'))).toBe(false);
+  });
+});
+
