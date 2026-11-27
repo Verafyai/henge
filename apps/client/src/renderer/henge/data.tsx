@@ -1,16 +1,16 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { LocalHenge } from '../../shared/henge';
-import { useNode } from '../api';
-import { InMemoryCommunityStore } from '../community/memory';
+import { useAuth, useNode } from '../api';
+import { ApiCommunityStore } from '../community/api';
 import type { CommunityStore, Presence } from '../community/store';
 
 /**
- * The one place a CommunityStore is created. Dev and test builds use the in-memory store; the
- * community server client (packages/api-client/src/community.ts) replaces it here once it lands.
+ * The one place a CommunityStore is created: the community service, through main (which holds the
+ * token). The in-memory store is for unit tests only.
  */
 export function createCommunityStore(): CommunityStore {
-  return new InMemoryCommunityStore();
+  return new ApiCommunityStore();
 }
 
 const StoreContext = createContext<CommunityStore | null>(null);
@@ -41,6 +41,17 @@ export function useGlyphCatalog() {
   return useQuery({ queryKey: ['glyph-catalog'], queryFn: () => window.swarm.henges.glyphCatalog(), staleTime: Infinity });
 }
 
+/** Why a Henge is not on the community service yet, if it tried and was refused. */
+export function useConnectError(key: string): string | null {
+  const store = useCommunity();
+  const handle = store.myProfile()?.handle ?? null;
+  const q = useQuery({ queryKey: ['henge-connect', key, handle], enabled: false, queryFn: () => window.swarm.henges.connect(key) });
+  if (!q.data || q.data.ok) return null;
+  if (q.data.code === 'not_an_owner') return 'This Henge is not on the community service yet. Someone the .henge file names as owner has to start it there first.';
+  if (q.data.code === 'henge_digest_mismatch') return 'The community service has a different version of this .henge file. Update it to chat.';
+  return q.data.message;
+}
+
 export const myRoleIn = (h: LocalHenge) => (h.status === 'owner' ? 'owner' : 'member');
 
 /** Keeps the store's spaces and agent presence in step with the files and the local node. */
@@ -48,9 +59,30 @@ export function useCommunitySync() {
   const store = useCommunity();
   const henges = useLocalHenges();
   const node = useNode();
+  const auth = useAuth();
+  const setHenge = useSetHenge();
+  const signedIn = auth.status === 'signed_in';
   useEffect(() => {
-    for (const h of henges.data ?? []) store.attachHenge({ hengeId: h.key, henge: h.henge, myRole: myRoleIn(h) });
-  }, [henges.data, store]);
+    store.refresh();
+  }, [signedIn, store]);
+  const handle = store.myProfile()?.handle ?? null;
+  // Each Henge is created or joined on the community service once you are signed in with a profile.
+  useQueries({
+    queries: (henges.data ?? []).map((h) => ({
+      queryKey: ['henge-connect', h.key, handle],
+      enabled: signedIn && handle !== null && !h.communityId,
+      staleTime: Infinity,
+      retry: false,
+      queryFn: async () => {
+        const r = await window.swarm.henges.connect(h.key);
+        if (r.ok) setHenge(r.henge);
+        return r;
+      },
+    })),
+  });
+  useEffect(() => {
+    for (const h of henges.data ?? []) store.attachHenge({ hengeId: h.key, henge: h.henge, myRole: myRoleIn(h), communityId: signedIn ? (h.communityId ?? null) : null });
+  }, [henges.data, store, signedIn]);
   const o = node.data;
   const presence: Presence = !o || o.kill.global || !o.setup ? 'offline' : o.paused ? 'paused' : 'running';
   useEffect(() => store.setAgentPresence(presence), [presence, store]);

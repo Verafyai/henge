@@ -18,14 +18,6 @@ export const API_BASE_URL =
   (import.meta.env['MAIN_VITE_API_URL'] as string | undefined) ||
   'http://localhost:3000';
 
-/**
- * HENGE_COMMUNITY_LAYOUT (spin-out spec v2, 14): the four-column Henge layout. On by default in
- * unpackaged dev and test runs; packaged builds turn it on with MAIN_VITE_HENGE_COMMUNITY_LAYOUT=1.
- * Unpackaged runs may set HENGE_COMMUNITY_LAYOUT=0 to get the v1 page set back.
- */
-export const COMMUNITY_LAYOUT = app.isPackaged
-  ? import.meta.env['MAIN_VITE_HENGE_COMMUNITY_LAYOUT'] === '1'
-  : (process.env['HENGE_COMMUNITY_LAYOUT'] ?? (import.meta.env['MAIN_VITE_HENGE_COMMUNITY_LAYOUT'] as string | undefined) ?? '1') !== '0';
 
 /** Packaged builds are test-signed internal builds until Beta exists (SPEC 15.1). Unpackaged runs are "dev". */
 export const CHANNEL: Channel = app.isPackaged ? 'internal' : 'dev';

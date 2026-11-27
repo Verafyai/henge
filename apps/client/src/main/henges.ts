@@ -73,7 +73,7 @@ export function hengeLinkTarget(input: string): { url: string } | { error: Henge
     return hengeLinkTarget(inner);
   }
   if (u.protocol === 'https:' && u.hostname === 'henge.verafy.ai' && /^\/i\/[A-Za-z0-9_-]+\/?$/.test(u.pathname))
-    return { error: fail('invite_unavailable', 'Invite links need the Henge community service, which this build does not connect to yet. Ask the person who invited you for the .henge link.') };
+    return { error: fail('invite_unavailable', 'Invite codes are not available yet. Ask the person who invited you for the .henge link.') };
   return { url: u.href };
 }
 
@@ -139,6 +139,16 @@ export class HengeLibrary {
   get(key: string): LocalHenge | null {
     const r = this.records().find((x) => x.key === key);
     return r ? this.load(r) : null;
+  }
+
+  /** Remembers the community service's id for a Henge after it was created or joined there. */
+  setCommunityId(key: string, communityId: string): LocalHenge | null {
+    const rs = this.records();
+    const r = rs.find((x) => x.key === key);
+    if (!r) return null;
+    r.communityId = communityId;
+    this.saveRecords(rs);
+    return this.load(r);
   }
 
   /** The `.henge` file text as stored here. */

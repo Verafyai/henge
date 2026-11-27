@@ -115,7 +115,9 @@ export type AuditEntry = {
   actorId: string;
   actorName: string;
   actorType: ActorType;
-  action: 'delete_message' | 'bulk_delete' | 'timeout' | 'kick' | 'ban' | 'pin' | 'slow_mode' | 'channel_settings' | 'revoke_token' | 'report_dismissed' | 'role_change';
+  action: 'delete_message' | 'bulk_delete' | 'timeout' | 'kick' | 'ban' | 'pin' | 'slow_mode' | 'channel_settings' | 'revoke_token' | 'report_dismissed' | 'role_change' | 'other';
+  /** For `other`: the service's action name, shown as is. */
+  label?: string;
   target: string;
   reason: string;
   createdAt: number;
@@ -140,12 +142,19 @@ export type ChannelPerms = Record<ChannelPermission, Record<string, PermState>>;
 export type Result<T = undefined> = { ok: true; value: T } | { ok: false; message: string; retryAfterS?: number };
 
 /** What the store needs to open a Henge's space: the `.henge` file and who you are in it. */
-export type HengeSeed = { hengeId: string; henge: HengeV1; myRole: string };
+/** `communityId`: the Henge on the community service, when it is connected there. */
+export type HengeSeed = { hengeId: string; henge: HengeV1; myRole: string; communityId?: string | null };
 
 export interface CommunityStore {
   subscribe(listener: () => void): () => void;
   /** Changes on every write, for useSyncExternalStore snapshots. */
   version(): number;
+  /** False until the first profile load settles (so a signed-in user is not asked for a profile they have). */
+  ready(): boolean;
+  /** Reloads what depends on who is signed in (after sign in or sign out). */
+  refresh(): void;
+  /** Whether a Henge's community space is live on the community service. */
+  connected(hengeId: string): boolean;
 
   /* Profiles (8.1 Profiles) */
   myProfile(): Profile | null;

@@ -122,7 +122,6 @@ async function launch(opts: { args?: string[]; api?: string; fixture?: string; p
       SWARM_EXPLORER_HF_BASE: hfBase,
       SWARM_EXPLORER_SENSOR_FIXTURE: SENSORS,
       SWARM_EXPLORER_RELEASE_MIRROR: mirrorBase,
-      HENGE_COMMUNITY_LAYOUT: '1',
       PATH: `${BIN}${path.delimiter}${process.env['PATH'] ?? ''}`,
     },
   });
@@ -133,7 +132,7 @@ async function launch(opts: { args?: string[]; api?: string; fixture?: string; p
 }
 
 /**
- * The Henge layout (HENGE_COMMUNITY_LAYOUT) opens on "Welcome to Henge" for a new profile. This suite
+ * The Henge layout opens on "Welcome to Henge" for a new profile. This suite
  * covers the v1 node flows, so it continues without an account; the choice is remembered per profile.
  * A signed-in profile without a community profile is asked to set one up first; the suite skips it.
  */

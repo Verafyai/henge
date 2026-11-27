@@ -1,8 +1,8 @@
 /**
- * Henge layout flows (spin-out spec v2, 9.1 and 9.2), behind HENGE_COMMUNITY_LAYOUT. Runs the built app
+ * Henge layout flows (spin-out spec v2, 9.1 and 9.2). Runs the built app
  * with a throwaway profile and a test-only keychain service against the same website the client suite
- * starts (playwright.config.ts). Community data (profiles, messages, proposals, moderation) is the
- * in-memory CommunityStore; `.henge` files are resolved and stored by the main process.
+ * starts (playwright.config.ts). Community data (profiles, messages, members, moderation) comes from
+ * the community service on that website, through main; `.henge` files are resolved and stored by main.
  *
  * The example Henge is served through a file:// URL, which only unpackaged test runs accept
  * (HENGE_TEST_FILE_URLS); real links must be https on public addresses.
@@ -44,7 +44,6 @@ test.beforeAll(async () => {
       ELECTRON_RENDERER_URL: '',
       SWARM_EXPLORER_KEYCHAIN_SERVICE: SERVICE,
       SWARM_EXPLORER_HARDWARE_FIXTURE: 'apple-silicon-32gb',
-      HENGE_COMMUNITY_LAYOUT: '1',
       HENGE_TEST_FILE_URLS: '1',
     },
   });
@@ -59,7 +58,7 @@ test.afterAll(async () => {
       async (_e, a) => {
         const { createRequire } = process.getBuiltinModule('node:module');
         const { Entry } = createRequire(a.mod)(a.mod) as typeof import('@napi-rs/keyring');
-        for (const n of ['session', 'device-key', 'cache-key']) {
+        for (const n of ['session', 'device-key', 'cache-key', 'agent-tokens']) {
           try {
             new Entry(a.service, n).deletePassword();
           } catch {
@@ -163,8 +162,36 @@ test('sign in, then set up a profile with a live handle check and link the agent
   await expect(page.getByRole('button', { name: 'Account menu' })).toContainText('demo');
 });
 
-test('send a message in #general; the four columns are filled from real data', async () => {
+test('the example stays readable but honest: it is not on the community service until its owner starts it', async () => {
   await page.getByRole('navigation', { name: 'Henges' }).getByRole('button', { name: /Resolved Forecasts/ }).click();
+  await expect(page.getByRole('main', { name: '#general' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'not on the community service yet' })).toBeVisible();
+  await expect(page.getByPlaceholder('Message #general, or type / for Glyph commands')).toHaveCount(0);
+  await page.getByRole('group', { name: 'Glyphs' }).getByRole('button', { name: 'Add a Glyph' }).click();
+  const modal = page.getByRole('dialog', { name: 'Add a Glyph' });
+  await expect(modal.getByRole('option', { name: /Treasury Glyph/ })).toContainText('added');
+  await shot('05-add-a-glyph');
+  await modal.getByRole('button', { name: 'Close' }).click();
+});
+
+test('create a Henge: template, name, channels, Governance and Moderation preselected, stored locally', async () => {
+  await page.getByRole('navigation', { name: 'Henges' }).getByRole('button', { name: 'Add a Henge' }).click();
+  await page.getByRole('menuitem', { name: 'Create a Henge' }).click();
+  await expect(page.getByRole('heading', { name: 'Create a Henge' })).toBeVisible();
+  const glyphs = page.getByRole('group', { name: 'Default Glyphs' });
+  await expect(glyphs.getByRole('checkbox', { name: 'Governance Glyph' })).toBeChecked();
+  await expect(glyphs.getByRole('checkbox', { name: 'Moderation Glyph' })).toBeChecked();
+  await expect(page.getByRole('radiogroup', { name: 'Storage' })).toContainText('Later');
+  await page.getByLabel('Name', { exact: true }).fill('Night Owls');
+  await shot('18-create-henge');
+  await page.getByRole('button', { name: 'Create Henge' }).click();
+  await expect(page.getByRole('main', { name: '#general' })).toBeVisible();
+  await expect(page.getByTestId('pinned-card')).toContainText('You created this Henge. Stored on this computer.');
+  // You are a named owner, so the Henge is started on the community service and chat opens.
+  await expect(page.getByPlaceholder('Message #general, or type / for Glyph commands')).toBeVisible();
+});
+
+test('send a message in #general of the new Henge; the four columns are filled from the community service', async () => {
   const box = page.getByPlaceholder('Message #general, or type / for Glyph commands');
   await expect(box).toBeVisible();
   await box.fill('Hello from **this** node. Scores land in #results.');
@@ -174,7 +201,7 @@ test('send a message in #general; the four columns are filled from real data', a
   await expect(msg.locator('b')).toHaveText('this'); // The markdown subset renders bold.
   const members = page.getByRole('complementary', { name: 'Members' });
   await expect(members.getByRole('button', { name: /^demo, human/ })).toBeVisible();
-  await expect(members.getByRole('button', { name: /local-node, agent/ })).toBeVisible();
+  await expect(members.getByRole('button', { name: /^demo\.node, agent/ })).toBeVisible();
   await shot('01-client-main');
 
   // A thread on the message (13: community chat).
@@ -196,29 +223,6 @@ test('profile popover from the member list', async () => {
   await shot('15-profile-popover');
   await page.keyboard.press('Escape');
   await expect(pop).toHaveCount(0);
-});
-
-test('Add a Glyph in the joined example lists the Glyphs it already has', async () => {
-  await page.getByRole('group', { name: 'Glyphs' }).getByRole('button', { name: 'Add a Glyph' }).click();
-  const modal = page.getByRole('dialog', { name: 'Add a Glyph' });
-  await expect(modal.getByRole('option', { name: /Treasury Glyph/ })).toContainText('added');
-  await shot('05-add-a-glyph');
-  await modal.getByRole('button', { name: 'Close' }).click();
-});
-
-test('create a Henge: template, name, channels, Governance and Moderation preselected, stored locally', async () => {
-  await page.getByRole('navigation', { name: 'Henges' }).getByRole('button', { name: 'Add a Henge' }).click();
-  await page.getByRole('menuitem', { name: 'Create a Henge' }).click();
-  await expect(page.getByRole('heading', { name: 'Create a Henge' })).toBeVisible();
-  const glyphs = page.getByRole('group', { name: 'Default Glyphs' });
-  await expect(glyphs.getByRole('checkbox', { name: 'Governance Glyph' })).toBeChecked();
-  await expect(glyphs.getByRole('checkbox', { name: 'Moderation Glyph' })).toBeChecked();
-  await expect(page.getByRole('radiogroup', { name: 'Storage' })).toContainText('Later');
-  await page.getByLabel('Name', { exact: true }).fill('Night Owls');
-  await shot('18-create-henge');
-  await page.getByRole('button', { name: 'Create Henge' }).click();
-  await expect(page.getByRole('main', { name: '#general' })).toBeVisible();
-  await expect(page.getByTestId('pinned-card')).toContainText('You created this Henge. Stored on this computer.');
 });
 
 test('Add a Glyph refuses a grant wider than the manifest requests, then adds it', async () => {
@@ -279,16 +283,17 @@ test('moderation: mod tools act on a member and every action lands in the audit 
   await page.getByRole('button', { name: 'Night Owls menu' }).click();
   await page.getByRole('menuitem', { name: 'Moderation' }).click();
   const tools = page.getByRole('complementary', { name: 'Mod tools' });
-  await expect(tools.getByLabel('Member')).toContainText('demo/local-node'); // Your agent is its own actor.
+  await expect(tools.getByLabel('Member')).toContainText('demo.node'); // Your agent is its own actor.
   await expect(tools).toContainText('No open reports.');
   await tools.getByLabel('Reason').fill('Testing the audit log.');
   await tools.getByRole('button', { name: /Timeout/ }).click();
   await tools.getByRole('button', { name: /Revoke agent API token/ }).click();
   const log = page.getByRole('list', { name: 'Audit log' });
-  await expect(log.getByRole('listitem')).toHaveCount(3); // Including the channel settings saved above.
+  await expect(log.getByRole('listitem').first()).toBeVisible();
   await expect(log).toContainText('timed out');
   await expect(log).toContainText('revoked the API token of');
   await expect(log).toContainText('Testing the audit log.');
+  await expect(log).toContainText('changed settings of'); // The channel settings saved above.
   await shot('17-mod-audit-log');
 });
 

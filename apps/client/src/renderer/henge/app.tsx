@@ -142,7 +142,7 @@ function Gate() {
       />
     );
   // Stays open through step 2 (link your agent) even though the profile now exists.
-  const needsProfile = auth.status === 'signed_in' && !store.myProfile() && !profileDone;
+  const needsProfile = auth.status === 'signed_in' && store.ready() && !store.myProfile() && !profileDone;
   if (needsProfile && !setupOpen) setSetupOpen(true);
   if (setupOpen && auth.status === 'signed_in')
     return (
@@ -162,7 +162,7 @@ function Gate() {
   );
 }
 
-/** The Henge layout (spin-out spec v2, 9), behind HENGE_COMMUNITY_LAYOUT. */
+/** The Henge layout (spin-out spec v2, 9): the app's only interface. */
 export function HengeApp() {
   const store = useMemo(() => createCommunityStore(), []);
   const auth = useAuth();

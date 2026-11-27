@@ -4,7 +4,7 @@ import { useAuth } from '../api';
 import { REPORT_REASONS, type Channel, type Message, type ReportReason } from '../community/store';
 import { useNav } from '../router';
 import { Avatar, fmtDay, fmtTime, GlyphIcon, KindTag } from './bits';
-import { useCommunity, useGlyphCatalog, useUi } from './data';
+import { useCommunity, useConnectError, useGlyphCatalog, useUi } from './data';
 import { channelIcon, glyphLabel } from './shell';
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -298,6 +298,7 @@ function Composer({ h, channel, threadRoot, placeholder, replyTo, onClearReply }
   const [text, setText] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const role = store.myRoles(h.key)[0] ?? 'member';
+  const connectError = useConnectError(h.key);
   const canPost = threadRoot ? store.can(h.key, channel.id, role, 'send') || store.can(h.key, channel.id, role, 'threads') : store.can(h.key, channel.id, role, 'send');
   const commands = useMemo(
     () =>
@@ -324,11 +325,17 @@ function Composer({ h, channel, threadRoot, placeholder, replyTo, onClearReply }
         </button>
       </div>
     );
+  if (!store.connected(h.key))
+    return (
+      <div className="hg-composer" role="status" style={threadRoot ? { margin: '0 14px 14px' } : undefined}>
+        <span>{connectError ?? 'Connecting to the community service.'}</span>
+      </div>
+    );
   const send = async () => {
     const body = text.trim();
     if (!body) return;
     if (body.startsWith('/')) {
-      setNotice('Glyph commands run on the community service, which this build does not connect to yet.');
+      setNotice('Glyph commands are not available in this build yet.');
       return;
     }
     const r = await store.send(h.key, channel.id, body, { threadRoot, replyTo: replyTo?.id });
@@ -484,7 +491,7 @@ export function ChannelView({ h, channel, onThread, showMembers, onToggleMembers
             </div>
             <h2 style={{ fontSize: 26, marginTop: 12 }}>Welcome to #{channel.name}</h2>
             <p className="hg-muted" style={{ marginTop: 4 }}>
-              This is the start of #{channel.name}. Messages here live in the community service; this build keeps them on this computer for now.
+              This is the start of #{channel.name}.
             </p>
           </div>
         )}

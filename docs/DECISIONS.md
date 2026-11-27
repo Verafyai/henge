@@ -1051,16 +1051,36 @@ Closes the "Before G3" item in Rex's decisions: the sandbox now counts work done
 
 Spin-out spec v2, Workstream F (sections 9.1 to 9.5, 7.5 and 7.6). Branch `client/henge-layout`.
 
-- **Flag:** `HENGE_COMMUNITY_LAYOUT`. Unpackaged runs (dev and tests) default to on; `HENGE_COMMUNITY_LAYOUT=0`
-  brings back the v1 page set unchanged. Packaged builds are on only when built with
-  `MAIN_VITE_HENGE_COMMUNITY_LAYOUT=1`. Main reports it in `getAppInfo().communityLayout`; the renderer picks
-  `HengeApp` or the v1 `Shell` at startup.
+- **One interface (Rex, 2026-11-26):** the Henge layout is the only interface in every build (dev, test,
+  packaged). There is no `HENGE_COMMUNITY_LAYOUT` flag and no v1 page set to fall back to: `renderer/app.tsx`
+  and `renderer/ui/shell.tsx` are deleted. Functions that only lived on v1 pages are inside the layout (see
+  "v1 functions" below).
 - **Community data:** every community call goes through the renderer `CommunityStore` interface
-  (`apps/client/src/renderer/community/store.ts`). This branch ships only `InMemoryCommunityStore`
-  (profiles, presence, messages, threads, reactions, pins, unread, proposals and votes, reports, moderation,
-  audit log, channel permissions). Nothing persists across restarts. The swap point for the community server
-  API (`packages/api-client/src/community.ts`, branch `community/server`) is `createCommunityStore()` in
-  `renderer/henge/data.tsx`. Votes are recorded, not tallied; proposals never apply themselves.
+  (`apps/client/src/renderer/community/store.ts`). The app uses `ApiCommunityStore` (`community/api.ts`), backed
+  by the community service (`packages/api-client/src/community.ts`). `InMemoryCommunityStore` remains for unit
+  tests and as the file-only view of a Henge that is not on the service.
+- **Tokens stay in main:** `apps/client/src/main/community.ts` builds the community client with the session's
+  access token and exposes one IPC, `community:call`, that runs an allowlisted operation by name
+  (`COMMUNITY_OPS`; creating Henges, agents and tokens is not on it). Avatars go through `community:avatar`.
+  Realtime events are read over SSE in main and forwarded as `community:event`. The agent identity is created
+  with the device-signed `POST /v1/me/agents`; per-Henge agent tokens (returned once) go into the OS keychain as
+  `agent-tokens` and are deleted on sign out. The renderer never sees a token.
+- **Connecting a Henge:** once you are signed in with a community profile, each local Henge is sent to
+  `POST /v1/henges` (`henges:connect`, from the stored `.henge` file and its https source URL) and the service id
+  is stored as `communityId` in `index.json`; your agent is then added to it. The service only starts a Henge
+  for someone the file names in `governance.holders.owner`, so a joined Henge whose owner has not started it
+  shows its channels and named members from the file and says it is not on the community service yet. A
+  different pinned digest is reported as such.
+- **Shape mapping:** channels are addressed by their file key in the UI and by service id on the wire.
+  Permission names map `threads`/`react`/`manage`/`api` to `start_threads`/`add_reactions`/`manage_messages`/
+  `post_via_api`. Timeouts round up to the service presets (60s, 5m, 10m, 1h, 1d, 1w). Audit actions the UI does
+  not name are shown with the service's action name.
+- **Proposals:** the service has no proposal records yet. A proposal is posted to #proposals as a normal message
+  by you; its details and votes are kept on this computer for the session. Votes are recorded, not tallied;
+  proposals never apply themselves.
+- **Not on main yet:** the node's Temporal bridge methods (`node.joinHenge`, `node.setDailyCap`,
+  `node.confirmHengeUpdate`, `pausedLabel`) were not on origin/main when this was merged, so join, daily cap
+  and re-consent still write the local run rules and `index.json` as before.
 - **`.henge` files live in main** (`apps/client/src/main/henges.ts`): main resolves links with the schema resolver
   (https and public addresses only), pins the bundle digest, checks `checkJoinReadiness`, the attested rules, the
   offered role and the core range, and stores `<userData>/henges/<owner>--<name>.henge.yaml` plus `index.json`
@@ -1068,8 +1088,8 @@ Spin-out spec v2, Workstream F (sections 9.1 to 9.5, 7.5 and 7.6). Branch `clien
   there). Glyph grants (`checkGlyphGrant`) and Rune plans (`planRunes`) are decided in main.
 - **Test hook:** unpackaged runs with `HENGE_TEST_FILE_URLS=1` also accept `file://` `.henge` links, so the e2e
   can join `packages/schema/fixtures/henge/valid/example.henge.yaml`. Packaged builds never do.
-- **Links:** `henge://add?url=<https url>` opens the join card. Invite links (`henge.verafy.ai/i/<code>`) say the
-  community service is not connected yet.
+- **Links:** `henge://add?url=<https url>` opens the join card. Invite links (`henge.verafy.ai/i/<code>`) say
+  invites are not available yet (the service has no invite codes).
 - **Participation maps onto run rules:** "When to run" sets `rules.when` (Always, Idle 5 minutes, or the file's
   windows), and CPU cores set `maxLoadPct` as a share of this machine's cores. Role, model, daily cap and
   re-consent are stored with the local membership in `index.json`. A joined Henge with `admission.mode` other
@@ -1085,12 +1105,13 @@ Spin-out spec v2, Workstream F (sections 9.1 to 9.5, 7.5 and 7.6). Branch `clien
 - **Sign in:** "Continue with GitHub" is the existing system-browser sign in; email and phone show "Later".
   "Run locally without an account" is remembered per profile. Chat, proposals and reports need sign in and a
   community profile; a signed-in user without one is asked once and may skip.
-- **v1 pages (9.4):** Store, Library, Activity and Wallet stay in the Home column (and in User settings) under
-  `navigation "Main"`, the rail has "Discover swarms" and a User settings gear. User settings holds My profile,
+- **v1 functions (9.4):** Store, Library, Activity (results, kill-switch notices, Pause) and Wallet are in the
+  Home column (and in User settings) under `navigation "Main"`, restyled by `.hg-legacy`; the rail has "Discover swarms" and a User settings gear. User settings holds My profile,
   Account, node and updates (the v1 Settings page: kill switch, updates, run rules, sign out), Models and keys,
   and Harness logs. Pause and the node state sit in the user panel at the bottom of every channel column.
-- **No invented numbers:** member counts say "not connected", the member list holds you, your agent and the
-  holders named in the file, and unread counts come from the store.
+- **No invented numbers:** the join card says members are not connected (the count needs the service), member
+  lists and unread counts come from the service, and a Henge not on the service lists only the holders named
+  in its file, shown offline. Kill-switch states (global or per swarm) show in the user panel.
 - **Copy:** `apps/client/src/renderer/copy.test.ts` fails on U+2014, U+2013, dash entities, "plugin", "bot",
   "Swarm Explorer" and "SwarmStarter" anywhere in renderer source outside comments and import paths.
 - **Fonts:** Chakra Petch (headings, `@fontsource/chakra-petch`), Inter (body) and JetBrains Mono, all bundled.

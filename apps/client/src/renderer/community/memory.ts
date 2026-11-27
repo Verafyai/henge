@@ -73,6 +73,13 @@ export class InMemoryCommunityStore implements CommunityStore {
   version() {
     return this.v;
   }
+  ready() {
+    return true;
+  }
+  refresh() {}
+  connected(hengeId: string) {
+    return this.spaces.has(hengeId);
+  }
   private changed() {
     this.v++;
     for (const l of this.listeners) l();

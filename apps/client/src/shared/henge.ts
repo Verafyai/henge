@@ -40,6 +40,8 @@ export type LocalHenge = {
   /** Where the `.henge` file is stored on this computer. */
   file: string;
   addedAt: number;
+  /** The community service's id for this Henge once it is connected (signed in, with a profile). */
+  communityId?: string | null;
 };
 
 /** What a pasted link resolved to, before anything is joined. */
@@ -117,3 +119,9 @@ export type RunePlanView = RuneChangePlan;
 export type RuneApplyResult = { ok: true; henge: LocalHenge; applied: string[]; proposal: Record<string, unknown> } | { ok: false; issues: IssueView[] };
 
 export type GlyphCatalogItem = GlyphManifestV1;
+
+/** A community call as the renderer sees it: data, or a plain error (never a token). */
+export type CommunityCallResult<T = unknown> = { ok: true; value: T } | { ok: false; status: number; code: string; message: string; retryAfterS?: number };
+export type CommunityConnectResult = { ok: true; henge: LocalHenge } | { ok: false; status: number; code: string; message: string };
+/** One realtime event from the community service, forwarded by main. */
+export type CommunityEventView = { id: string; kind: string; henge_id: string; channel_id: string | null; payload: Record<string, unknown>; created_at: string };

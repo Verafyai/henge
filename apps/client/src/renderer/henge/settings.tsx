@@ -236,6 +236,7 @@ const ACTION_ICON: Record<AuditEntry['action'], [string, string]> = {
   revoke_token: ['\u{1F511}', '#e0b862'],
   report_dismissed: ['\u{2714}', '#3fd0a8'],
   role_change: ['\u{1F464}', '#3fd0a8'],
+  other: ['\u{2699}', '#8fb4ff'],
 };
 const ACTION_WORDS: Record<AuditEntry['action'], string> = {
   delete_message: 'deleted a message by',
@@ -249,6 +250,7 @@ const ACTION_WORDS: Record<AuditEntry['action'], string> = {
   revoke_token: 'revoked the API token of',
   report_dismissed: 'dismissed a report about',
   role_change: 'changed the role of',
+  other: '',
 };
 
 function Moderation({ h, section }: { h: LocalHenge; section: 'audit' | 'reports' | 'bans' }) {
@@ -288,7 +290,7 @@ function Moderation({ h, section }: { h: LocalHenge; section: 'audit' | 'reports
         <div className="hg-input" style={{ height: 38, width: 220 }}>
           <select aria-label="Filter by action" value={action} onChange={(e) => setAction(e.target.value as typeof action)}>
             <option value="">All actions</option>
-            {Object.keys(ACTION_WORDS).map((a) => (
+            {Object.keys(ACTION_WORDS).filter((a) => a !== 'other').map((a) => (
               <option key={a} value={a}>
                 {a.replace(/_/g, ' ')}
               </option>
@@ -305,7 +307,7 @@ function Moderation({ h, section }: { h: LocalHenge; section: 'audit' | 'reports
                 {icon}
               </div>
               <div>
-                <span style={{ fontWeight: 600 }}>{e.actorName}</span> <span className="hg-muted">{ACTION_WORDS[e.action]}</span> <span style={{ fontWeight: 600 }}>{e.target}</span>
+                <span style={{ fontWeight: 600 }}>{e.actorName}</span> <span className="hg-muted">{e.action === 'other' ? (e.label ?? '').replace(/[._]/g, ' ') : ACTION_WORDS[e.action]}</span> <span style={{ fontWeight: 600 }}>{e.target}</span>
                 {e.actorType !== 'human' && <span style={{ marginLeft: 6 }}><KindTag m={{ actorType: e.actorType }} /></span>}
                 <div className="hg-faint" style={{ fontSize: 12.5, marginTop: 2 }}>
                   {e.reason}

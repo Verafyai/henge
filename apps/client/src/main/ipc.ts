@@ -12,7 +12,9 @@ import type { EncryptedCache } from './cache';
 import type { NodeController } from './node';
 import { runRulesSchema } from '@swarm-explorer/node-core';
 import { modelInstallInputSchema, nodeSetupInputSchema, type MembershipResult, type ModelActionResult } from '../shared/node';
-import { API_BASE_URL, CHANNEL, COMMUNITY_LAYOUT, DEV_SERVER, releasePublicKey } from './config';
+import { API_BASE_URL, CHANNEL, DEV_SERVER, releasePublicKey } from './config';
+import { registerCommunity } from './community';
+import type { SecretStore } from './secrets';
 import { isAllowedExternal, isAppUrl } from './security';
 import { checkForUpdates, downloadUpdate, mirrorBase } from './updates';
 import { DEFAULT_RUN_RULES, type RunRules } from '@swarm-explorer/node-core';
@@ -38,10 +40,10 @@ function handle<S extends z.ZodType, R>(channel: string, input: S, fn: (arg: z.o
 const none = z.undefined();
 const slug = z.string().regex(/^[a-z0-9][a-z0-9.-]{0,62}$/);
 
-export function registerIpc(deps: { auth: AuthManager; node: () => NodeController; cache: () => EncryptedCache; takeLaunchRoute: () => Route | null }) {
+export function registerIpc(deps: { auth: AuthManager; secrets: SecretStore; node: () => NodeController; cache: () => EncryptedCache; takeLaunchRoute: () => Route | null }) {
   const { auth } = deps;
 
-  handle(IPC.appInfo, none, (): AppInfo => ({ version: app.getVersion(), platform: process.platform, arch: process.arch, channel: CHANNEL, apiBaseUrl: API_BASE_URL, isPackaged: app.isPackaged, communityLayout: COMMUNITY_LAYOUT }), null);
+  handle(IPC.appInfo, none, (): AppInfo => ({ version: app.getVersion(), platform: process.platform, arch: process.arch, channel: CHANNEL, apiBaseUrl: API_BASE_URL, isPackaged: app.isPackaged }), null);
 
   handle(IPC.openExternal, z.string().max(2048), async (url) => {
     if (!isAllowedExternal(url)) return false;
@@ -266,6 +268,7 @@ export function registerIpc(deps: { auth: AuthManager; node: () => NodeControlle
   handle(IPC.hengesAddGlyph, glyphAddInputSchema, (i) => henges().addGlyph(i), refusedIssues);
   handle(IPC.hengesPlanRunes, runeInputSchema, (i) => henges().planRunes(i), null);
   handle(IPC.hengesApplyRunes, runeInputSchema, (i) => henges().applyRunes(i), refusedIssues);
+  registerCommunity({ auth, apiBaseUrl: API_BASE_URL, secrets: deps.secrets, henges, trusted });
 
   /** When to run and how much CPU: the participation step writes the node's run rules (SPEC 7.2). */
   function applyParticipation(h: HengeV1, p: Participation) {

@@ -138,6 +138,7 @@ export function useNodeState() {
   const t = o?.tasks;
   const kill = o?.kill;
   if (kill?.global) return { label: 'Stopped by Verafy', detail: kill.global.reason, tone: 'var(--hg-accent)' };
+  if (kill?.swarms[0]) return { label: 'Stopped by Verafy', detail: `work for ${kill.swarms[0].swarm}: ${kill.swarms[0].reason}`, tone: 'var(--hg-accent)' };
   if (o?.paused) return { label: 'Paused', detail: 'nothing will run until you resume', tone: 'var(--hg-pending)' };
   if (t?.current) return { label: 'Running', detail: `a task for ${t.current.swarm} on ${t.current.model}`, tone: 'var(--hg-ok)' };
   if (t && t.phase !== 'off') return { label: t.phase === 'blocked' ? 'Waiting' : 'Ready', detail: t.detail, tone: online ? 'var(--hg-ok)' : '#55575d' };

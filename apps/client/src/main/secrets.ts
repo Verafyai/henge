@@ -9,7 +9,8 @@ export interface SecretStore {
   delete(name: SecretName): Promise<void>;
 }
 
-export type SecretName = 'session' | 'device-key' | 'cache-key';
+/** `agent-tokens`: per-Henge agent tokens from the community service, as one JSON map. */
+export type SecretName = 'session' | 'device-key' | 'cache-key' | 'agent-tokens';
 
 export const DEFAULT_KEYCHAIN_SERVICE = 'ai.verafy.henge';
 

@@ -7,7 +7,7 @@ import type { JoinStarted, ResultItem, SwarmDetail, Wallet } from '@swarm-explor
 import type { RunRules } from '@swarm-explorer/node-core';
 import type { MembershipResult, MembershipsOverview, ModelActionResult, ModelInstallInput, NodeOverview, NodeSetup, Permissions, SandboxCheck } from './node';
 import type { Route } from './routes';
-import type { CreateInput, GlyphAddInput, GlyphAddPlan, GlyphAddResult, GlyphCatalogItem, HengeResolveView, IssueView, JoinInput, LocalHenge, RuneApplyResult, RuneInput, RunePlanView } from './henge';
+import type { CommunityCallResult, CommunityConnectResult, CommunityEventView, CreateInput, GlyphAddInput, GlyphAddPlan, GlyphAddResult, GlyphCatalogItem, HengeResolveView, IssueView, JoinInput, LocalHenge, RuneApplyResult, RuneInput, RunePlanView } from './henge';
 
 export type Channel = 'stable' | 'beta' | 'internal' | 'dev';
 
@@ -18,8 +18,6 @@ export type AppInfo = {
   channel: Channel;
   apiBaseUrl: string;
   isPackaged: boolean;
-  /** HENGE_COMMUNITY_LAYOUT (spin-out spec v2, 14): the four-column Henge layout instead of the v1 page set. */
-  communityLayout: boolean;
 };
 
 export type AuthState = { status: 'signed_out' | 'signing_in' | 'signed_in'; error?: string };
@@ -133,6 +131,20 @@ export interface SwarmBridge {
     addGlyph(input: GlyphAddInput): Promise<GlyphAddResult>;
     planRunes(input: RuneInput): Promise<RunePlanView | null>;
     applyRunes(input: RuneInput): Promise<RuneApplyResult>;
+    /** Creates or joins the Henge on the community service (signed in, with a profile). */
+    connect(key: string): Promise<CommunityConnectResult>;
+  };
+  /**
+   * The community service (spin-out spec v2, 8). Main holds the token and calls an allowlisted
+   * operation of the community client; the renderer sees data or a plain error.
+   */
+  community: {
+    call<T = unknown>(op: string, ...args: unknown[]): Promise<CommunityCallResult<T>>;
+    uploadAvatar(bytes: Uint8Array, type: 'image/png' | 'image/jpeg' | 'image/webp'): Promise<CommunityCallResult>;
+    createAgent(handle: string, displayName: string): Promise<CommunityCallResult>;
+    watch(hengeId: string): Promise<boolean>;
+    unwatch(hengeId: string): Promise<boolean>;
+    onEvent(cb: (e: CommunityEventView) => void): () => void;
   };
   /** Deep links and menu commands. Navigation only, never a write. */
   onNavigate(cb: (route: Route) => void): () => void;
@@ -211,6 +223,13 @@ export const IPC = {
   hengesAddGlyph: 'henges:add-glyph',
   hengesPlanRunes: 'henges:plan-runes',
   hengesApplyRunes: 'henges:apply-runes',
+  hengesConnect: 'henges:connect',
+  communityCall: 'community:call',
+  communityAvatar: 'community:avatar',
+  communityCreateAgent: 'community:create-agent',
+  communityWatch: 'community:watch',
+  communityUnwatch: 'community:unwatch',
+  communityEvent: 'community:event',
   navigate: 'nav:navigate',
   launchRoute: 'nav:launch-route',
   notice: 'nav:notice',
