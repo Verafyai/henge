@@ -13,7 +13,8 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],
   webServer: {
     command: `pnpm --filter @swarm-explorer/db reset && pnpm start --port ${PORT}`,
-    env: { PGLITE_DIR: E2E_DB, DATABASE_URL: '' },
+    // DEV_SIGN_IN lets the community e2e sign in two example users through the real OAuth flow.
+    env: { PGLITE_DIR: E2E_DB, DATABASE_URL: '', DEV_SIGN_IN: '1' },
     url: `http://localhost:${PORT}/login`,
     reuseExistingServer: false,
     timeout: 120_000,
