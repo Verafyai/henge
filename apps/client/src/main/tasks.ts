@@ -1,35 +1,29 @@
 /**
- * Task runner in the main process (SPEC 7.1 to 7.3, 13.3). The node always pulls: it asks the
- * hosted coordinator for a lease, never accepts a connection. One local task at a time (local GPU
- * concurrency is one).
+ * Task runner in the main process (SPEC 7.1 to 7.3, 13.3; spin-out spec v2, 9.3). The node always
+ * pulls: it asks the hosted coordinator for a lease, never accepts a connection. One local task at
+ * a time (local GPU concurrency is one).
  *
- * Each pass: check Pause, sign in and the run rules; let the fair share scheduler order the
- * qualified swarms that have work; lease from the first that has a task; verify the pins; start
- * the lease, which hands out the input; check the input against its pinned hash; run the signed
- * harness in the sandbox against the user's own model; sign a run record with the device key and
- * submit. Pause, leave, a run rule stop and local failures abandon the lease (unpaid, requeued).
+ * Each pass: check Pause, sign in, the kill switch, the run rules and the daily cap; let the fair
+ * share scheduler order the qualified swarms that have work; prepare the first swarm's signed
+ * harness; then start one SwarmTaskWorkflow on the durable engine (Temporal in the node). The
+ * workflow leases, verifies the pins, starts the lease, checks the input hash, runs the harness in
+ * the sandbox against the user's own model, seals and signs the result and submits it once. If
+ * the node or its worker is killed, the workflow resumes on the next start instead of being lost;
+ * leases no workflow owns are returned (recovery.ts). Pause, leave, a run rule stop, the daily cap
+ * and local failures abandon the lease (unpaid, requeued).
  *
- * Submitted results wait for verification, which arrives in M6. Volunteer work earns impact only.
+ * Submitted results wait for verification (M6). Volunteer work earns impact only.
  */
-import {
-  apiErrorSchema,
-  leaseRenewedSchema,
-  leaseResponseSchema,
-  leaseStartedSchema,
-  resultSubmittedSchema,
-  runRecordMessage,
-  type AbandonReason,
-  type Lease,
-  type MembershipView,
-} from '@swarm-explorer/api-client';
-import { evaluateRunRules, FairShareScheduler, runRulesSchema, DEFAULT_RUN_RULES, type EnforcementSupport, type GateDecision, type RunRules, type Sensors } from '@swarm-explorer/node-core';
-import { canonicalJson } from '@swarm-explorer/schema';
-import { sha256Digest } from '@swarm-explorer/schema/node';
-import type { HarnessRunResult, HarnessRunSpec, InstalledModel, TaskHistoryItem, TaskRunView, TasksOverview } from '../shared/node';
+import { evaluateRunRules, FairShareScheduler, planRecovery, runRulesSchema, DEFAULT_RUN_RULES, DAILY_CAP_PAUSED, type CapDecision, type EnforcementSupport, type GateDecision, type RunRules, type Sensors } from '@swarm-explorer/node-core';
+import type { AbandonReason, MembershipView } from '@swarm-explorer/api-client';
+import type { HarnessRunResult, HarnessRunSpec, TaskHistoryItem, TaskRunView, TasksOverview } from '../shared/node';
 import type { AuthManager } from './auth';
 import type { EncryptedCache } from './cache';
 import type { KillSwitchWatcher } from './kill-switch';
-import type { MembershipManager, PreparedRun } from './memberships';
+import type { MembershipManager } from './memberships';
+import { createTaskActivities, type TaskActivities } from './temporal/activities';
+import { InProcessEngine, type WorkflowEngine } from './temporal/engine';
+import type { GuardStep, SwarmTaskInput, TaskOutcome, TaskProgress } from './temporal/types';
 
 type Deps = {
   auth: AuthManager;
@@ -37,6 +31,8 @@ type Deps = {
   memberships: Pick<MembershipManager, 'overview' | 'refresh' | 'prepareRun' | 'pickModel' | 'runSpec'>;
   nodeId: () => string | null;
   isPaused: () => boolean;
+  /** Why the node is paused, when it is not the user's own Pause (for example the daily cap). */
+  pausedDetail?: () => string | null;
   run: (spec: HarnessRunSpec, signal: AbortSignal) => Promise<HarnessRunResult>;
   sensors: () => Sensors;
   support: EnforcementSupport;
@@ -44,6 +40,12 @@ type Deps = {
   changed: () => void;
   /** The signed kill switch (M7). Absent only in tests that do not cover it. */
   kill?: Pick<KillSwitchWatcher, 'stoppedReason' | 'startBlock' | 'check'>;
+  /** The daily cap (spin-out 6.4). Absent in tests that do not cover it. */
+  budget?: { check: () => CapDecision };
+  /** The cap was reached: pause the node (`hard_stop`). */
+  onCapReached?: () => void;
+  /** The durable engine, built over this runner's activities. Defaults to the in-process engine. */
+  engine?: (activities: TaskActivities) => WorkflowEngine;
   /** Engineering intervals, shortened in tests. */
   tickMs?: number;
 };
@@ -56,7 +58,20 @@ const EMPTY_BACKOFF_MS = 30_000;
 const HOME_REFRESH_MS = 30_000;
 const HISTORY = 20;
 
-type Current = TaskRunView & { membershipId: string; modelHash: string; ctl: AbortController; stop: { reason: AbandonReason; detail: string } | null; renewTried: boolean };
+/** The task workflow this node is running (at most one). */
+type Current = {
+  workflowId: string;
+  input: SwarmTaskInput;
+  progress: TaskProgress;
+  startedAt: number;
+  stop: { reason: AbandonReason; detail: string } | null;
+  ctl: AbortController | null;
+  resumed: boolean;
+  /** Resolves once the workflow holds a lease (true) or ended without running anything (false). */
+  settle: (leased: boolean) => void;
+};
+
+const noop = () => {};
 
 const STOP_DETAIL: Record<AbandonReason, string> = {
   paused: 'Paused. The task went back to the queue, unpaid.',
@@ -68,13 +83,7 @@ const STOP_DETAIL: Record<AbandonReason, string> = {
   kill_switch: 'Verafy stopped this work. The task went back to the queue, unpaid.',
 };
 
-/** Coordinator answers that mean a stop is in force: read the signed feed at once. */
-const KILL_CODES = new Set(['killed', 'swarm_killed', 'lease_cancelled']);
-
-async function errorOf(res: Response) {
-  const e = apiErrorSchema.safeParse(await res.json().catch(() => null));
-  return e.success ? e.data.error : { code: `http_${res.status}`, message: 'The coordinator could not do that right now.' };
-}
+const CAP_STOP = `${DAILY_CAP_PAUSED}. The task went back to the queue, unpaid.`;
 
 export class TaskRunner {
   private readonly scheduler = new FairShareScheduler();
@@ -88,10 +97,49 @@ export class TaskRunner {
   private ticking = false;
   private lastHome = 0;
   private recovered = false;
-  /** The running task's loop, so sign out can wait for its abandon to reach the coordinator. */
+  /** The running task's workflow, so sign out can wait for its abandon to reach the coordinator. */
   private running: Promise<void> | null = null;
+  readonly activities: TaskActivities;
+  private engine: WorkflowEngine;
+  private engineReady = false;
 
-  constructor(private d: Deps) {}
+  constructor(private d: Deps) {
+    this.activities = createTaskActivities({
+      signedFetch: (method, path, body, key) => d.auth.signedFetch(method, path, body, key),
+      signWithDevice: (m) => d.auth.signWithDevice(m),
+      appVersion: d.appVersion,
+      guard: (input) => this.guard(input),
+      stopFor: () => this.current?.stop ?? null,
+      registerAbort: (_leaseId, ctl) => {
+        const c = this.current;
+        if (c) c.ctl = ctl;
+        if (c?.stop) ctl.abort();
+        return () => {
+          if (c && c.ctl === ctl) c.ctl = null;
+        };
+      },
+      runSpec: (input, leaseId, taskInput, signal) => this.runSpec(input, leaseId, taskInput, signal),
+      run: (spec, signal) => d.run(spec, signal),
+      progress: (_input, p) => this.onProgress(p),
+      checkKill: async () => {
+        await d.kill?.check();
+      },
+    });
+    this.engine = d.engine ? d.engine(this.activities) : new InProcessEngine(this.activities);
+    if (!d.engine) this.engineReady = true;
+  }
+
+  /** The engine started (or failed and the runner fell back to the in-process one). */
+  setEngine(engine: WorkflowEngine) {
+    this.engine = engine;
+    this.engineReady = true;
+    this.recovered = false;
+    void this.tick();
+  }
+
+  get engineName() {
+    return this.engine.name;
+  }
 
   start() {
     this.timer ??= setInterval(() => void this.tick(), this.d.tickMs ?? TICK_MS);
@@ -116,15 +164,25 @@ export class TaskRunner {
 
   /** The model of the running lease; it may not be removed while the task runs. */
   leasedModel(): string | null {
-    return this.current?.modelHash ?? null;
+    return this.current?.input.model.contentHash ?? null;
+  }
+
+  /** Whether the run rules let task model calls go ahead right now (the proxy's schedule guard). */
+  scheduleOk(): boolean {
+    return !(this.gate?.mustStop ?? false);
+  }
+
+  private view(c: Current): TaskRunView | null {
+    const p = c.progress;
+    if (!p.leaseId || p.phase === 'leasing' || p.phase === 'done') return null;
+    return { leaseId: p.leaseId, taskId: '', swarm: c.input.swarm, urgent: p.urgent, phase: p.phase, model: c.input.model.displayName, startedAt: c.startedAt, deadlineAt: p.deadlineAt ?? '' };
   }
 
   overview(): TasksOverview {
-    const c = this.current;
     return {
       phase: this.phase,
       detail: this.detail,
-      current: c ? { leaseId: c.leaseId, taskId: c.taskId, swarm: c.swarm, urgent: c.urgent, phase: c.phase, model: c.model, startedAt: c.startedAt, deadlineAt: c.deadlineAt } : null,
+      current: this.current ? this.view(this.current) : null,
       history: this.history,
       gate: this.gate,
       shares: this.scheduler.report(),
@@ -142,19 +200,24 @@ export class TaskRunner {
     this.history = [{ ...item, at: Date.now() }, ...this.history].slice(0, HISTORY);
   }
 
-  /** Stops the running task at once; the run loop then abandons the lease. */
+  private pausedText() {
+    return this.d.pausedDetail?.() ?? 'Paused. No new tasks until you resume.';
+  }
+
+  /** Stops the running task at once; its workflow then abandons the lease. */
   stopCurrent(reason: AbandonReason, detail = STOP_DETAIL[reason]) {
     const c = this.current;
     if (!c || c.stop) return;
     c.stop = { reason, detail };
-    c.ctl.abort();
+    c.ctl?.abort();
     this.d.changed();
   }
 
   /** Pause: the sandbox is stopped by the supervisor; here the lease is abandoned and no new one starts. */
   pause() {
-    this.stopCurrent('paused');
-    this.set('paused', 'Paused. No new tasks until you resume.');
+    const cap = this.d.pausedDetail?.() === DAILY_CAP_PAUSED;
+    this.stopCurrent('paused', cap ? CAP_STOP : STOP_DETAIL.paused);
+    this.set('paused', this.pausedText());
   }
 
   resume() {
@@ -167,7 +230,7 @@ export class TaskRunner {
    */
   applyKill() {
     const c = this.current;
-    const why = c && this.d.kill?.stoppedReason(c.swarm);
+    const why = c && this.d.kill?.stoppedReason(c.input.swarm);
     if (why) this.stopCurrent('kill_switch', `${why} The task went back to the queue, unpaid.`);
     const all = this.d.kill?.stoppedReason();
     if (all && !this.current) this.set('blocked', all);
@@ -175,7 +238,7 @@ export class TaskRunner {
   }
 
   onLeave(membershipId: string) {
-    if (this.current?.membershipId === membershipId) this.stopCurrent('left');
+    if (this.current?.input.membershipId === membershipId) this.stopCurrent('left');
     this.scheduler.remove(membershipId);
   }
 
@@ -194,6 +257,28 @@ export class TaskRunner {
     return this.d.auth.getState().status === 'signed_in' && Boolean(this.d.nodeId());
   }
 
+  /**
+   * Checked by the workflow before the harness starts and by the run step before and after it:
+   * the stop the user or a rule asked for, sign in, Pause, the kill switch, the run rules and the
+   * daily cap. The model proxy checks pause, run rules and the cap again before every model call.
+   */
+  guard(input: SwarmTaskInput): GuardStep {
+    const c = this.current;
+    if (c?.stop) return { ok: false, reason: c.stop.reason, detail: c.stop.detail };
+    if (!this.signedIn()) return { ok: false, reason: 'signed_out', detail: STOP_DETAIL.signed_out };
+    const cap = this.d.budget?.check();
+    if (cap && !cap.ok) {
+      this.d.onCapReached?.();
+      return { ok: false, reason: 'paused', detail: CAP_STOP };
+    }
+    if (this.d.isPaused()) return { ok: false, reason: 'paused', detail: STOP_DETAIL.paused };
+    const why = this.d.kill?.stoppedReason(input.swarm);
+    if (why) return { ok: false, reason: 'kill_switch', detail: `${why} The task went back to the queue, unpaid.` };
+    const gate = evaluateRunRules(this.rules(), this.d.sensors(), this.d.support, new Date());
+    if (gate.mustStop) return { ok: false, reason: 'run_rules', detail: `${gate.blocks[0]!.detail} The task went back to the queue, unpaid.` };
+    return { ok: true };
+  }
+
   async tick(): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
@@ -203,17 +288,23 @@ export class TaskRunner {
       this.gate = gate;
       if (changed) this.d.changed();
       if (this.current) {
-        const why = this.d.kill?.stoppedReason(this.current.swarm);
+        const why = this.d.kill?.stoppedReason(this.current.input.swarm);
         if (why) this.stopCurrent('kill_switch', `${why} The task went back to the queue, unpaid.`);
         else if (gate.mustStop) this.stopCurrent('run_rules', `${gate.blocks[0]!.detail} The task went back to the queue, unpaid.`);
-        else await this.maybeRenew();
         return;
       }
       if (!this.signedIn()) return this.set('off', 'Sign in to run tasks.');
-      if (this.d.isPaused()) return this.set('paused', 'Paused. No new tasks until you resume.');
+      if (!this.engineReady) return this.set('blocked', 'Starting the local workflow engine.');
+      await this.recover();
+      if (this.current) return;
+      const cap = this.d.budget?.check();
+      if (cap && !cap.ok) {
+        this.d.onCapReached?.();
+        return this.set('paused', DAILY_CAP_PAUSED);
+      }
+      if (this.d.isPaused()) return this.set('paused', this.pausedText());
       const block = this.d.kill?.startBlock();
       if (block) return this.set('blocked', block);
-      await this.recover();
       if (Date.now() - this.lastHome > HOME_REFRESH_MS) {
         this.lastHome = Date.now();
         await this.d.memberships.refresh();
@@ -230,7 +321,7 @@ export class TaskRunner {
       if (!order.length) return this.set('waiting', 'No tasks waiting in your swarms.');
       for (const id of order) {
         if (this.d.isPaused() || this.current) return;
-        if (await this.lease(active.find((m) => m.id === id)!)) return;
+        if (await this.begin(active.find((m) => m.id === id)!)) return;
       }
       if (!this.current) this.set('waiting', 'No tasks waiting in your swarms.');
     } finally {
@@ -238,14 +329,33 @@ export class TaskRunner {
     }
   }
 
-  /** Leases left open by a previous session (for example after a crash) are returned at once. */
+  /**
+   * After a start: task workflows still open (the node or worker was killed) resume where they
+   * stopped; open leases that no workflow owns are returned at once, unpaid.
+   */
   private async recover() {
     if (this.recovered) return;
     const home = this.d.memberships.overview().home ?? (await this.d.memberships.refresh());
     if (!home) return;
-    this.recovered = true;
-    for (const l of home.node.open_leases) await this.abandon(l.id, 'local_failure');
-    if (home.node.open_leases.length) await this.d.memberships.refresh();
+    let open: Awaited<ReturnType<WorkflowEngine['openTasks']>>;
+    try {
+      open = await this.engine.openTasks();
+    } catch {
+      return; // The engine is not answering yet; try again next pass.
+    }
+    const plan = planRecovery(
+      home.node.open_leases.map((l) => ({ id: l.id, status: l.status, deadlineAt: l.deadline_at, swarm: l.swarm })),
+      open.map((w) => ({ workflowId: w.workflowId, leaseId: w.progress?.leaseId ?? null })),
+    );
+    if (!plan.deferred) this.recovered = true;
+    for (const id of plan.abandon) await this.abandon(id, 'local_failure');
+    if (plan.abandon.length) await this.d.memberships.refresh();
+    const first = open[0];
+    if (first && !this.current) {
+      this.current = { workflowId: first.workflowId, input: first.input, progress: first.progress ?? { leaseId: null, phase: 'leasing', deadlineAt: null, urgent: false }, startedAt: Date.now(), stop: null, ctl: null, resumed: true, settle: noop };
+      this.set('running', `Resuming a task for ${first.input.swarm} on ${first.input.model.displayName}`);
+      this.follow(this.current, first.result);
+    }
   }
 
   private skip(membershipId: string) {
@@ -253,11 +363,11 @@ export class TaskRunner {
     this.emptyUntil.set(membershipId, Date.now() + EMPTY_BACKOFF_MS);
   }
 
-  /** Asks one swarm's coordinator for a lease. True when a task started. */
-  private async lease(m: MembershipView): Promise<boolean> {
+  /** Prepares one swarm's harness and starts its task workflow. True when a workflow started. */
+  private async begin(m: MembershipView): Promise<boolean> {
     this.set('leasing', `Asking ${m.swarm} for a task`);
     const ctl = new AbortController();
-    let prepared: PreparedRun;
+    let prepared: Awaited<ReturnType<Deps['memberships']['prepareRun']>>;
     try {
       prepared = await this.d.memberships.prepareRun(m, ctl.signal);
     } catch (e) {
@@ -271,141 +381,89 @@ export class TaskRunner {
       this.set('waiting', `None of your downloaded models is accepted by ${m.swarm}.`);
       return false;
     }
-    let lease: Lease;
-    try {
-      const res = await this.d.auth.signedFetch('POST', `/v1/coordinators/${m.swarm}/leases`, { node_id: this.d.nodeId(), mode: 'local', model_artifact_hash: model.contentHash, reputation_token: null, spend_reservation: null });
-      if (!res.ok) {
-        const e = await errorOf(res);
-        if (KILL_CODES.has(e.code)) {
-          await this.d.kill?.check();
-          this.set('blocked', e.message);
-          return false;
-        }
-        this.skip(m.id);
-        this.set('waiting', e.message);
-        return false;
-      }
-      const body = leaseResponseSchema.safeParse(await res.json());
-      if (!body.success || !body.data.lease) {
-        this.skip(m.id);
-        return false;
-      }
-      lease = body.data.lease;
-    } catch {
-      this.skip(m.id);
-      this.set('waiting', 'The coordinator could not be reached.');
-      return false;
-    }
-    // The node checks the pins itself before it runs anything (SPEC 7.3).
-    if (lease.swarm !== m.swarm || lease.harness.hash !== prepared.release.bundleHash || lease.permissions_hash !== m.permissions_hash) {
-      await this.abandon(lease.lease_id, 'pin_mismatch');
-      this.record({ leaseId: lease.lease_id, swarm: m.swarm, outcome: 'abandoned', detail: STOP_DETAIL.pin_mismatch, elapsedMs: 0 });
-      this.skip(m.id);
-      return false;
-    }
-    this.current = {
-      leaseId: lease.lease_id,
-      taskId: lease.task_id,
-      swarm: m.swarm,
-      urgent: lease.urgent,
-      phase: 'starting',
-      model: model.displayName,
-      modelHash: model.contentHash,
-      startedAt: Date.now(),
-      deadlineAt: lease.deadline_at,
+    const input: SwarmTaskInput = {
+      nodeId: this.d.nodeId()!,
       membershipId: m.id,
-      ctl,
-      stop: null,
-      renewTried: false,
+      swarm: m.swarm,
+      permissionsHash: m.permissions_hash,
+      harnessHash: prepared.release.bundleHash,
+      model: { contentHash: model.contentHash, slug: model.slug, displayName: model.displayName },
+      timeoutS: prepared.swarm?.task?.timeoutS ?? 300,
     };
-    this.set('running', `Running a task for ${m.swarm} on ${model.displayName}`);
-    this.running = this.execute(m, prepared, model, lease, this.current).finally(() => {
-      this.running = null;
-    });
-    return true;
+    let started: Awaited<ReturnType<WorkflowEngine['startTask']>>;
+    try {
+      started = await this.engine.startTask(input);
+    } catch (e) {
+      this.set('waiting', e instanceof Error ? e.message.slice(0, 200) : 'The local workflow engine did not start the task.');
+      return false;
+    }
+    let settle: (leased: boolean) => void = noop;
+    const settled = new Promise<boolean>((r) => (settle = r));
+    const c: Current = { workflowId: started.workflowId, input, progress: { leaseId: null, phase: 'leasing', deadlineAt: null, urgent: false }, startedAt: Date.now(), stop: null, ctl: null, resumed: false, settle };
+    this.current = c;
+    this.follow(c, started.result);
+    return settled;
   }
 
-  private async execute(m: MembershipView, prepared: PreparedRun, model: InstalledModel, lease: Lease, c: Current) {
-    const t0 = Date.now();
-    const finish = (item: Omit<TaskHistoryItem, 'at' | 'leaseId' | 'swarm' | 'elapsedMs'>) => this.record({ leaseId: lease.lease_id, swarm: m.swarm, elapsedMs: Date.now() - t0, ...item });
-    try {
-      if (this.d.isPaused()) this.stopCurrent('paused');
-      if (c.stop) throw new Error('stopped');
-      const sres = await this.d.auth.signedFetch('POST', `/v1/leases/${lease.lease_id}/start`, { harness_hash: prepared.release.bundleHash, permissions_hash: m.permissions_hash, model_artifact_hash: model.contentHash });
-      if (!sres.ok) {
-        const e = await errorOf(sres);
-        if (KILL_CODES.has(e.code)) {
-          void this.d.kill?.check();
-          return finish({ outcome: 'abandoned', detail: e.message });
-        }
-        await this.abandon(lease.lease_id, e.code === 'pin_mismatch' ? 'pin_mismatch' : 'local_failure');
-        return finish({ outcome: 'abandoned', detail: e.message });
+  private onProgress(p: Partial<TaskProgress> & { leaseId: string | null }) {
+    const c = this.current;
+    if (!c) return;
+    const wasRunning = this.view(c) !== null;
+    c.progress = { ...c.progress, ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) };
+    if (c.progress.leaseId) c.settle(true);
+    if (!wasRunning && this.view(c)) this.set('running', `${c.resumed ? 'Resuming' : 'Running'} a task for ${c.input.swarm} on ${c.input.model.displayName}`);
+    if (p.phase === 'running' && c.resumed) this.set('running', `Running a task for ${c.input.swarm} on ${c.input.model.displayName}`);
+    this.d.changed();
+  }
+
+  /** Waits for the workflow's outcome, then records it and looks for the next task. */
+  private follow(c: Current, result: Promise<TaskOutcome>) {
+    this.running = result
+      .catch((): TaskOutcome => ({ outcome: 'failed', detail: 'The task workflow stopped unexpectedly. Its lease returns to the queue at its deadline, unpaid.', leaseId: c.progress.leaseId }))
+      .then((o) => this.finish(c, o))
+      .finally(() => {
+        if (this.running && this.current === null) this.running = null;
+      });
+  }
+
+  private async finish(c: Current, o: TaskOutcome) {
+    const elapsedMs = Date.now() - c.startedAt;
+    if (this.current === c) this.current = null;
+    if (o.outcome === 'no_task') {
+      if (o.kill) {
+        await this.d.kill?.check();
+        this.set('blocked', o.detail);
+      } else {
+        this.skip(c.input.membershipId);
+        this.set('waiting', o.detail);
       }
-      const started = leaseStartedSchema.parse(await sres.json());
-      if (sha256Digest(canonicalJson(started.input)) !== lease.input.sha256) {
-        await this.abandon(lease.lease_id, 'local_failure');
-        return finish({ outcome: 'failed', detail: 'The task input did not match its pinned hash, so it was not run.' });
-      }
-      c.deadlineAt = started.deadline_at;
-      c.phase = 'running';
       this.d.changed();
-      const r = await this.d.run(this.d.memberships.runSpec(m, prepared, model, lease.lease_id, started.input), c.ctl.signal);
-      if (c.stop || r.status === 'cancelled') throw new Error('stopped');
-      if (r.status !== 'ok' || !r.output) {
-        await this.abandon(lease.lease_id, 'local_failure');
-        return finish({ outcome: 'failed', detail: `${r.detail} The task went back to the queue, unpaid.`.slice(0, 300) });
-      }
-      c.phase = 'submitting';
-      this.d.changed();
-      const output = r.output;
-      const outputHash = sha256Digest(canonicalJson(output));
-      // Record version 2 carries the deterministic fuel count, so verifiers can compare runs.
-      const metering = r.fuel && r.fuel.used !== null ? { meter: r.fuel.meter, fuel_used: r.fuel.used, fuel_budget: r.fuel.budget } : null;
-      const record = {
-        ...(metering ? { record_version: 2 as const, metering } : {}),
-        lease_id: lease.lease_id,
-        node_id: this.d.nodeId()!,
-        model: { source: 'local' as const, claimed_id: model.slug, artifact_hash: model.contentHash },
-        harness_hash: prepared.release.bundleHash,
-        tokens: { input: r.tokens?.input ?? null, output: r.tokens?.output ?? null },
-        elapsed_ms: Date.now() - t0,
-        api_cost: { reported_usd_micros: null, provider_request_ids: [] },
-        output_sha256: outputHash,
-        client_version: this.d.appVersion,
-      };
-      const signature = await this.d.auth.signWithDevice(runRecordMessage(canonicalJson(record)));
-      const body = { output, output_sha256: outputHash, run_record: { ...record, signature } };
-      // Submit is idempotent by lease and result hash, so a retry after a dropped connection is safe.
-      for (let attempt = 0; ; attempt++) {
-        try {
-          const res = await this.d.auth.signedFetch('POST', `/v1/leases/${lease.lease_id}/results`, body);
-          if (res.status >= 500 && attempt < 2) continue;
-          if (!res.ok) return finish({ outcome: 'failed', detail: (await errorOf(res)).message });
-          const done = resultSubmittedSchema.parse(await res.json());
-          return finish(
-            done.disposition === 'on_time'
-              ? { outcome: 'submitted', detail: 'Submitted. It waits for the swarm to verify it.' }
-              : { outcome: 'late', detail: 'Submitted after the lease ended, so it is recorded but not counted.' },
-          );
-        } catch (e) {
-          if (attempt >= 2) throw e;
-        }
-      }
-    } catch {
-      const stop = c.stop ?? { reason: 'local_failure' as const, detail: STOP_DETAIL.local_failure };
-      await this.abandon(lease.lease_id, stop.reason);
-      finish({ outcome: 'abandoned', detail: stop.detail });
-    } finally {
-      // Time used is charged to the swarm's share, urgent or not (SPEC 7.1).
-      this.scheduler.charge(m.id, Date.now() - t0, lease.urgent);
-      this.current = null;
-      this.lastHome = Date.now();
-      await this.d.memberships.refresh().catch(() => null);
-      if (this.d.isPaused()) this.set('paused', 'Paused. No new tasks until you resume.');
-      else this.set('waiting', 'Looking for the next task.');
-      this.d.changed();
-      void this.tick();
+      c.settle(false);
+      return;
     }
+    // A stop the user asked for explains itself better than the generic local failure text.
+    const detail = c.stop && o.outcome === 'abandoned' && o.code === c.stop.reason ? c.stop.detail : o.detail;
+    this.record({ leaseId: o.leaseId ?? '', swarm: c.input.swarm, outcome: o.outcome as TaskHistoryItem['outcome'], detail, elapsedMs });
+    if (o.code === 'pin_mismatch') this.skip(c.input.membershipId);
+    // Time used is charged to the swarm's share, urgent or not (SPEC 7.1).
+    this.scheduler.charge(c.input.membershipId, elapsedMs, c.progress.urgent);
+    this.lastHome = Date.now();
+    await this.d.memberships.refresh().catch(() => null);
+    if (this.d.isPaused()) this.set('paused', this.pausedText());
+    else this.set('waiting', 'Looking for the next task.');
+    this.d.changed();
+    c.settle(true);
+    setTimeout(() => void this.tick(), 0);
+  }
+
+  /** Builds the sandbox run for a lease. Prepares the harness again after a restart (a cached bundle is reused). */
+  private async runSpec(input: SwarmTaskInput, leaseId: string, taskInput: Record<string, unknown>, signal: AbortSignal): Promise<HarnessRunSpec> {
+    const home = this.d.memberships.overview().home ?? (await this.d.memberships.refresh());
+    const m = home?.joined.find((j) => j.id === input.membershipId);
+    if (!m) throw new Error('This node is no longer a member of that swarm.');
+    const prepared = await this.d.memberships.prepareRun(m, signal);
+    if (prepared.release.bundleHash !== input.harnessHash) throw new Error('The harness changed since the task was leased.');
+    return this.d.memberships.runSpec(m, prepared, { contentHash: input.model.contentHash, slug: input.model.slug }, leaseId, taskInput);
   }
 
   /** Abandon is best effort: if it never arrives, the lease expires at its deadline and requeues. */
@@ -414,29 +472,6 @@ export class TaskRunner {
       await this.d.auth.signedFetch('POST', `/v1/leases/${leaseId}/abandon`, { reason });
     } catch {
       // Offline or signed out.
-    }
-  }
-
-  /**
-   * Asks for more time once, when a fifth of the lease is left. The coordinator may refuse (no
-   * renewal policy is approved yet); the task keeps running and a late result is recorded unpaid.
-   */
-  private async maybeRenew() {
-    const c = this.current;
-    if (!c || c.phase !== 'running' || c.renewTried) return;
-    const end = Date.parse(c.deadlineAt);
-    if (end - Date.now() > (end - c.startedAt) / 5) return;
-    c.renewTried = true;
-    try {
-      const res = await this.d.auth.signedFetch('POST', `/v1/leases/${c.leaseId}/renew`);
-      const body = leaseRenewedSchema.safeParse(await res.json().catch(() => null));
-      if (res.ok && body.success) {
-        c.deadlineAt = body.data.deadline_at;
-        c.renewTried = false;
-        this.d.changed();
-      }
-    } catch {
-      // The deadline stands.
     }
   }
 }

@@ -331,8 +331,9 @@ async function grantView(tx: Tx | Db, lease: Lease): Promise<LeaseGrant> {
 }
 
 /** The caller's lease. Someone else's lease looks the same as a missing one. */
-async function ownedLease(tx: Tx, accountId: string, leaseId: string): Promise<Lease> {
-  const [l] = await tx.select().from(leases).where(eq(leases.id, leaseId)).limit(1);
+async function ownedLease(tx: Tx, accountId: string, leaseId: string, lock = false): Promise<Lease> {
+  const q = tx.select().from(leases).where(eq(leases.id, leaseId)).limit(1);
+  const [l] = lock ? await q.for('update') : await q;
   if (!l || l.accountId !== accountId) throw err(404, 'not_found', 'No such lease.');
   return l;
 }
@@ -461,7 +462,9 @@ export async function submitResult(o: { accountId: string; leaseId: string; outp
   const now = o.now ?? new Date();
   const db = await getDb();
   return db.transaction(async (tx) => {
-    let lease = await ownedLease(tx, o.accountId, o.leaseId);
+    // Row lock: racing submits of one lease (for example a node retry after a kill) run one at a
+    // time, so the second sees the first result and there is never more than one per lease.
+    let lease = await ownedLease(tx, o.accountId, o.leaseId, true);
     const prior = await tx.select().from(results).where(eq(results.leaseId, lease.id));
     const same = prior.find((r) => r.outputHash === o.outputHash);
     if (same) return { lease, result: same, duplicate: true };

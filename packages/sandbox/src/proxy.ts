@@ -21,6 +21,24 @@ import { LlamaServerSource, ollamaSource, SourceError, type CompletionSource } f
 
 export type ProxyModel = { contentHash: string; runtime: 'ollama' | 'llama_cpp'; ref: string; path?: string };
 
+/**
+ * The node's guard, checked before every model call (spin-out spec v2, 9.3). Main pushes it:
+ * `paused` stops every call, `scheduleOk` false stops task calls (run rules apply to tasks, not to
+ * qualification), and a daily cap stops any call once today's spend reached it. The proxy adds each
+ * call's reported cost at once, so two calls in a row cannot both slip under the cap.
+ */
+export type ModelCallGuard = { paused: boolean; scheduleOk: boolean; capUsdMicros: number | null; spentUsdMicros: number; day: string };
+export type GuardRefusal = 'node_paused' | 'outside_run_rules' | 'daily_cap_reached';
+
+/** Pure check, exported for tests. Self-checks (lease `self-check`) carry no cost and are exempt. */
+export function guardModelCall(g: ModelCallGuard | null, lease: string): GuardRefusal | null {
+  if (!g || lease === 'self-check') return null;
+  if (g.paused) return 'node_paused';
+  if (!g.scheduleOk && !lease.startsWith('qualification:')) return 'outside_run_rules';
+  if (g.capUsdMicros !== null && g.spentUsdMicros >= g.capUsdMicros) return 'daily_cap_reached';
+  return null;
+}
+
 export const completeRequestSchema = z
   .object({
     messages: z
@@ -71,6 +89,11 @@ export class ModelProxy {
       now?: () => number;
       /** Tests replace the runtimes. */
       sources?: Partial<Record<ProxyModel['runtime'], CompletionSource>>;
+      /** Called after every completed call with its reported cost, and when the guard refuses one. */
+      onSpend?: (e: { lease: string; usdMicros: number }) => void;
+      onRefused?: (e: { lease: string; code: GuardRefusal }) => void;
+      /** Unpackaged test hook only: a cost added to every non-self-check call, in USD micros. */
+      testCallCostUsdMicros?: number;
     },
   ) {
     this.sources = {
@@ -82,6 +105,15 @@ export class ModelProxy {
 
   /** Calls in flight, for tests and the self-check. */
   inFlight = 0;
+
+  private guard: ModelCallGuard | null = null;
+
+  /** Main pushes the guard whenever pause, run rules, the cap or today's spend change. */
+  setGuard(g: ModelCallGuard) {
+    // Spend only grows within a day: keep what this process already counted if main has not caught up.
+    const local = this.guard && this.guard.day === g.day ? this.guard.spentUsdMicros : 0;
+    this.guard = { ...g, spentUsdMicros: Math.max(local, g.spentUsdMicros) };
+  }
 
   /** Registers installed models. GGUF files are re-hashed before first use (SPEC 5.4). */
   async setModels(list: readonly ProxyModel[]): Promise<{ refused: string[] }> {
@@ -144,6 +176,13 @@ export class ModelProxy {
       this.audit.push({ capability: c.id, model: c.model, outcome: 'token_cap' });
       return this.send(res, 429, { error: 'token_cap_exceeded' });
     }
+    // Budget and schedule guard before every model call.
+    const refused = guardModelCall(this.guard, c.lease);
+    if (refused) {
+      this.audit.push({ capability: c.id, model: c.model, outcome: refused });
+      this.opts.onRefused?.({ lease: c.lease, code: refused });
+      return this.send(res, refused === 'daily_cap_reached' ? 402 : 423, { error: refused });
+    }
     const model = this.models.get(c.model);
     if (!model) return this.send(res, 409, { error: 'model_not_available' });
     const source = this.sources[model.runtime];
@@ -166,6 +205,11 @@ export class ModelProxy {
     }
     // Count the whole request's cap as spent if the runtime did not report usage.
     this.used.set(c.id, used + out.usage.output_tokens);
+    if (c.lease !== 'self-check' && this.opts.testCallCostUsdMicros) out = { ...out, cost_usd_micros: out.cost_usd_micros + this.opts.testCallCostUsdMicros };
+    if (c.lease !== 'self-check' && out.cost_usd_micros > 0) {
+      if (this.guard) this.guard = { ...this.guard, spentUsdMicros: this.guard.spentUsdMicros + out.cost_usd_micros };
+      this.opts.onSpend?.({ lease: c.lease, usdMicros: out.cost_usd_micros });
+    }
     this.audit.push({ capability: c.id, model: c.model, outcome: 'ok' });
     this.send(res, 200, out);
   }

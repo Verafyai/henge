@@ -1046,3 +1046,94 @@ Closes the "Before G3" item in Rex's decisions: the sandbox now counts work done
 - The protection-bypass secret (approved by Rex) is read from `HENGE_VERCEL_BYPASS` in unpackaged runs only and sent
   as `x-vercel-protection-bypass` only to the API's own origin (`apps/client/src/main/staging-bypass.ts`). Packaged
   builds never read it, it is never in git or a build, and a plain-http API URL disables it.
+
+## Temporal in the node (2026-11-26)
+
+Rex decided on 2026-11-26 that durability lives inside the node (spin-out spec v2, 9.3). The coordinator still talks
+to the node only through the M5 lease protocol, which is unchanged.
+
+- **Engine:** Temporal, not the journal fallback. The TS SDK is pinned at exactly 1.25.0 (`@temporalio/worker`,
+  `client`, `workflow`, `activity`, `common`). The worker runs in the Electron main process with a workflow bundle
+  prebuilt at build time (`scripts/bundle-workflows.mts`, about 1.9 MB), so no webpack runs on users' machines.
+- **Local server:** Temporal CLI v1.10.0 (Server 1.32.2, UI 2.56.1), license MIT (copied next to the binary).
+  - It runs as `temporal server start-dev` on 127.0.0.1 only: gRPC on 7233, UI on 8233, news fetch off, SQLite
+    file in `userData/temporal`, namespace `henge`.
+  - It is supervised by the main process (`src/main/temporal/server.ts`). A pid file is kept, and a server left
+    over from a crash is adopted only if that pid is alive, runs our binary, and the port answers. A recycled pid
+    is never killed.
+  - The binary is a build resource. `scripts/fetch-temporal.mts` downloads the release archive and checks it
+    against the pins in `src/main/temporal/pin.ts` (sha256 and byte size per platform) before extracting. The
+    darwin-arm64 archive is sha256 `40a76ef7d525e6195b083e4cd50b184cc3bb242fea7f8dda2b9a8698ecbb7379`,
+    36,857,799 bytes; the binary inside is about 121 MB. electron-builder ships it through `extraResources`, and
+    `@temporalio/**` is unpacked from asar for the native core bridge.
+  - If the server or worker cannot start, the node falls back to the in-process engine (same steps, no
+    durability), and the overview reports `engine: { name: 'in_process', status: 'failed' }`.
+- **Payloads at rest:** every payload is encrypted with AES-256-GCM (`codec.ts`) under a key derived (HKDF) from
+  the keychain-held cache key. Workflow ids are hashed, so the SQLite file names no task, swarm or Henge. Tests
+  check the file for plain text.
+- **Workflows** (`src/main/temporal/workflows.ts`):
+  - `SwarmTaskWorkflow` runs lease, start, guard, run, seal and submit. On failure it abandons cleanly.
+  - `JoinWorkflow` resolves and pins the `.henge` with the packages/schema resolver. It refuses without a daily
+    cap when the file requires one, and waits for an `admitted` signal when admission is by request. It then
+    starts `BundleUpdateWorkflow` as an abandoned child.
+  - `BundleUpdateWorkflow` checks for updates every 6 hours. An update that changes a `member_reconsent_on`
+    field holds that Henge (node paused with reason `reconsent`) until a `confirmReconsent(version)` signal; any
+    other valid update applies at once. It continues as new once history passes 400 events.
+- **Step limits:**
+  - Short steps: 30 s each, 5 attempts.
+  - Submit: 15 s each, 10 attempts.
+  - Run: the swarm timeout plus 60 s, a 10 s heartbeat timeout, and 3 attempts. A heartbeat renews the lease
+    once when a fifth of it is left.
+  - A server answer of 5xx is retried; a 4xx is final.
+- **Exactly once:**
+  - The lease request key is derived from the workflow id, so a retried lease request returns the same lease.
+  - The start and abandon keys derive from the lease id.
+  - The result is sealed once in its own journaled step (output, hash, signed run record). Every submit attempt
+    sends those exact bytes with `Idempotency-Key: henge-result-<lease id>`. The coordinator's existing
+    idempotency layer replays the first answer (`idempotent-replay: true`).
+  - `submitResult` already stores at most one result per lease (unique lease and hash). It now also takes a row
+    lock on the lease, so racing submits run one at a time. There is no migration.
+  - After a restart, `planRecovery` resumes every open task workflow and abandons, unpaid, open leases that no
+    workflow owns. It waits while a workflow has not yet recorded its lease.
+  - A resumed run abandons if the deadline has passed and renews if a fifth or less is left. A finished result
+    is always submitted.
+- **Measured durability** (`src/main/temporal/durability.test.ts`): a real dev server, a stand-in coordinator, a
+  3 s harness, and the worker process killed with SIGKILL.
+
+  | Scenario | Runs | Completed | Stored results | Extra results | Harness runs | Submit replays | Mean ms | Added ms |
+  |---|---|---|---|---|---|---|---|---|
+  | baseline | 3 | 3 | 3 | 0 | 3 | 0 | 3606 | 0 |
+  | kill during run | 3 | 3 | 3 | 0 | 6 | 0 | 14608 | 11002 |
+  | kill during submit | 2 | 2 | 2 | 0 | 2 | 2 | 19687 | 16081 |
+  | kill worker and server | 2 | 2 | 2 | 0 | 4 | 0 | 17157 | 13551 |
+
+  Completion was 10 of 10 runs, with 0 duplicate results. The added time comes from the 10 s heartbeat timeout
+  (a kill during the run) and the 15 s submit step limit (a kill during submit). A graceful quit stops the
+  server, and the task resumes on the next launch.
+- **E2E check:** the client e2e kills the Electron main process and the Temporal server mid-task with SIGKILL, then
+  relaunches. The same lease resumes and gets exactly one stored result, with one extra model call. In the first
+  runs, the time from the kill to the result being submitted was 11,326 ms, 12,041 ms and 12,023 ms.
+  - One earlier run failed: after the relaunch, the task was not resumed and the history stayed empty. The cause
+    was not found. The node now writes `userData/temporal/engine.log` (engine start, open workflows found,
+    server errors; no task data), and the test prints it on failure. Three later full runs passed.
+- **Budget:** see `packages/node-core/src/budget.ts` and the proxy guard in `packages/sandbox/src/proxy.ts`.
+  - Spend is counted in USD micros per local day.
+  - The node cap is the smallest of the node's own cap and every joined Henge member cap.
+  - The model proxy checks pause, the schedule (task calls only; qualification calls are allowed while the
+    user is active) and the cap before every model call. A call refused for the cap gets 402; one refused while
+    paused or off schedule gets 423.
+  - When the cap is reached, the node pauses with "Paused: daily cap reached", and the running task goes back
+    to the queue, unpaid. Resume cannot lift the cap pause; a new day or a higher cap does (checked every
+    30 s).
+  - Spend comes from the cost the proxy reports. Local models report 0, so the cap only binds API-priced
+    calls. The e2e test uses `SWARM_EXPLORER_TEST_CALL_COST_USD_MICROS`, which only unpackaged runs read.
+- **Pause reasons:** user, daily_cap and reconsent. The overview shows `pausedLabel`. The renderer shell has one
+  changed line, which shows that label instead of a fixed "Paused".
+- **Dev route:** `apps/web/app/v1/dev/tasks` uploads and lists example tasks for e2e tests. It is dev only,
+  sits behind dev sign-in, and needs `x-dev-tool: 1`.
+- **Not done (needs Rex):**
+  - Admission for request-mode Henges waits for an `admitted` signal, but nothing sends it yet (it needs a
+    community-server admission endpoint).
+  - The join, cap and re-consent screens are not wired into the renderer (that is the renderer agent's area);
+    the bridge methods exist.
+  - A packaged build that carries the binary was configured, not run.
