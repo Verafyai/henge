@@ -963,3 +963,11 @@ Closes the "Before G3" item in Rex's decisions: the sandbox now counts work done
 - The protection-bypass secret (approved by Rex) is read from `HENGE_VERCEL_BYPASS` in unpackaged runs only and sent
   as `x-vercel-protection-bypass` only to the API's own origin (`apps/client/src/main/staging-bypass.ts`). Packaged
   builds never read it, it is never in git or a build, and a plain-http API URL disables it.
+
+## Production migrations (2026-11-26)
+
+- Production deploys of Henge web now apply database migrations before `next build`
+  (`apps/web/scripts/migrate-on-deploy.mjs`). Before this, no build ran them, so routes added since M5 returned 500 on
+  henge.verafy.ai. Only `VERCEL_ENV=production` migrates; previews and local builds skip it so an unmerged branch can
+  never change the production database. It uses `DATABASE_URL_UNPOOLED` when present (migrations need a direct
+  connection) and fails the build, leaving the live deployment in place, if a production deploy has no database URL.
