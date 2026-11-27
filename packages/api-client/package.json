@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./contracts": "./src/contracts.ts",
     "./release": "./src/release.ts",
-    "./swarm-view": "./src/swarm-view.ts"
+    "./swarm-view": "./src/swarm-view.ts",
+    "./community": "./src/community.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

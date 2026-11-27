@@ -4,6 +4,89 @@ Implementation decisions made while building from `docs/SWARM-EXPLORER-SPEC.md`.
 business or hosting choices that the spec leaves unapproved; the code keeps them as configuration or placeholders.
 SwarmStarter decisions are archived in `docs/history/swarmstarter/DECISIONS.md`.
 
+## Community layer server (2026-11-26)
+
+Workstream E (server side) of "Henge spin-out v2", spin-out spec 8. Rex approved chat on 2026-11-26, which
+replaces the "drop chat" answer in `docs/HENGE-COMMUNITIES-SPEC.md`. Migration `0008_community.sql` is additive.
+Domain logic is in `packages/db/src/community`, routes are in `apps/web/lib/community` with the endpoints in
+SPEC 13.6, and the typed client is `packages/api-client/src/community.ts`. No token, and credits are unchanged.
+
+- **Realtime transport: Postgres polling, no new vendor.** `GET /v1/henges/{id}/events` is a Node-runtime SSE
+  stream (`maxDuration` 300; the server ends each stream at 270 s and the client resumes). Each instance polls
+  `community_events` every 250 ms (`COMMUNITY_POLL_MS`) behind a `RealtimeTransport` interface. Why not
+  LISTEN/NOTIFY: Neon's pooled endpoint runs PgBouncer in transaction mode, which drops LISTEN, and a function
+  holding a direct connection per stream would use up Neon connections. PGlite's LISTEN is also in-process only,
+  so dev and tests would differ. Polling behaves the same on both. ULIDs come from app clocks, so a row can commit
+  after a later id has been read; the poller re-reads a 3 s window and drops ids each subscriber has already seen.
+  `Last-Event-ID` (or `?after=`) is the ULID cursor. A Postgres NOTIFY or a hosted pub/sub can replace the
+  transport later without changing routes or clients.
+- **Measured latency** (web Playwright e2e `community-realtime.spec.ts`, two signed-in clients in one channel,
+  local `next start` with PGlite, 10 samples per kind, from just before the sender's write to arrival on the
+  other client's stream). Run 1 median / max in ms: message 249 / 254, edit 248 / 252, reaction 251 / 254,
+  typing 250 / 253. Run 2: message 251 / 254, edit 249 / 255, reaction 252 / 257, typing 248 / 253. The 250 ms
+  poll sets these numbers; on Neon, expect a query round trip on top. Not measured on Vercel.
+- **SSE details:** a `ready` event first, `retry: 2000`, a ping every 15 s, `cache-control: no-transform` and
+  `x-accel-buffering: no` so nothing buffers the stream. Events are filtered per subscriber by audience, by a
+  capability (the audit feed only reaches `read_audit_log`) and by channels the subscriber can view. Access is
+  re-checked on role and channel changes and every 30 s; a kick or ban closes the stream. Auth is by header only,
+  never a token in the URL, so the client uses `fetch` streaming rather than `EventSource`. Events are pruned
+  after 1 day; a client further behind reloads from the message routes.
+- **The path conflicts with the communities spec,** which planned `/v1/henges/{id}/events` for a hash-chained
+  event log. The spin-out brief names this path for SSE, so SSE has it; a hash-chained log needs another path.
+- **Writes only through API routes.** Typing and presence are the only writes that skip `Idempotency-Key`, along
+  with read markers and avatars (all idempotent by nature). Only 2xx responses are stored for replay.
+- **Handles:** one namespace for people and agents, stored lowercase and unique by key (25 parallel claims leave
+  exactly one winner). NFKC first; any non-ASCII handle is refused, as `confusable` when it mixes scripts.
+  3 to 24 characters of `a-z 0-9 . _`, starting and ending with a letter or digit, no `..`. The reserved list
+  covers role and system words (admin, mod, everyone, here, system, henge, glyph and others) plus anything
+  containing "verafy". A change is allowed once per 30 days, and the old handle is held for its owner for 30 days.
+  A change of case only is not a change.
+- **Creating and joining:** creating a Henge needs the caller's account handle in `governance.holders.owner`.
+  Holders map account handles to roles at join time. A ref that already exists is joined, never re-created, and
+  only when the file's digest matches the pinned one. Admission modes other than `open` let only listed holders
+  in (403 `admission_required`): the request and review flow is not built. Joining as an observer follows the same
+  admission rule; observers read public channels only.
+- **Permissions:** role defaults come from `governance.roles.*.can`. The owner always has every permission.
+  Announcement channels default to owner, maintainer and mod posting; `agent_run` channels default to the agent
+  role. An archived channel removes send, threads, reactions and post via API. Moderation is rank based (owner
+  100, maintainer 80, mod 60, custom 30, member 20, agent 10, observer 0): nobody acts on an equal or higher rank.
+  The Moderation Glyph acts at mod rank.
+- **Agents:** an agent belongs to an account and is bound to the install whose device key signed its creation.
+  Its per-Henge token (`sxg_`, only a hash is stored) works only with a device signature from that key, only on the
+  routes marked agent in 13.6, and only for its own Henge. A refused post is a 403 plus an `agent.post_refused`
+  audit entry with the reason. Timeouts and bans on an account cover its agents; a ban also revokes their tokens.
+- **Mentions:** `@everyone` and `@here` without the permission stay plain text with no ping (not an error).
+  `@here` means members online at send time.
+- **Rate limits:** a token bucket in `community_rate_buckets`, from `community.defaults.rate_limits`. The spec
+  numbers (20 a minute for people, 6 a minute per channel for agents, 30 reactions a minute, 5 a minute for
+  accounts under 24 hours) are used only when the file leaves a value out, and a value of 0 or less counts as left
+  out. Slow mode is per channel and member; members with `manage_messages` are exempt. All answer 429 with
+  `Retry-After`.
+- **Moderation Glyph** (`verafy/moderation`): its Runes drive it, falling back to the manifest defaults (3 reports
+  in 10 minutes, 60 minute timeout, link filter for new members). It needs the `moderate:timeout` grant to time
+  people out and `read:messages` to filter links. It holds links from accounts under 24 hours for a moderator to
+  release. Every action is logged with the Glyph as the actor, like a person's.
+- **Moderation limits:** timeout presets 60s, 5m, 10m, 1h, 1d, 1w. Ban appeals default to a 30-day window when
+  the file allows appeals. Bulk delete reaches back at most 24 hours. Up to 50 pins per channel, 20 distinct
+  emoji per message, 4000 characters per message. Only people file reports, one per message per reporter; the
+  outcome note reaches reporters privately.
+- **Audit log:** append-only, enforced by a trigger on UPDATE, DELETE and TRUNCATE. It has no foreign keys, so
+  account deletion and the dev seed's `TRUNCATE ... CASCADE` never reach it.
+- **Privacy and retention:** deleted messages keep their evidence for 30 days, then the body is purged. Messages
+  older than `data_policy.retention_days` are removed, and report snapshots with them. Retention runs at most
+  hourly per Henge, triggered by posting, not by a cron. Deleting a community account leaves its messages as
+  "deleted user" placeholders with no body, and keeps the audit log.
+- **Presence and typing:** presence expires 90 s after the last heartbeat. Typing lasts 6 s and is sent at most
+  every 2.5 s per member, channel and thread.
+- **Avatars:** `sharp` 0.35.5 works in a Vercel Node function (it ships prebuilt binaries and Next already depends
+  on it), so it is now a direct dependency of `apps/web`. Uploads must be PNG, JPEG or WebP whose bytes match the
+  declared type, at most 4 MB and 40 megapixels. They are rotated by EXIF, optionally cropped to a square,
+  resized to 256 px and re-encoded as WebP, which drops all metadata. They are stored in Postgres, not a bucket,
+  because they are small and no storage vendor is approved.
+
+**Not built:** request and review admission, attachments and images in messages, link previews, search, push or
+email notifications, and the desktop UI (another workstream). No blockers.
+
 ## henge link preview (2026-11-26)
 
 Spin-out spec v2, 5.2 (`/s`), 5.5 B5 last bullet, 6.5 and 6.7. Branch `web/henge-preview`.
@@ -971,3 +1054,94 @@ Closes the "Before G3" item in Rex's decisions: the sandbox now counts work done
   henge.verafy.ai. Only `VERCEL_ENV=production` migrates; previews and local builds skip it so an unmerged branch can
   never change the production database. It uses `DATABASE_URL_UNPOOLED` when present (migrations need a direct
   connection) and fails the build, leaving the live deployment in place, if a production deploy has no database URL.
+
+## Temporal in the node (2026-11-26)
+
+Rex decided on 2026-11-26 that durability lives inside the node (spin-out spec v2, 9.3). The coordinator still talks
+to the node only through the M5 lease protocol, which is unchanged.
+
+- **Engine:** Temporal, not the journal fallback. The TS SDK is pinned at exactly 1.25.0 (`@temporalio/worker`,
+  `client`, `workflow`, `activity`, `common`). The worker runs in the Electron main process with a workflow bundle
+  prebuilt at build time (`scripts/bundle-workflows.mts`, about 1.9 MB), so no webpack runs on users' machines.
+- **Local server:** Temporal CLI v1.10.0 (Server 1.32.2, UI 2.56.1), license MIT (copied next to the binary).
+  - It runs as `temporal server start-dev` on 127.0.0.1 only: gRPC on 7233, UI on 8233, news fetch off, SQLite
+    file in `userData/temporal`, namespace `henge`.
+  - It is supervised by the main process (`src/main/temporal/server.ts`). A pid file is kept, and a server left
+    over from a crash is adopted only if that pid is alive, runs our binary, and the port answers. A recycled pid
+    is never killed.
+  - The binary is a build resource. `scripts/fetch-temporal.mts` downloads the release archive and checks it
+    against the pins in `src/main/temporal/pin.ts` (sha256 and byte size per platform) before extracting. The
+    darwin-arm64 archive is sha256 `40a76ef7d525e6195b083e4cd50b184cc3bb242fea7f8dda2b9a8698ecbb7379`,
+    36,857,799 bytes; the binary inside is about 121 MB. electron-builder ships it through `extraResources`, and
+    `@temporalio/**` is unpacked from asar for the native core bridge.
+  - If the server or worker cannot start, the node falls back to the in-process engine (same steps, no
+    durability), and the overview reports `engine: { name: 'in_process', status: 'failed' }`.
+- **Payloads at rest:** every payload is encrypted with AES-256-GCM (`codec.ts`) under a key derived (HKDF) from
+  the keychain-held cache key. Workflow ids are hashed, so the SQLite file names no task, swarm or Henge. Tests
+  check the file for plain text.
+- **Workflows** (`src/main/temporal/workflows.ts`):
+  - `SwarmTaskWorkflow` runs lease, start, guard, run, seal and submit. On failure it abandons cleanly.
+  - `JoinWorkflow` resolves and pins the `.henge` with the packages/schema resolver. It refuses without a daily
+    cap when the file requires one, and waits for an `admitted` signal when admission is by request. It then
+    starts `BundleUpdateWorkflow` as an abandoned child.
+  - `BundleUpdateWorkflow` checks for updates every 6 hours. An update that changes a `member_reconsent_on`
+    field holds that Henge (node paused with reason `reconsent`) until a `confirmReconsent(version)` signal; any
+    other valid update applies at once. It continues as new once history passes 400 events.
+- **Step limits:**
+  - Short steps: 30 s each, 5 attempts.
+  - Submit: 15 s each, 10 attempts.
+  - Run: the swarm timeout plus 60 s, a 10 s heartbeat timeout, and 3 attempts. A heartbeat renews the lease
+    once when a fifth of it is left.
+  - A server answer of 5xx is retried; a 4xx is final.
+- **Exactly once:**
+  - The lease request key is derived from the workflow id, so a retried lease request returns the same lease.
+  - The start and abandon keys derive from the lease id.
+  - The result is sealed once in its own journaled step (output, hash, signed run record). Every submit attempt
+    sends those exact bytes with `Idempotency-Key: henge-result-<lease id>`. The coordinator's existing
+    idempotency layer replays the first answer (`idempotent-replay: true`).
+  - `submitResult` already stores at most one result per lease (unique lease and hash). It now also takes a row
+    lock on the lease, so racing submits run one at a time. There is no migration.
+  - After a restart, `planRecovery` resumes every open task workflow and abandons, unpaid, open leases that no
+    workflow owns. It waits while a workflow has not yet recorded its lease.
+  - A resumed run abandons if the deadline has passed and renews if a fifth or less is left. A finished result
+    is always submitted.
+- **Measured durability** (`src/main/temporal/durability.test.ts`): a real dev server, a stand-in coordinator, a
+  3 s harness, and the worker process killed with SIGKILL.
+
+  | Scenario | Runs | Completed | Stored results | Extra results | Harness runs | Submit replays | Mean ms | Added ms |
+  |---|---|---|---|---|---|---|---|---|
+  | baseline | 3 | 3 | 3 | 0 | 3 | 0 | 3606 | 0 |
+  | kill during run | 3 | 3 | 3 | 0 | 6 | 0 | 14608 | 11002 |
+  | kill during submit | 2 | 2 | 2 | 0 | 2 | 2 | 19687 | 16081 |
+  | kill worker and server | 2 | 2 | 2 | 0 | 4 | 0 | 17157 | 13551 |
+
+  Completion was 10 of 10 runs, with 0 duplicate results. The added time comes from the 10 s heartbeat timeout
+  (a kill during the run) and the 15 s submit step limit (a kill during submit). A graceful quit stops the
+  server, and the task resumes on the next launch.
+- **E2E check:** the client e2e kills the Electron main process and the Temporal server mid-task with SIGKILL, then
+  relaunches. The same lease resumes and gets exactly one stored result, with one extra model call. In the first
+  runs, the time from the kill to the result being submitted was 11,326 ms, 12,041 ms and 12,023 ms.
+  - One earlier run failed: after the relaunch, the task was not resumed and the history stayed empty. The cause
+    was not found. The node now writes `userData/temporal/engine.log` (engine start, open workflows found,
+    server errors; no task data), and the test prints it on failure. Three later full runs passed.
+- **Budget:** see `packages/node-core/src/budget.ts` and the proxy guard in `packages/sandbox/src/proxy.ts`.
+  - Spend is counted in USD micros per local day.
+  - The node cap is the smallest of the node's own cap and every joined Henge member cap.
+  - The model proxy checks pause, the schedule (task calls only; qualification calls are allowed while the
+    user is active) and the cap before every model call. A call refused for the cap gets 402; one refused while
+    paused or off schedule gets 423.
+  - When the cap is reached, the node pauses with "Paused: daily cap reached", and the running task goes back
+    to the queue, unpaid. Resume cannot lift the cap pause; a new day or a higher cap does (checked every
+    30 s).
+  - Spend comes from the cost the proxy reports. Local models report 0, so the cap only binds API-priced
+    calls. The e2e test uses `SWARM_EXPLORER_TEST_CALL_COST_USD_MICROS`, which only unpackaged runs read.
+- **Pause reasons:** user, daily_cap and reconsent. The overview shows `pausedLabel`. The renderer shell has one
+  changed line, which shows that label instead of a fixed "Paused".
+- **Dev route:** `apps/web/app/v1/dev/tasks` uploads and lists example tasks for e2e tests. It is dev only,
+  sits behind dev sign-in, and needs `x-dev-tool: 1`.
+- **Not done (needs Rex):**
+  - Admission for request-mode Henges waits for an `admitted` signal, but nothing sends it yet (it needs a
+    community-server admission endpoint).
+  - The join, cap and re-consent screens are not wired into the renderer (that is the renderer agent's area);
+    the bridge methods exist.
+  - A packaged build that carries the binary was configured, not run.

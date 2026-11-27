@@ -271,7 +271,7 @@ function NodeStatus({ online }: { online: boolean }) {
   const state = kill?.global
     ? { label: 'Stopped by Verafy', tone: 'offline' as const, detail: stopped! }
     : paused
-    ? { label: 'Paused', tone: 'paused' as const, detail: 'nothing will run until you resume' }
+    ? { label: o?.pausedLabel ?? 'Paused', tone: 'paused' as const, detail: 'nothing will run until you resume' }
     : t?.current
       ? { label: 'Running', tone: 'active' as const, detail: `a task for ${t.current.swarm} on ${t.current.model}` }
       : t && t.phase !== 'off'

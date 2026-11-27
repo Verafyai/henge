@@ -38,6 +38,11 @@ export class EncryptedCache {
     return new EncryptedCache(db, deriveKeys(Buffer.from(master, 'base64')));
   }
 
+  /** A separate 32-byte key for another store kept at rest in userData (the Temporal payload codec). */
+  subkey(info: string): Buffer {
+    return Buffer.from(hkdfSync('sha256', this.keys.enc, Buffer.alloc(0), `henge-subkey-v1:${info}`, 32));
+  }
+
   private id(name: string): string {
     return createHmac('sha256', this.keys.mac).update(name).digest('hex');
   }

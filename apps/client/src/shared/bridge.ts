@@ -84,6 +84,12 @@ export interface SwarmBridge {
     setPaused(paused: boolean): Promise<NodeOverview>;
     /** Run rules (SPEC 7.2). Main validates them; the overview says which this computer enforces. */
     setRunRules(rules: RunRules): Promise<NodeOverview | null>;
+    /** The member's daily cap in dollars as typed ("0.50"); null clears it. Main parses and checks it. */
+    setDailyCap(usd: string | null): Promise<NodeOverview | null>;
+    /** Joins a Henge from a `.henge` URL through the node's JoinWorkflow (spin-out 9.2). */
+    joinHenge(url: string, dailyCapUsd: string | null): Promise<{ ok: true; id: string; status: string } | { ok: false; issues: Array<{ code: string; message: string }> }>;
+    /** Re-consent to a Henge update that changed a `member_reconsent_on` field (spin-out 6.4). */
+    confirmHengeUpdate(id: string, version: string): Promise<NodeOverview | null>;
     onChanged(cb: (o: NodeOverview) => void): () => void;
     /** Runs the sandbox self-checks (SPEC 16.4 M3) on this computer. */
     sandboxCheck(): Promise<SandboxCheck[]>;
@@ -163,6 +169,9 @@ export const IPC = {
   nodeResetSetup: 'node:reset-setup',
   nodeSetPaused: 'node:set-paused',
   nodeSetRunRules: 'node:set-run-rules',
+  nodeSetDailyCap: 'node:set-daily-cap',
+  nodeJoinHenge: 'node:join-henge',
+  nodeConfirmHengeUpdate: 'node:confirm-henge-update',
   nodeChanged: 'node:changed',
   nodeSandboxCheck: 'node:sandbox-check',
   modelsInstall: 'models:install',

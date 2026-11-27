@@ -5,21 +5,32 @@
  */
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { accessSync, chmodSync, constants, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { accessSync, appendFileSync, chmodSync, constants, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { utilityProcess, type UtilityProcess } from 'electron';
 import { capabilitiesAcceptedSchema, createApiClient, registerInstallResponseSchema } from '@swarm-explorer/api-client';
 import type { PlatformPublicKey } from '@swarm-explorer/schema/node';
-import { describeRunRules, enforcementSupport, minimizeCapabilities, ollamaBaseUrl, recommendMode, type RunRules } from '@swarm-explorer/node-core';
-import { nodeSetupSchema, supervisorMessageSchema, type Detection, type HarnessRunResult, type HarnessRunSpec, type NodeOverview, type NodeSetup, type SandboxCheck, type SupervisorCommand, type SupervisorMessage } from '../shared/node';
+import { DAILY_CAP_PAUSED, describeRunRules, enforcementSupport, minimizeCapabilities, ollamaBaseUrl, recommendMode, type RunRules } from '@swarm-explorer/node-core';
+import { nodeSetupSchema, supervisorMessageSchema, type Detection, type EngineView, type HarnessRunResult, type HarnessRunSpec, type NodeOverview, type NodeSetup, type SandboxCheck, type SupervisorCommand, type SupervisorMessage } from '../shared/node';
 import type { AuthManager } from './auth';
+import { BudgetManager } from './budget';
 import type { EncryptedCache } from './cache';
+import { HengeStore } from './henges';
 import { KillSwitchWatcher } from './kill-switch';
 import { MembershipManager } from './memberships';
 import { ModelManager } from './models';
 import { readSensors } from './sensors';
 import { proxySocketDir, proxySocketPath } from './socket-path';
 import { TaskRunner } from './tasks';
+import { createBundleActivities } from './temporal/activities';
+import { NODE_NAMESPACE, NODE_TASK_QUEUE } from './temporal/constants';
+import { EncryptionCodec } from './temporal/codec';
+import { InProcessEngine, TemporalEngine, type WorkflowEngine } from './temporal/engine';
+import { TemporalDevServer } from './temporal/server';
+import type { HengePinRecord, JoinOutcome } from './temporal/types';
+
+export type PauseReason = 'user' | 'daily_cap' | 'reconsent';
+const RECONSENT_PAUSED = 'Paused: a Henge update needs your consent';
 
 type Registration = { installId: string; nodeId: string; capabilitiesReportedAt: number | null };
 
@@ -33,7 +44,9 @@ export type NodeControllerOpts = {
   /** Revocation feed keys pinned at build time; null means trust the feed's keys (unpackaged test builds only). */
   revocationKeys: PlatformPublicKey[] | null;
   /** Unpackaged test hooks; main passes them only when the app is not packaged. */
-  testHooks: { hardwareFixture?: string; ollamaHost?: string; hfBase?: string; sensorFixture?: string } | null;
+  testHooks: { hardwareFixture?: string; ollamaHost?: string; hfBase?: string; sensorFixture?: string; callCostUsdMicros?: number; temporalPort?: number } | null;
+  /** The bundled Temporal dev server and the prebuilt workflow bundle (spin-out 9.3). Null runs tasks without durability. */
+  temporal: { binary: string; workflowBundle: string } | null;
 };
 
 /** Absolute path of an executable on PATH, without running it. The proxy itself has an empty PATH. */
@@ -73,6 +86,13 @@ export class NodeController extends EventEmitter {
   /** Session capability key shared by the supervisor (mints) and proxy (verifies). Never on disk. */
   private readonly capabilityKey = randomBytes(32).toString('base64url');
   private readonly socketPath: string;
+  readonly budget: BudgetManager;
+  readonly henges: HengeStore;
+  private pauseReason: PauseReason | null = null;
+  private engine: WorkflowEngine | null = null;
+  private server: TemporalDevServer | null = null;
+  private engineView: EngineView = { name: 'temporal', status: 'starting', detail: 'Starting the local workflow engine.' };
+  private budgetTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private opts: NodeControllerOpts) {
     super();
@@ -128,6 +148,8 @@ export class NodeController extends EventEmitter {
       beforeLeave: (id) => this.tasks.onLeave(id),
       kill: this.kill,
     });
+    this.henges = new HengeStore({ cache: opts.cache, onHold: (held) => this.onReconsentHold(held) });
+    this.budget = new BudgetManager({ cache: opts.cache, hengeCaps: () => this.henges.caps() });
     const support = () => enforcementSupport(this.detection?.hardware.os.platform ?? process.platform);
     this.tasks = new TaskRunner({
       auth: opts.auth,
@@ -143,7 +165,135 @@ export class NodeController extends EventEmitter {
       appVersion: opts.appVersion,
       changed: () => this.emit('changed'),
       kill: this.kill,
+      budget: this.budget,
+      onCapReached: () => this.onCapReached(),
+      pausedDetail: () => this.pausedDetail(),
+      // Placeholder until the local workflow engine is up (startEngine).
+      engine: (acts) => new InProcessEngine(acts),
     });
+  }
+
+  /* ------------------------------------------------------------------ durability (spin-out 9.3) */
+
+  /** Starts the bundled Temporal dev server and the worker; falls back to running without durability, and says so. */
+  private async startEngine() {
+    const t = this.opts.temporal;
+    const fallback = (status: EngineView['status'], detail: string) => {
+      this.engineView = { name: 'in_process', status, detail };
+      this.engine = new InProcessEngine(this.tasks.activities);
+      this.tasks.setEngine(this.engine);
+      this.emit('changed');
+    };
+    if (!t) return fallback('off', 'Tasks run without crash recovery in this build.');
+    const port = this.opts.testHooks?.temporalPort;
+    const dataDir = path.join(this.opts.userDataDir, 'temporal');
+    // Server errors only (log level error) and our own supervisor lines; no task data.
+    const log = (line: string) => {
+      try {
+        mkdirSync(dataDir, { recursive: true });
+        appendFileSync(path.join(dataDir, 'engine.log'), `${new Date().toISOString()} ${line.trimEnd()}\n`);
+      } catch {
+        // Logging is best effort.
+      }
+    };
+    const server = new TemporalDevServer({ binary: t.binary, dataDir, namespace: NODE_NAMESPACE, log, ...(port ? { port, uiPort: port + 1000 } : {}) });
+    this.server = server;
+    const engine = new TemporalEngine({
+      server,
+      namespace: NODE_NAMESPACE,
+      taskQueue: NODE_TASK_QUEUE,
+      workflows: { codePath: t.workflowBundle },
+      activities: { ...this.tasks.activities, ...createBundleActivities(this.henges.activityDeps()) },
+      codec: new EncryptionCodec(this.opts.cache().subkey('temporal-payloads')),
+      log,
+    });
+    try {
+      await engine.start();
+      log(`Engine ready on ${server.address}.`);
+    } catch (e) {
+      log(`Engine did not start: ${e instanceof Error ? e.message : 'unknown error'}`);
+      await engine.stop().catch(() => undefined);
+      return fallback('failed', `The local workflow engine did not start (${e instanceof Error ? e.message : 'unknown error'}). Tasks run without crash recovery.`.slice(0, 300));
+    }
+    this.engine = engine;
+    this.engineView = { name: 'temporal', status: 'ready', detail: `Temporal on ${server.address}` };
+    this.tasks.setEngine(engine);
+    this.emit('changed');
+  }
+
+  /** Joins a Henge from a `.henge` URL through the JoinWorkflow (spin-out 9.2, 9.3). */
+  async joinHenge(url: string, dailyCapUsdMicros: number | null): Promise<JoinOutcome> {
+    if (!this.engine || this.engine.name !== 'temporal') return { ok: false, issues: [{ code: 'engine_unavailable', message: 'The local workflow engine is not running, so a Henge cannot be joined yet.' }] };
+    const { result } = await this.engine.joinHenge({ url, dailyCapUsdMicros });
+    // A Henge that reviews requests keeps its JoinWorkflow open until admission.
+    const out = await Promise.race([result, new Promise<null>((r) => setTimeout(() => r(null), 20_000))]);
+    this.emit('changed');
+    return out ?? { ok: true, id: '', status: 'awaiting_admission' };
+  }
+
+  /** The member re-confirms a Henge update that changed a `member_reconsent_on` field (6.4). */
+  async confirmHengeUpdate(id: string, version: string) {
+    await this.engine?.confirmReconsent(id, version);
+  }
+
+  hengePins(): HengePinRecord[] {
+    return this.henges.list();
+  }
+
+  /* ------------------------------------------------------------------ daily cap and pause reasons */
+
+  private pausedDetail(): string | null {
+    if (!this.paused) return null;
+    if (this.pauseReason === 'daily_cap') return DAILY_CAP_PAUSED;
+    if (this.pauseReason === 'reconsent') return RECONSENT_PAUSED;
+    return null;
+  }
+
+  /** `hard_stop`: the node pauses when the cap is reached (spin-out 6.2). */
+  private onCapReached() {
+    if (this.paused) return;
+    this.setPaused(true, 'daily_cap');
+  }
+
+  private onReconsentHold(held: ReadonlySet<string>) {
+    if (held.size && !this.paused) this.setPaused(true, 'reconsent');
+    else if (!held.size && this.paused && this.pauseReason === 'reconsent') this.setPaused(false);
+    this.emit('changed');
+  }
+
+  /** Sets the node's own daily cap in USD micros (null clears it). A raised cap lifts a cap pause. */
+  setDailyCap(usdMicros: number | null) {
+    this.budget.setDailyCap(usdMicros);
+    this.reviewCapPause();
+    this.emit('changed');
+  }
+
+  /** A new day or a raised cap lifts a cap pause; a cap still reached keeps it. */
+  private reviewCapPause() {
+    const ok = this.budget.check().ok;
+    if (this.paused && this.pauseReason === 'daily_cap' && ok) this.setPaused(false);
+    else if (!ok && !this.paused) this.setPaused(true, 'daily_cap');
+  }
+
+  private syncProxyGuard() {
+    this.proxy?.postMessage({
+      type: 'guard',
+      paused: this.paused || Boolean(this.kill.stoppedReason()),
+      scheduleOk: this.tasks.scheduleOk(),
+      capUsdMicros: this.budget.cap(),
+      spentUsdMicros: this.budget.spent(),
+      day: this.budget.today(),
+    });
+  }
+
+  private onProxyMessage(raw: unknown) {
+    const m = raw as { type?: string; usdMicros?: unknown; code?: unknown } | null;
+    if (m?.type === 'spend' && typeof m.usdMicros === 'number' && Number.isInteger(m.usdMicros) && m.usdMicros > 0 && m.usdMicros <= 1_000_000_000) {
+      this.budget.record(m.usdMicros);
+      this.emit('changed');
+    } else if (m?.type === 'refused' && m.code === 'daily_cap_reached') {
+      this.onCapReached();
+    }
   }
 
   /**
@@ -179,8 +329,11 @@ export class NodeController extends EventEmitter {
     this.proxy = child;
     const ollama = this.opts.testHooks?.ollamaHost ?? process.env['OLLAMA_HOST'];
     // llama.cpp is the second local source; the proxy starts llama-server itself, by absolute path.
-    child.postMessage({ type: 'configure', key: this.capabilityKey, socketPath: this.socketPath, ollamaBase: ollamaBaseUrl({ OLLAMA_HOST: ollama }), llamaServer: onPath('llama-server') });
+    const cost = this.opts.testHooks?.callCostUsdMicros;
+    child.postMessage({ type: 'configure', key: this.capabilityKey, socketPath: this.socketPath, ollamaBase: ollamaBaseUrl({ OLLAMA_HOST: ollama }), llamaServer: onPath('llama-server'), ...(cost ? { testCallCostUsdMicros: cost } : {}) });
+    child.on('message', (raw: unknown) => this.onProxyMessage(raw));
     this.syncProxyModels();
+    this.syncProxyGuard();
     child.on('exit', () => {
       this.proxy = null;
       if (this.proxyRestarts++ < 3) setTimeout(() => this.startProxy(), 500 * this.proxyRestarts);
@@ -235,7 +388,13 @@ export class NodeController extends EventEmitter {
   start() {
     if (!this.proxy && this.proxyRestarts === 0) {
       this.startProxy();
-      this.on('changed', () => this.syncProxyModels());
+      this.on('changed', () => {
+        this.syncProxyModels();
+        this.syncProxyGuard();
+      });
+      void this.startEngine();
+      // A new local day lifts a cap pause. Engineering interval.
+      this.budgetTimer = setInterval(() => this.reviewCapPause(), 30_000);
     }
     // Least privilege: the supervisor gets PATH and its own settings, not this process's environment.
     const env: Record<string, string> = {
@@ -269,6 +428,10 @@ export class NodeController extends EventEmitter {
   stop() {
     this.kill.stop();
     this.tasks.stop();
+    if (this.budgetTimer) clearInterval(this.budgetTimer);
+    // The worker stops with this process; the server is told to stop now (will-quit cannot wait).
+    void this.engine?.stop().catch(() => undefined);
+    this.server?.stopNow();
     this.restarts = Infinity;
     this.proxyRestarts = Infinity;
     this.child?.kill();
@@ -315,7 +478,16 @@ export class NodeController extends EventEmitter {
    * and cancels the model call; the leased task is abandoned unpaid and no new lease starts until
    * Resume. Reachable from the tray, the app menu and the status bar.
    */
-  setPaused(paused: boolean) {
+  setPaused(paused: boolean, reason: PauseReason = 'user') {
+    // Resume cannot lift a cap that is still reached, or an update still waiting for consent.
+    if (!paused && !this.budget.check().ok) {
+      reason = 'daily_cap';
+      paused = true;
+    } else if (!paused && this.henges.heldIds().size) {
+      reason = 'reconsent';
+      paused = true;
+    }
+    this.pauseReason = paused ? reason : null;
     this.paused = paused;
     this.send({ type: paused ? 'pause' : 'resume' });
     if (paused) {
@@ -382,6 +554,10 @@ export class NodeController extends EventEmitter {
       support: enforcementSupport(platform),
       setup: this.getSetup(),
       paused: this.paused,
+      pausedLabel: this.paused ? (this.pausedDetail() ?? 'Paused') : null,
+      budget: this.budget.view(),
+      engine: this.engineView,
+      henges: this.henges.list().map((h) => ({ id: h.id, name: h.name, version: h.version, status: h.status, pending: h.pending ? { version: h.pending.version, fields: h.pending.fields } : null })),
       registration: reg ? { nodeId: reg.nodeId, capabilitiesReportedAt: reg.capabilitiesReportedAt } : null,
       catalogMinBytes: this.catalogMinBytes,
       models: this.models.overview(),
