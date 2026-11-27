@@ -116,3 +116,4 @@ export function bundleDigest(root: string): Digest {
 /* Platform signed statements (M7): kill switch entries and contribution receipts. */
 export * from './signed';
 export * from './receipt';
+export * from './henge-fetch-node';

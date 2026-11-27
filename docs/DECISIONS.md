@@ -4,6 +4,124 @@ Implementation decisions made while building from `docs/SWARM-EXPLORER-SPEC.md`.
 business or hosting choices that the spec leaves unapproved; the code keeps them as configuration or placeholders.
 SwarmStarter decisions are archived in `docs/history/swarmstarter/DECISIONS.md`.
 
+## Community layer server (2026-11-26)
+
+Workstream E (server side) of "Henge spin-out v2", spin-out spec 8. Rex approved chat on 2026-11-26, which
+replaces the "drop chat" answer in `docs/HENGE-COMMUNITIES-SPEC.md`. Migration `0008_community.sql` is additive.
+Domain logic is in `packages/db/src/community`, routes are in `apps/web/lib/community` with the endpoints in
+SPEC 13.6, and the typed client is `packages/api-client/src/community.ts`. No token, and credits are unchanged.
+
+- **Realtime transport: Postgres polling, no new vendor.** `GET /v1/henges/{id}/events` is a Node-runtime SSE
+  stream (`maxDuration` 300; the server ends each stream at 270 s and the client resumes). Each instance polls
+  `community_events` every 250 ms (`COMMUNITY_POLL_MS`) behind a `RealtimeTransport` interface. Why not
+  LISTEN/NOTIFY: Neon's pooled endpoint runs PgBouncer in transaction mode, which drops LISTEN, and a function
+  holding a direct connection per stream would use up Neon connections. PGlite's LISTEN is also in-process only,
+  so dev and tests would differ. Polling behaves the same on both. ULIDs come from app clocks, so a row can commit
+  after a later id has been read; the poller re-reads a 3 s window and drops ids each subscriber has already seen.
+  `Last-Event-ID` (or `?after=`) is the ULID cursor. A Postgres NOTIFY or a hosted pub/sub can replace the
+  transport later without changing routes or clients.
+- **Measured latency** (web Playwright e2e `community-realtime.spec.ts`, two signed-in clients in one channel,
+  local `next start` with PGlite, 10 samples per kind, from just before the sender's write to arrival on the
+  other client's stream). Run 1 median / max in ms: message 249 / 254, edit 248 / 252, reaction 251 / 254,
+  typing 250 / 253. Run 2: message 251 / 254, edit 249 / 255, reaction 252 / 257, typing 248 / 253. The 250 ms
+  poll sets these numbers; on Neon, expect a query round trip on top. Not measured on Vercel.
+- **SSE details:** a `ready` event first, `retry: 2000`, a ping every 15 s, `cache-control: no-transform` and
+  `x-accel-buffering: no` so nothing buffers the stream. Events are filtered per subscriber by audience, by a
+  capability (the audit feed only reaches `read_audit_log`) and by channels the subscriber can view. Access is
+  re-checked on role and channel changes and every 30 s; a kick or ban closes the stream. Auth is by header only,
+  never a token in the URL, so the client uses `fetch` streaming rather than `EventSource`. Events are pruned
+  after 1 day; a client further behind reloads from the message routes.
+- **The path conflicts with the communities spec,** which planned `/v1/henges/{id}/events` for a hash-chained
+  event log. The spin-out brief names this path for SSE, so SSE has it; a hash-chained log needs another path.
+- **Writes only through API routes.** Typing and presence are the only writes that skip `Idempotency-Key`, along
+  with read markers and avatars (all idempotent by nature). Only 2xx responses are stored for replay.
+- **Handles:** one namespace for people and agents, stored lowercase and unique by key (25 parallel claims leave
+  exactly one winner). NFKC first; any non-ASCII handle is refused, as `confusable` when it mixes scripts.
+  3 to 24 characters of `a-z 0-9 . _`, starting and ending with a letter or digit, no `..`. The reserved list
+  covers role and system words (admin, mod, everyone, here, system, henge, glyph and others) plus anything
+  containing "verafy". A change is allowed once per 30 days, and the old handle is held for its owner for 30 days.
+  A change of case only is not a change.
+- **Creating and joining:** creating a Henge needs the caller's account handle in `governance.holders.owner`.
+  Holders map account handles to roles at join time. A ref that already exists is joined, never re-created, and
+  only when the file's digest matches the pinned one. Admission modes other than `open` let only listed holders
+  in (403 `admission_required`): the request and review flow is not built. Joining as an observer follows the same
+  admission rule; observers read public channels only.
+- **Permissions:** role defaults come from `governance.roles.*.can`. The owner always has every permission.
+  Announcement channels default to owner, maintainer and mod posting; `agent_run` channels default to the agent
+  role. An archived channel removes send, threads, reactions and post via API. Moderation is rank based (owner
+  100, maintainer 80, mod 60, custom 30, member 20, agent 10, observer 0): nobody acts on an equal or higher rank.
+  The Moderation Glyph acts at mod rank.
+- **Agents:** an agent belongs to an account and is bound to the install whose device key signed its creation.
+  Its per-Henge token (`sxg_`, only a hash is stored) works only with a device signature from that key, only on the
+  routes marked agent in 13.6, and only for its own Henge. A refused post is a 403 plus an `agent.post_refused`
+  audit entry with the reason. Timeouts and bans on an account cover its agents; a ban also revokes their tokens.
+- **Mentions:** `@everyone` and `@here` without the permission stay plain text with no ping (not an error).
+  `@here` means members online at send time.
+- **Rate limits:** a token bucket in `community_rate_buckets`, from `community.defaults.rate_limits`. The spec
+  numbers (20 a minute for people, 6 a minute per channel for agents, 30 reactions a minute, 5 a minute for
+  accounts under 24 hours) are used only when the file leaves a value out, and a value of 0 or less counts as left
+  out. Slow mode is per channel and member; members with `manage_messages` are exempt. All answer 429 with
+  `Retry-After`.
+- **Moderation Glyph** (`verafy/moderation`): its Runes drive it, falling back to the manifest defaults (3 reports
+  in 10 minutes, 60 minute timeout, link filter for new members). It needs the `moderate:timeout` grant to time
+  people out and `read:messages` to filter links. It holds links from accounts under 24 hours for a moderator to
+  release. Every action is logged with the Glyph as the actor, like a person's.
+- **Moderation limits:** timeout presets 60s, 5m, 10m, 1h, 1d, 1w. Ban appeals default to a 30-day window when
+  the file allows appeals. Bulk delete reaches back at most 24 hours. Up to 50 pins per channel, 20 distinct
+  emoji per message, 4000 characters per message. Only people file reports, one per message per reporter; the
+  outcome note reaches reporters privately.
+- **Audit log:** append-only, enforced by a trigger on UPDATE, DELETE and TRUNCATE. It has no foreign keys, so
+  account deletion and the dev seed's `TRUNCATE ... CASCADE` never reach it.
+- **Privacy and retention:** deleted messages keep their evidence for 30 days, then the body is purged. Messages
+  older than `data_policy.retention_days` are removed, and report snapshots with them. Retention runs at most
+  hourly per Henge, triggered by posting, not by a cron. Deleting a community account leaves its messages as
+  "deleted user" placeholders with no body, and keeps the audit log.
+- **Presence and typing:** presence expires 90 s after the last heartbeat. Typing lasts 6 s and is sent at most
+  every 2.5 s per member, channel and thread.
+- **Avatars:** `sharp` 0.35.5 works in a Vercel Node function (it ships prebuilt binaries and Next already depends
+  on it), so it is now a direct dependency of `apps/web`. Uploads must be PNG, JPEG or WebP whose bytes match the
+  declared type, at most 4 MB and 40 megapixels. They are rotated by EXIF, optionally cropped to a square,
+  resized to 256 px and re-encoded as WebP, which drops all metadata. They are stored in Postgres, not a bucket,
+  because they are small and no storage vendor is approved.
+
+**Not built:** request and review admission, attachments and images in messages, link previews, search, push or
+email notifications, and the desktop UI (another workstream). No blockers.
+
+## henge link preview (2026-11-26)
+
+Spin-out spec v2, 5.2 (`/s`), 5.5 B5 last bullet, 6.5 and 6.7. Branch `web/henge-preview`.
+
+- **Pinned fetch:** `createNodeResolveDeps` (`packages/schema/src/henge-fetch-node.ts`, exported from
+  `@swarm-explorer/schema/node` only) uses `node:http`/`node:https`, no new dependency. Each request resolves the host
+  itself, refuses it if any answer is not public (`isPublicAddress`), and gives the socket a `lookup` that returns only
+  the approved address (IPv4 first). The pre-check in `safeFetch` is kept, so a rebinding answer between the two is
+  refused. TLS still verifies the certificate for the host name. No redirects are followed in the transport
+  (`safeFetch` follows them and re-checks each hop), no keep-alive pool, `accept-encoding: identity`, a 15 second
+  whole-request timeout and a streamed byte cap.
+- **Test-only localhost:** `ResolveDeps.insecureLocalHosts` lets named hosts use http and requires them to resolve
+  to loopback. The web app sets it to `localhost` only when `HENGE_PREVIEW_ALLOW_LOCALHOST=1` and `VERCEL` is unset;
+  only `apps/web/playwright.config.ts` sets the flag. A unit test shows http is refused without it, and with it on
+  Vercel.
+- **/s:** a plain GET form (no client JS). The page fetches on the server during render, through the resolver, and
+  renders title, tagline, icon and hero (bundle images as data URLs: known type, matching magic bytes, within the 2 MB
+  asset cap; SVG only through `<img>`), the body sanitized by `sanitizeLandingMarkdown` and then rendered as React
+  elements (no HTML injection; leftover tags shown as text; links live only for https and mailto; bundle paths shown as
+  text), sections, links, the accent (re-checked against the AA rule), admission, Glyphs, the source URL, version,
+  pinned digest, commit and ETag, and "Open in Henge" (`henge://add?url=<encoded input URL>`). Errors are one calm
+  panel per cause; an invalid file shows its first five validation messages.
+- **Cache and limit:** results are cached in memory per instance by normalized URL for 60 seconds (successes and
+  errors that will not change on retry; network failures are not cached), and concurrent requests share one fetch.
+  Fetches are limited to 20 per minute per client IP (first `x-forwarded-for` hop); cache hits are free. Both are per
+  serverless instance, which is enough to stop casual abuse but is not a global limit.
+- **Glyphs on /s** are listed as written. Built-in Glyph manifests are not passed to the validator in the web app, so
+  each entry says its manifest was not fetched.
+- **Example:** `apps/web/public/examples/resolved-forecasts.henge.yaml` is a copy of the fixture; "Try the example"
+  links to it on the current host. Keep the two in sync when the fixture changes.
+- **Schemas:** `/schema/henge-v1.json` and `/schema/glyph-v1.json` are static route handlers that serve the package's
+  schema objects with `application/schema+json`, `Cache-Control: public, max-age=86400, s-maxage=604800,
+  stale-while-revalidate=86400` and CORS `*`.
+- `/h/<henge-id>` is not built (needs a registry). The landing hero already linked "Paste a .henge link" to `/s`.
+
 ## henge file v1 and Glyphs (2026-11-26)
 
 Workstreams C and D (schemas only) of "Henge spin-out v2", in `packages/schema`. A Glyph is what other tools
@@ -82,8 +200,7 @@ call a plugin; a Rune is one of its settings. `ManifestV1` and its validator are
 - Code Glyphs inside a `.henge` bundle: the executable rule refuses their wasm. Allow them under `glyphs/`?
 - Funding, category and impact weight have no `.henge` field, so ManifestV1 gets them from the caller. Should
   v1.1 add them (for example from the Treasury Glyph's Runes)?
-- DNS rebinding: the injected fetch must connect to the address the lookup approved. A Node implementation that
-  pins the socket is still to be written with the client.
+- DNS rebinding: done for Node in `henge-fetch-node.ts` (see "henge link preview").
 - `runtime.harness.runtime: container` in the example, while decision 2026-11-25 says nodes run no containers.
 
 ## henge.verafy.ai landing (2026-11-26)
@@ -118,9 +235,7 @@ Workstream B2 of the "Henge spin-out v2" spec (section 5.2), branch `web/henge-l
 - **Needs Rex:**
   - Privacy and Terms: verafy-website has no Privacy or Terms route in code (they are CMS fields, and its
     `isPolicyUrl` rejects verafy.ai links), so the footer shows them as plain text, not links. Give the URLs.
-  - "See the henge-bench plan": `Verafyai/henge-bench` does not exist yet (checked 2026-11-26), so the button shows
-    "(Not published yet)" and links nowhere. Set `HENGE_BENCH_URL` once the repo exists. (`Verafyai/henge` is public,
-    so the GitHub links work.)
+  - "See the henge-bench plan" links to the public `Verafyai/henge-bench` (published 2026-11-26).
   - The /spec page shows the spec's own headings ("6. Workstream C: ..."), which read as internal. Approve or
     supply public wording.
 
